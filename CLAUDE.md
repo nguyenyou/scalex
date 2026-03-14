@@ -77,7 +77,7 @@ The SKILL.md contains a version-aware setup block (`EXPECTED_VERSION`) that must
 4. Commit, push to main
 5. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries for macOS ARM64, macOS x64, Linux x64
 6. The release job extracts the tagged version's section from `CHANGELOG.md` and uses it as the GitHub release body
-7. Update the marketplace plugin version: `claude plugin update --version X.Y.Z`
+7. Bump `version` in `plugin/.claude-plugin/plugin.json`
 
 ## Gotchas
 
