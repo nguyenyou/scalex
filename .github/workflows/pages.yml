@@ -3,7 +3,7 @@ name: GitHub Pages
 on:
   push:
     branches: [main]
-    paths: [docs/**]
+    paths: [site/**]
   workflow_dispatch:
 
 concurrency:
@@ -19,7 +19,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: './docs'
+          path: './site'
 
   deploy:
     needs: build
