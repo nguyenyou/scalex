@@ -1,9 +1,11 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/readme-banner-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/readme-banner-light.png">
-    <img src="docs/readme-banner-dark.png" alt="Scalex — Scala code intelligence for AI coding agents" width="839" height="440">
+    <source media="(prefers-color-scheme: dark)" srcset="site/readme-banner-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="site/readme-banner-light.png">
+    <img src="site/readme-banner-dark.png" alt="Scalex — Scala code intelligence for AI coding agents" width="839" height="440">
   </picture>
+  <br>
+  <em>Grep knows text. Scalex knows Scala.</em>
 </p>
 
 ---
@@ -52,7 +54,7 @@ Build the fastest possible Scala code navigation tool, designed from the ground 
 
 ## How It Works
 
-The entire tool is ~700 lines of Scala 3 in a single file. Here's the architecture:
+The entire tool is ~800 lines of Scala 3 in a single file. Here's the architecture:
 
 ```
                          ┌─────────────────┐
@@ -380,23 +382,23 @@ The name also nods to "Scala" itself — Italian for "staircase" or "scale" — 
 ## Mascot
 
 <p align="center">
-  <img src="docs/Kestrel.png" alt="The Scalex Kestrel" width="256">
+  <img src="site/Kestrel.png" alt="The Scalex Kestrel" width="256">
 </p>
 
 The Scalex mascot is a **kestrel** — the smallest falcon. It was chosen because it mirrors the tool's core qualities:
 
-- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~700 lines, single 26MB binary)
+- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~800 lines, single 26MB binary)
 - **Incredible eyesight** — spots symbols across 14k files, like a kestrel spots prey from 50 meters
 - **Hovers before diving** — systematically scans an area before striking, like indexing before querying
 - **Lives alongside people** — kestrels thrive near humans, like Scalex works alongside AI agents
 
-See [MASCOT.md](docs/MASCOT.md) for the full design brief.
+See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
 ## Credits
 
 Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team.
 
-Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~700 lines of Scala 3.
+Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~800 lines of Scala 3.
 
 - **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
 - **From Scalameta**: the parser that makes source-level symbol extraction possible

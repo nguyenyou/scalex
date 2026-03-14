@@ -1,6 +1,6 @@
 # How Scalex Works
 
-Scalex is a ~700-line Scala 3 program that gives AI agents instant code navigation across Scala projects. No compiler, no build server, no IDE — just git and a parser.
+Scalex is a ~800-line Scala 3 program that gives AI agents instant code navigation across Scala projects. No compiler, no build server, no IDE — just git and a parser.
 
 This document explains every layer of the system, from the ground up.
 
@@ -332,4 +332,4 @@ The launcher script checks if `scalex` is on PATH first, then falls back to `sca
 
 Dependencies: **2 libraries** (Scalameta for parsing, Guava for bloom filters).
 
-Total implementation: **~700 lines** of Scala 3 in a single file.
+Total implementation: **~800 lines** of Scala 3 in a single file.
