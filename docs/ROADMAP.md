@@ -91,6 +91,11 @@
 - [x] Detect `import X as Y` (Scala 3) and `import {X => Y}` (Scala 2) as High confidence matches
 - [x] Follow aliases: when searching `refs X`, also search for `Y` in files that alias `X as Y`
 
+### Alias tracking improvements
+- [x] Confidence for alias refs: refs found via alias are now High confidence (`resolveConfidence` checks alias names)
+- [x] Alias annotation in output: show `[via alias Y]` when a reference was found through alias tracking
+- ~~Reverse alias lookup~~: deliberately skipped — agent can do 2-step lookup (`def TextAlignE` → see alias → `refs TextAlign`), and reverse lookup risks worse-than-grep perf on large codebases
+
 ### Other
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
 - [ ] `scalex hierarchy <class>` — show full class hierarchy (parents + children)

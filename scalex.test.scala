@@ -832,6 +832,38 @@ class ScalexSuite extends FunSuite:
     assertEquals(conf, Confidence.High)
   }
 
+  test("resolveConfidence returns High when searching by alias name") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Search for "US" which is an alias for UserService — refs found in AliasClient.scala
+    // should be High confidence because the file has an alias mapping for UserService
+    val ref = Reference(
+      workspace.resolve("src/main/scala/com/client/AliasClient.scala"),
+      6, "val svc: US = ???"
+    )
+    val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
+    val conf = idx.resolveConfidence(ref, "US", targetPkgs)
+    assertEquals(conf, Confidence.High)
+  }
+
+  test("findReferences annotates aliasInfo for alias matches") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val aliasRef = refs.find { r =>
+      workspace.relativize(r.file).toString.contains("AliasClient.scala") &&
+      r.contextLine.contains("US") && !r.contextLine.contains("UserService")
+    }
+    assert(aliasRef.isDefined, s"Should find alias ref with US: ${refs.map(r => (workspace.relativize(r.file).toString, r.contextLine))}")
+    assertEquals(aliasRef.get.aliasInfo, Some("via alias US"))
+  }
+
+  test("formatRef shows alias annotation") {
+    val r = Reference(workspace.resolve("Foo.scala"), 10, "val x: US = ???", Some("via alias US"))
+    val result = formatRef(r, workspace)
+    assert(result.contains("[via alias US]"), s"Should contain alias annotation: $result")
+  }
+
   test("binary roundtrip preserves aliases") {
     val cacheDir = workspace.resolve(".scalex")
     if Files.exists(cacheDir) then
