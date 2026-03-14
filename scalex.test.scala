@@ -115,6 +115,18 @@ class ScalexSuite extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/main/scala/com/client/AliasClient.scala",
+      """package com.client
+        |
+        |import com.example.UserService as US
+        |import com.example.{Database as DB}
+        |
+        |class AliasClient {
+        |  val svc: US = ???
+        |  val db: DB = ???
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
@@ -146,7 +158,7 @@ class ScalexSuite extends FunSuite:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 8)
+    assertEquals(files.size, 9)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
@@ -155,6 +167,7 @@ class ScalexSuite extends FunSuite:
     assert(files.exists(_.path.toString.contains("ExplicitClient.scala")))
     assert(files.exists(_.path.toString.contains("WildcardClient.scala")))
     assert(files.exists(_.path.toString.contains("NoImportClient.scala")))
+    assert(files.exists(_.path.toString.contains("AliasClient.scala")))
   }
 
   test("gitLsFiles returns valid OIDs") {
@@ -169,7 +182,7 @@ class ScalexSuite extends FunSuite:
 
   test("extractSymbols finds classes, traits, objects") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     val names = syms.map(s => (s.name, s.kind))
 
     assert(names.contains(("UserService", SymbolKind.Trait)))
@@ -179,7 +192,7 @@ class ScalexSuite extends FunSuite:
 
   test("extractSymbols finds defs") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     val defs = syms.filter(_.kind == SymbolKind.Def).map(_.name)
 
     assert(defs.contains("findUser"))
@@ -188,37 +201,37 @@ class ScalexSuite extends FunSuite:
 
   test("extractSymbols finds enums") {
     val file = workspace.resolve("src/main/scala/com/example/Model.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     assert(syms.exists(s => s.name == "Role" && s.kind == SymbolKind.Enum))
   }
 
   test("extractSymbols finds type aliases") {
     val file = workspace.resolve("src/main/scala/com/example/Model.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     assert(syms.exists(s => s.name == "UserId" && s.kind == SymbolKind.Type))
   }
 
   test("extractSymbols finds givens") {
     val file = workspace.resolve("src/main/scala/com/example/Model.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     assert(syms.exists(s => s.kind == SymbolKind.Given))
   }
 
   test("extractSymbols finds extensions") {
     val file = workspace.resolve("src/main/scala/com/other/Helper.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     assert(syms.exists(s => s.kind == SymbolKind.Extension))
   }
 
   test("extractSymbols captures package name") {
     val file = workspace.resolve("src/main/scala/com/example/Model.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     assert(syms.forall(_.packageName == "com.example"))
   }
 
   test("extractSymbols captures line numbers") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     val traitSym = syms.find(s => s.name == "UserService" && s.kind == SymbolKind.Trait).get
     assert(traitSym.line > 0)
   }
@@ -226,7 +239,7 @@ class ScalexSuite extends FunSuite:
   test("extractSymbols handles unparseable files gracefully") {
     val bad = workspace.resolve("bad.scala")
     Files.writeString(bad, "this is not valid scala {{{")
-    val (syms, _, _) = extractSymbols(bad)
+    val (syms, _, _, _) = extractSymbols(bad)
     assertEquals(syms, Nil)
     Files.delete(bad)
   }
@@ -235,7 +248,7 @@ class ScalexSuite extends FunSuite:
 
   test("bloom filter contains identifiers from file") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (_, bloom, _) = extractSymbols(file)
+    val (_, bloom, _, _) = extractSymbols(file)
 
     assert(bloom.mightContain("UserService"))
     assert(bloom.mightContain("findUser"))
@@ -245,7 +258,7 @@ class ScalexSuite extends FunSuite:
 
   test("bloom filter rejects absent identifiers") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (_, bloom, _) = extractSymbols(file)
+    val (_, bloom, _, _) = extractSymbols(file)
 
     // These should almost certainly not be in the bloom filter
     assert(!bloom.mightContain("ZxQwVeryUnlikelyIdentifier"))
@@ -258,7 +271,7 @@ class ScalexSuite extends FunSuite:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 8)
+    assert(idx.fileCount == 9)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -401,13 +414,13 @@ class ScalexSuite extends FunSuite:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 8, s"Cold index should parse all 8 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 9, s"Cold index should parse all 9 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 8, s"Warm index should skip all 8 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 9, s"Warm index should skip all 9 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -431,7 +444,7 @@ class ScalexSuite extends FunSuite:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 7, s"Should skip 7 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 8, s"Should skip 8 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────
@@ -479,7 +492,7 @@ class ScalexSuite extends FunSuite:
 
   test("extractSymbols captures signatures") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
 
     val traitSym = syms.find(s => s.name == "UserService" && s.kind == SymbolKind.Trait).get
     assert(traitSym.signature.nonEmpty, "Trait should have a signature")
@@ -488,7 +501,7 @@ class ScalexSuite extends FunSuite:
 
   test("extractSymbols captures extends parents") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
 
     val classSym = syms.find(s => s.name == "UserServiceLive" && s.kind == SymbolKind.Class).get
     assert(classSym.parents.contains("UserService"), s"Parents: ${classSym.parents}")
@@ -496,7 +509,7 @@ class ScalexSuite extends FunSuite:
 
   test("extractSymbols captures def signatures with params") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
 
     val defSym = syms.find(s => s.name == "findUser" && s.kind == SymbolKind.Def).get
     assert(defSym.signature.contains("def findUser"), s"Sig: ${defSym.signature}")
@@ -505,7 +518,7 @@ class ScalexSuite extends FunSuite:
 
   test("extractSymbols captures given alias signatures") {
     val file = workspace.resolve("src/main/scala/com/example/Model.scala")
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
 
     val givenSym = syms.find(s => s.kind == SymbolKind.Given).get
     assert(givenSym.signature.contains("given"), s"Sig: ${givenSym.signature}")
@@ -515,7 +528,7 @@ class ScalexSuite extends FunSuite:
   test("extractSymbols captures imports") {
     // UserServiceSpec imports UserService
     val file = workspace.resolve("src/test/scala/com/example/UserServiceSpec.scala")
-    val (_, _, imports) = extractSymbols(file)
+    val (_, _, imports, _) = extractSymbols(file)
     // This file doesn't have imports in our test data, but the function should return empty list not crash
     assert(imports != null)
   }
@@ -639,7 +652,7 @@ class ScalexSuite extends FunSuite:
         |}
         |""".stripMargin)
 
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     val names = syms.map(_.name)
     assert(names.contains("OldService"), s"Should find OldService class: $names")
     assert(syms.exists(s => s.name == "OldService" && s.kind == SymbolKind.Class))
@@ -663,7 +676,7 @@ class ScalexSuite extends FunSuite:
         |}
         |""".stripMargin)
 
-    val (syms, _, _) = extractSymbols(file)
+    val (syms, _, _, _) = extractSymbols(file)
     val names = syms.map(_.name)
     assert(names.contains("Implicits"), s"Should find Implicits object: $names")
     assert(names.contains("RichString"), s"Should find RichString class: $names")
@@ -773,4 +786,65 @@ class ScalexSuite extends FunSuite:
     assert(wcResult.isDefined, "Should find wildcard import result")
     assert(wcResult.get.contextLine.contains("import com.example._"),
       s"Should contain wildcard import line: ${wcResult.get.contextLine}")
+  }
+
+  // ── Import alias tracking ──────────────────────────────────────────
+
+  test("extractSymbols extracts import aliases") {
+    val file = workspace.resolve("src/main/scala/com/client/AliasClient.scala")
+    val (_, _, _, aliases) = extractSymbols(file)
+    assertEquals(aliases.get("UserService"), Some("US"))
+    assertEquals(aliases.get("Database"), Some("DB"))
+  }
+
+  test("findReferences follows aliases") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val aliasRefs = refs.filter(r =>
+      workspace.relativize(r.file).toString.contains("AliasClient.scala"))
+    // Should find import line (contains "UserService") AND usage lines (contain "US")
+    assert(aliasRefs.exists(_.contextLine.contains("US")),
+      s"Should find alias usage 'US': ${aliasRefs.map(_.contextLine)}")
+  }
+
+  test("findReferences follows aliases for Database") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("Database")
+    val aliasRefs = refs.filter(r =>
+      workspace.relativize(r.file).toString.contains("AliasClient.scala"))
+    assert(aliasRefs.exists(_.contextLine.contains("DB")),
+      s"Should find alias usage 'DB': ${aliasRefs.map(_.contextLine)}")
+  }
+
+  test("resolveConfidence returns High for alias imports") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val aliasRef = refs.find { r =>
+      val rel = workspace.relativize(r.file).toString
+      rel.contains("AliasClient.scala") && r.contextLine.contains("US")
+    }
+    assert(aliasRef.isDefined, "Should find alias ref")
+    val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
+    val conf = idx.resolveConfidence(aliasRef.get, "UserService", targetPkgs)
+    assertEquals(conf, Confidence.High)
+  }
+
+  test("binary roundtrip preserves aliases") {
+    val cacheDir = workspace.resolve(".scalex")
+    if Files.exists(cacheDir) then
+      Files.list(cacheDir).iterator().asScala.foreach(Files.delete)
+
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+
+    val loaded = IndexPersistence.load(workspace)
+    assert(loaded.isDefined, "Should load from cache")
+
+    val cachedFiles = loaded.get
+    val aliasFile = cachedFiles.values.find(_.relativePath.contains("AliasClient.scala")).get
+    assertEquals(aliasFile.aliases.get("UserService"), Some("US"))
+    assertEquals(aliasFile.aliases.get("Database"), Some("DB"))
   }

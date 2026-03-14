@@ -10,6 +10,10 @@
 - `refs --categorize` groups by confidence level, then by category
 - `refs` (non-categorized) sorts by confidence with section headers
 - Wildcard import resolution in `imports` command — `import com.example._` now surfaces when searching for symbols in `com.example`
+- Import alias tracking — `import X as Y` (Scala 3) and `import {X => Y}` (Scala 2) are now detected and followed
+  - `refs X` also finds usages of alias `Y` in files that rename the import
+  - Alias imports are classified as High confidence
+  - Aliases survive binary cache roundtrip (index format bumped to v4)
 
 ## [1.0.0] — 2025-05-20
 
