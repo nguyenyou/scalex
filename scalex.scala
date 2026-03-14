@@ -50,7 +50,8 @@ case class IndexedFile(
     oid: String,
     symbols: List[SymbolInfo],
     identifierBloom: BloomFilter[CharSequence],
-    imports: List[String] = Nil
+    imports: List[String] = Nil,
+    aliases: Map[String, String] = Map.empty
 )
 
 enum RefCategory:
@@ -115,21 +116,29 @@ private def buildSignature(name: String, kind: String, parents: List[String], tp
   val ext = if parents.nonEmpty then s" extends ${parents.mkString(" with ")}" else ""
   s"$kind $name$tps$ext"
 
-private def extractImports(tree: Tree): List[String] =
+private def extractImports(tree: Tree): (List[String], Map[String, String]) =
   val buf = mutable.ListBuffer.empty[String]
+  val aliases = mutable.Map.empty[String, String]
   def visit(t: Tree): Unit =
     t match
-      case i: Import => buf += i.toString()
+      case i: Import =>
+        buf += i.toString()
+        i.importers.foreach { importer =>
+          importer.importees.foreach {
+            case r: Importee.Rename => aliases(r.name.value) = r.rename.value
+            case _ =>
+          }
+        }
       case _ =>
     t.children.foreach(visit)
   visit(tree)
-  buf.toList
+  (buf.toList, aliases.toMap)
 
-def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], List[String]) =
+def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], List[String], Map[String, String]) =
   val bloom = buildBloomFilter(file)
 
   val source = try Files.readString(file) catch
-    case _: Exception => return (Nil, bloom, Nil)
+    case _: Exception => return (Nil, bloom, Nil, Map.empty)
 
   val input = Input.VirtualFile(file.toString, source)
   val tree = try
@@ -141,10 +150,10 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
         given scala.meta.Dialect = scala.meta.dialects.Scala213
         input.parse[Source].get
       catch
-        case _: Exception => return (Nil, bloom, Nil)
+        case _: Exception => return (Nil, bloom, Nil, Map.empty)
 
   val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
-  val imports = extractImports(tree)
+  val (imports, aliases) = extractImports(tree)
   val buf = mutable.ListBuffer.empty[SymbolInfo]
 
   def visit(t: Tree): Unit = t match
@@ -201,13 +210,13 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
     t.children.foreach(traverse)
 
   traverse(tree)
-  (buf.toList, bloom, imports)
+  (buf.toList, bloom, imports, aliases)
 
 // ── Binary persistence ──────────────────────────────────────────────────────
 
 object IndexPersistence:
   private val MAGIC = 0x53584458
-  private val VERSION: Byte = 3
+  private val VERSION: Byte = 4
 
   def indexPath(workspace: Path): Path = workspace.resolve(".scalex").resolve("index.bin")
 
@@ -229,6 +238,7 @@ object IndexPersistence:
         s.parents.foreach(intern)
       }
       f.imports.foreach(intern)
+      f.aliases.foreach { (k, v) => intern(k); intern(v) }
     }
 
     val out = DataOutputStream(BufferedOutputStream(Files.newOutputStream(indexPath(workspace)), 1 << 16))
@@ -259,6 +269,13 @@ object IndexPersistence:
         // Imports
         out.writeShort(f.imports.size)
         f.imports.foreach(i => out.writeInt(intern(i)))
+
+        // Aliases
+        out.writeShort(f.aliases.size)
+        f.aliases.foreach { (k, v) =>
+          out.writeInt(intern(k))
+          out.writeInt(intern(v))
+        }
 
         // Bloom filter
         val bloomBytes = java.io.ByteArrayOutputStream()
@@ -310,6 +327,14 @@ object IndexPersistence:
           val importCount = in.readShort()
           val imports = (0 until importCount).map(_ => strings(in.readInt())).toList
 
+          // Aliases
+          val aliasCount = in.readShort()
+          val aliases = (0 until aliasCount).map { _ =>
+            val k = strings(in.readInt())
+            val v = strings(in.readInt())
+            k -> v
+          }.toMap
+
           // Bloom filter
           val bloomLen = in.readInt()
           val bloomBytes = new Array[Byte](bloomLen)
@@ -319,7 +344,7 @@ object IndexPersistence:
             Funnels.unencodedCharsFunnel()
           )
 
-          result(relPath) = IndexedFile(relPath, oid, syms.result(), bloom, imports)
+          result(relPath) = IndexedFile(relPath, oid, syms.result(), bloom, imports, aliases)
           fi += 1
 
         Some(result.toMap)
@@ -340,6 +365,7 @@ class WorkspaceIndex(val workspace: Path):
 
   private var packageToSymbols: Map[String, Set[String]] = Map.empty
   private var indexedByPath: Map[String, IndexedFile] = Map.empty
+  private var aliasIndex: Map[String, List[(IndexedFile, String)]] = Map.empty
 
   var fileCount: Int = 0
   var indexTimeMs: Long = 0
@@ -374,8 +400,8 @@ class WorkspaceIndex(val workspace: Path):
 
         toParse.asJava.parallelStream().forEach { gf =>
           val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports) = extractSymbols(gf.path)
-          toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports))
+          val (syms, bloom, imports, aliases) = extractSymbols(gf.path)
+          toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases))
         }
         result ++= toParseQueue.asScala
         parsedCount = toParse.size
@@ -384,8 +410,8 @@ class WorkspaceIndex(val workspace: Path):
         val queue = ConcurrentLinkedQueue[IndexedFile]()
         gitFiles.asJava.parallelStream().forEach { gf =>
           val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports) = extractSymbols(gf.path)
-          queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports))
+          val (syms, bloom, imports, aliases) = extractSymbols(gf.path)
+          queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases))
         }
         result ++= queue.asScala
         parsedCount = gitFiles.size
@@ -409,6 +435,13 @@ class WorkspaceIndex(val workspace: Path):
     parentIndex = pIdx.map((k, v) => k -> v.toList).toMap
     packageToSymbols = symbols.groupBy(_.packageName).map((k, v) => k -> v.map(_.name).toSet)
     indexedByPath = indexedFiles.map(f => f.relativePath -> f).toMap
+    val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(IndexedFile, String)]]
+    indexedFiles.foreach { f =>
+      f.aliases.foreach { (orig, alias) =>
+        aIdx.getOrElseUpdate(orig, mutable.ListBuffer.empty) += ((f, alias))
+      }
+    }
+    aliasIndex = aIdx.map((k, v) => k -> v.toList).toMap
     indexTimeMs = (System.nanoTime() - t0) / 1_000_000
 
     IndexPersistence.save(workspace, indexedFiles)
@@ -443,17 +476,33 @@ class WorkspaceIndex(val workspace: Path):
 
   def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs): List[Reference] =
     val candidates = indexedFiles.filter(_.identifierBloom.mightContain(name))
+    val aliasFiles = aliasIndex.getOrElse(name, Nil)
+    val candidateSet = candidates.map(_.relativePath).toSet
+    val extraFiles = aliasFiles.collect {
+      case (f, _) if !candidateSet.contains(f.relativePath) => f
+    }
+    val allCandidates = candidates ++ extraFiles
+    val fileAliasMap = aliasFiles.map((f, alias) => f.relativePath -> alias).toMap
+
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
-    candidates.asJava.parallelStream().forEach { idxFile =>
+    val seen = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    allCandidates.asJava.parallelStream().forEach { idxFile =>
       if System.nanoTime() < deadline then
         val path = workspace.resolve(idxFile.relativePath)
         val lines = try Files.readAllLines(path).asScala catch
           case _: Exception => Seq.empty
+        val aliasName = fileAliasMap.get(idxFile.relativePath)
         lines.zipWithIndex.foreach {
-          case (line, idx) if System.nanoTime() < deadline && containsWord(line, name) =>
-            results.add(Reference(path, idx + 1, line.trim))
+          case (line, idx) if System.nanoTime() < deadline =>
+            val key = s"${idxFile.relativePath}:${idx + 1}"
+            if containsWord(line, name) && seen.add(key) then
+              results.add(Reference(path, idx + 1, line.trim))
+            else aliasName match
+              case Some(alias) if containsWord(line, alias) && seen.add(key) =>
+                results.add(Reference(path, idx + 1, line.trim))
+              case _ =>
           case _ =>
         }
       else timedOut = true

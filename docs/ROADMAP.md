@@ -58,7 +58,7 @@
 
 ## Phase 8: Testing — DONE
 
-- [x] 46 MUnit tests covering all features
+- [x] 57 MUnit tests covering all features
 - [x] Scala 3 symbol extraction (class, trait, object, def, val, type, enum, given, extension)
 - [x] Scala 2 fallback (procedure syntax, implicit class, mixed projects)
 - [x] Binary persistence roundtrip (parents, signatures survive save/load)
@@ -87,9 +87,9 @@
 - [x] Resolve wildcard imports in `imports` command using existing package→symbol data
 - [x] All results kept (zero false negatives) — confidence used to sort/group, not filter
 
-### Import alias tracking
-- [ ] Detect `import X as Y` (Scala 3) and `import {X => Y}` (Scala 2) as High confidence matches
-- [ ] Follow aliases: when searching `refs X`, also search for `Y` in files that alias `X as Y`
+### Import alias tracking — DONE
+- [x] Detect `import X as Y` (Scala 3) and `import {X => Y}` (Scala 2) as High confidence matches
+- [x] Follow aliases: when searching `refs X`, also search for `Y` in files that alias `X as Y`
 
 ### Other
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
