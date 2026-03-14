@@ -58,6 +58,9 @@ enum RefCategory:
 
 case class CategorizedRef(ref: Reference, category: RefCategory)
 
+enum Confidence:
+  case High, Medium, Low
+
 // ── Git ─────────────────────────────────────────────────────────────────────
 
 def gitLsFiles(workspace: Path): List[GitFile] =
@@ -335,6 +338,9 @@ class WorkspaceIndex(val workspace: Path):
   private var indexedFiles: List[IndexedFile] = Nil
   private var parentIndex: Map[String, List[SymbolInfo]] = Map.empty
 
+  private var packageToSymbols: Map[String, Set[String]] = Map.empty
+  private var indexedByPath: Map[String, IndexedFile] = Map.empty
+
   var fileCount: Int = 0
   var indexTimeMs: Long = 0
   var parsedCount: Int = 0
@@ -401,6 +407,8 @@ class WorkspaceIndex(val workspace: Path):
       }
     }
     parentIndex = pIdx.map((k, v) => k -> v.toList).toMap
+    packageToSymbols = symbols.groupBy(_.packageName).map((k, v) => k -> v.map(_.name).toSet)
+    indexedByPath = indexedFiles.map(f => f.relativePath -> f).toMap
     indexTimeMs = (System.nanoTime() - t0) / 1_000_000
 
     IndexPersistence.save(workspace, indexedFiles)
@@ -478,6 +486,7 @@ class WorkspaceIndex(val workspace: Path):
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
+    val resultPaths = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
     candidates.asJava.parallelStream().forEach { idxFile =>
       if System.nanoTime() < deadline then
         val path = workspace.resolve(idxFile.relativePath)
@@ -486,11 +495,62 @@ class WorkspaceIndex(val workspace: Path):
         lines.zipWithIndex.foreach {
           case (line, idx) if System.nanoTime() < deadline && line.trim.startsWith("import ") && containsWord(line, name) =>
             results.add(Reference(path, idx + 1, line.trim))
+            resultPaths.add(s"${idxFile.relativePath}:${idx + 1}")
           case _ =>
         }
       else timedOut = true
     }
+
+    // Also find wildcard imports that resolve to a package containing the target symbol
+    val targetPkgs = symbolsByName.getOrElse(name.toLowerCase, Nil).map(_.packageName).toSet
+    if targetPkgs.nonEmpty then
+      for idxFile <- indexedFiles if System.nanoTime() < deadline do
+        for imp <- idxFile.imports do
+          val trimmed = imp.trim.stripPrefix("import ")
+          if (trimmed.endsWith("._") || trimmed.endsWith(".*")) then
+            val pkg = trimmed.dropRight(2)
+            if targetPkgs.contains(pkg) then
+              val path = workspace.resolve(idxFile.relativePath)
+              try {
+                val lines = Files.readAllLines(path).asScala
+                lines.zipWithIndex.foreach { case (line, lineIdx) =>
+                  if line.trim == imp.trim then
+                    val key = s"${idxFile.relativePath}:${lineIdx + 1}"
+                    if !resultPaths.contains(key) then
+                      results.add(Reference(path, lineIdx + 1, line.trim))
+                      resultPaths.add(key)
+                }
+              } catch { case _: Exception => () }
+
     results.asScala.toList
+
+  private def filePackage(idxFile: IndexedFile): String =
+    idxFile.symbols.headOption.map(_.packageName).getOrElse("")
+
+  def resolveConfidence(ref: Reference, targetName: String, targetPackages: Set[String]): Confidence =
+    val relPath = workspace.relativize(ref.file).toString
+    indexedByPath.get(relPath) match
+      case None => Confidence.Low
+      case Some(idxFile) =>
+        val filePkg = filePackage(idxFile)
+        if targetPackages.contains(filePkg) then Confidence.High
+        else
+          val imports = idxFile.imports
+          val hasExplicit = imports.exists { imp =>
+            imp.contains(s".$targetName") || imp.contains(s"{$targetName") ||
+            imp.contains(s", $targetName") || imp.contains(s"$targetName,")
+          }
+          if hasExplicit then Confidence.High
+          else
+            val hasWildcard = imports.exists { imp =>
+              val trimmed = imp.trim.stripPrefix("import ")
+              (trimmed.endsWith("._") || trimmed.endsWith(".*")) && {
+                val pkg = trimmed.dropRight(2)
+                targetPackages.contains(pkg)
+              }
+            }
+            if hasWildcard then Confidence.Medium
+            else Confidence.Low
 
   private def containsWord(line: String, word: String): Boolean =
     var i = line.indexOf(word)
@@ -596,25 +656,54 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       rest.headOption match
         case None => println("Usage: scalex refs <symbol>")
         case Some(symbol) =>
+          val targetPkgs = idx.symbolsByName.getOrElse(symbol.toLowerCase, Nil).map(_.packageName).toSet
           if categorize then
             val grouped = idx.categorizeReferences(symbol)
             val total = grouped.values.map(_.size).sum
             val suffix = if idx.timedOut then " (timed out — partial results)" else ""
             println(s"References to \"$symbol\" — $total found:$suffix")
-            val order = List(RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
-                             RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
-            order.foreach { cat =>
-              grouped.get(cat).filter(_.nonEmpty).foreach { refs =>
-                println(s"\n  ${cat.toString}:")
-                refs.take(limit).foreach(r => println(s"  ${formatRef(r, workspace)}"))
-                if refs.size > limit then println(s"    ... and ${refs.size - limit} more")
-              }
+            val confidenceOrder = List(Confidence.High, Confidence.Medium, Confidence.Low)
+            confidenceOrder.foreach { conf =>
+              val catRefs = grouped.flatMap { (cat, refs) =>
+                refs.map(r => (cat, r, idx.resolveConfidence(r, symbol, targetPkgs)))
+              }.filter(_._3 == conf).toList
+              if catRefs.nonEmpty then
+                val label = conf match
+                  case Confidence.High   => "High confidence (import-matched)"
+                  case Confidence.Medium => "Medium confidence (wildcard import)"
+                  case Confidence.Low    => "Low confidence (no matching import)"
+                println(s"\n  $label:")
+                val byCat = catRefs.groupBy(_._1)
+                val order = List(RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
+                                 RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
+                order.foreach { cat =>
+                  byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
+                    println(s"\n    ${cat.toString}:")
+                    entries.take(limit).foreach((_, r, _) => println(s"    ${formatRef(r, workspace)}"))
+                    if entries.size > limit then println(s"      ... and ${entries.size - limit} more")
+                  }
+                }
             }
           else
             val results = idx.findReferences(symbol)
             val suffix = if idx.timedOut then " (timed out — partial results)" else ""
             println(s"References to \"$symbol\" — ${results.size} found:$suffix")
-            results.take(limit).foreach(r => println(formatRef(r, workspace)))
+            val annotated = results.map(r => (r, idx.resolveConfidence(r, symbol, targetPkgs)))
+            val sorted = annotated.sortBy { case (_, c) => c.ordinal }
+            var lastConf: Option[Confidence] = None
+            var shown = 0
+            sorted.foreach { case (r, conf) =>
+              if shown < limit then
+                if !lastConf.contains(conf) then
+                  val label = conf match
+                    case Confidence.High   => "High confidence"
+                    case Confidence.Medium => "Medium confidence"
+                    case Confidence.Low    => "Low confidence"
+                  println(s"\n  [$label]")
+                  lastConf = Some(conf)
+                println(formatRef(r, workspace))
+                shown += 1
+            }
             if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "imports" =>

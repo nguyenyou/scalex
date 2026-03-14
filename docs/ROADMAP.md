@@ -79,6 +79,19 @@
 
 ## Future
 
+### Import-scoped confidence annotation — DONE
+- [x] Annotate `refs` results with confidence (High/Medium/Low) based on file's imports
+  - **High**: explicit import match or same package
+  - **Medium**: wildcard import (`import pkg._`/`import pkg.*`) of a package containing the symbol
+  - **Low**: no matching import (could be fully qualified, re-export, etc.)
+- [x] Resolve wildcard imports in `imports` command using existing package→symbol data
+- [x] All results kept (zero false negatives) — confidence used to sort/group, not filter
+
+### Import alias tracking
+- [ ] Detect `import X as Y` (Scala 3) and `import {X => Y}` (Scala 2) as High confidence matches
+- [ ] Follow aliases: when searching `refs X`, also search for `Y` in files that alias `X as Y`
+
+### Other
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
 - [ ] `scalex hierarchy <class>` — show full class hierarchy (parents + children)
 - [ ] Publish plugin to Claude Code marketplace
