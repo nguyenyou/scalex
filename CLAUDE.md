@@ -73,8 +73,10 @@ The SKILL.md contains a version-aware setup block (`EXPECTED_VERSION`) that must
 
 1. Bump `ScalexVersion` in `scalex.scala`
 2. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/SKILL.md`
-3. Move `[Unreleased]` section in `CHANGELOG.md` to the new version
-4. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries for macOS ARM64, macOS x64, Linux x64 and creates a release
+3. Move `[Unreleased]` section in `CHANGELOG.md` to the new version with date
+4. Commit, push to main
+5. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries for macOS ARM64, macOS x64, Linux x64
+6. The release job extracts the tagged version's section from `CHANGELOG.md` and uses it as the GitHub release body
 
 ## Gotchas
 
