@@ -12,7 +12,7 @@ First run on a project indexes all git-tracked `.scala` files (~3s for 14k files
 Before first use, check if scalex is installed and at the expected version:
 
 ```bash
-EXPECTED_VERSION="1.0.0"
+EXPECTED_VERSION="1.1.0"
 INSTALLED_VERSION=$(scalex --version 2>/dev/null || echo "none")
 echo "Expected: $EXPECTED_VERSION, Installed: $INSTALLED_VERSION"
 ```

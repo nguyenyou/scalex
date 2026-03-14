@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.0] — 2026-03-14
 
 ### Added
 - Confidence annotations for `refs` output (High/Medium/Low) based on import resolution
