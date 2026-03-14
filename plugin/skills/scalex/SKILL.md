@@ -9,62 +9,33 @@ First run on a project indexes all git-tracked `.scala` files (~3s for 14k files
 
 ## Setup
 
-Before first use, check if scalex is installed and at the expected version:
+Pre-built native binaries for all supported platforms are bundled in the `bin/` directory next to this SKILL.md. Before first use, check if the binary has already been set up:
 
 ```bash
-EXPECTED_VERSION="1.1.0"
-INSTALLED_VERSION=$(scalex --version 2>/dev/null || echo "none")
-echo "Expected: $EXPECTED_VERSION, Installed: $INSTALLED_VERSION"
+SKILL_BIN="<path-to-this-skills-directory>/bin"
+ls "$SKILL_BIN/scalex" 2>/dev/null && "$SKILL_BIN/scalex" --version
 ```
 
-If the version matches, skip the rest of this section. If scalex is missing or the version doesn't match, ask the user which install method they prefer:
+Replace `<path-to-this-skills-directory>` with the absolute path to the directory containing this SKILL.md file.
 
-### Option A: Download prebuilt binary (faster, no dependencies)
+If `bin/scalex` exists, skip the rest of this section. Otherwise, run the one-time setup — detect the platform, rename the correct binary to `scalex`, and remove the rest:
 
 ```bash
-mkdir -p ~/.local/bin
+SKILL_BIN="<path-to-this-skills-directory>/bin"
 OS="$(uname -s)"; ARCH="$(uname -m)"
 case "$OS-$ARCH" in
-  Darwin-arm64)  ARTIFACT="scalex-macos-arm64" ;;
-  Darwin-x86_64) ARTIFACT="scalex-macos-x64" ;;
-  Linux-x86_64)  ARTIFACT="scalex-linux-x64" ;;
+  Darwin-arm64)  BIN="scalex-macos-arm64" ;;
+  Darwin-x86_64) BIN="scalex-macos-x64" ;;
+  Linux-x86_64)  BIN="scalex-linux-x64" ;;
+  *) echo "Unsupported platform: $OS-$ARCH" >&2; exit 1 ;;
 esac
-curl -fsSL "https://github.com/nguyenyou/scalex/releases/download/v${EXPECTED_VERSION}/${ARTIFACT}" -o ~/.local/bin/scalex
-chmod +x ~/.local/bin/scalex
+mv "$SKILL_BIN/$BIN" "$SKILL_BIN/scalex"
+rm -f "$SKILL_BIN"/scalex-*
+chmod +x "$SKILL_BIN/scalex"
+"$SKILL_BIN/scalex" --version
 ```
 
-### Option B: Build from source (requires scala-cli + GraalVM)
-
-First check if scala-cli is installed and up to date:
-
-```bash
-scala-cli version 2>/dev/null || echo "not installed"
-```
-
-If scala-cli is not installed or outdated, install it:
-- **macOS**: `brew install Virtuslab/scala-cli/scala-cli`
-- **Linux**: `curl -sSLf https://scala-cli.virtuslab.org/get | sh`
-- If neither works, direct the user to https://scala-cli.virtuslab.org/install for their platform.
-
-Then clone and build:
-
-```bash
-git clone https://github.com/nguyenyou/scalex.git /tmp/scalex-build
-cd /tmp/scalex-build && git checkout v${EXPECTED_VERSION}
-mkdir -p ~/.local/bin
-./build-native.sh ~/.local/bin/scalex
-cd - && rm -rf /tmp/scalex-build
-```
-
-### After install
-
-Verify the install succeeded:
-
-```bash
-scalex --version
-```
-
-If `scalex` is still not found (not on PATH), use the full path `~/.local/bin/scalex` for all commands below.
+After setup, `bin/` contains a single `scalex` binary for the current machine. Use the full path `<path-to-this-skills-directory>/bin/scalex` for all commands below.
 
 ## What scalex indexes
 
