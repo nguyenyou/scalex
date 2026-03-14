@@ -51,6 +51,7 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 - **Scalameta, not presentation compiler**: Scala 3's PC requires compiled `.class`/`.tasty` on classpath, which reintroduces build server dependency. Scalameta parses source directly.
 - **Git OIDs for caching**: Available free from `git ls-files --stage`, no disk reads needed to detect changes.
 - **No build server**: AI agents can run `./mill __.compile` directly for error checking.
+- **Feature gate question**: "Is this better than grep, or does it introduce a worst case that grep never has?" If a feature risks being slower or less reliable than grep in any scenario, don't add it. The agent can always fall back to grep — scalex must never be the worse option.
 
 ### Dependencies
 

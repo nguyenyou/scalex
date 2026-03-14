@@ -14,6 +14,8 @@
   - `refs X` also finds usages of alias `Y` in files that rename the import
   - Alias imports are classified as High confidence
   - Aliases survive binary cache roundtrip (index format bumped to v4)
+- Alias-aware confidence: `resolveConfidence` now checks alias mappings — searching by alias name (e.g. `refs TextAlignE`) returns High confidence instead of Low
+- Alias annotation in output: references found via alias show `[via alias Y]` suffix (e.g. `AliasClient.scala:6 — val svc: US = ??? [via alias US]`)
 
 ## [1.0.0] — 2025-05-20
 

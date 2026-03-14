@@ -42,7 +42,7 @@ case class SymbolInfo(
     signature: String = ""
 )
 
-case class Reference(file: Path, line: Int, contextLine: String)
+case class Reference(file: Path, line: Int, contextLine: String, aliasInfo: Option[String] = None)
 case class GitFile(path: Path, oid: String)
 
 case class IndexedFile(
@@ -501,7 +501,7 @@ class WorkspaceIndex(val workspace: Path):
               results.add(Reference(path, idx + 1, line.trim))
             else aliasName match
               case Some(alias) if containsWord(line, alias) && seen.add(key) =>
-                results.add(Reference(path, idx + 1, line.trim))
+                results.add(Reference(path, idx + 1, line.trim, Some(s"via alias $alias")))
               case _ =>
           case _ =>
         }
@@ -589,7 +589,10 @@ class WorkspaceIndex(val workspace: Path):
             imp.contains(s".$targetName") || imp.contains(s"{$targetName") ||
             imp.contains(s", $targetName") || imp.contains(s"$targetName,")
           }
-          if hasExplicit then Confidence.High
+          val hasAliasMatch = idxFile.aliases.exists { (orig, alias) =>
+            alias == targetName || orig == targetName
+          }
+          if hasExplicit || hasAliasMatch then Confidence.High
           else
             val hasWildcard = imports.exists { imp =>
               val trimmed = imp.trim.stripPrefix("import ")
@@ -625,7 +628,8 @@ def formatSymbolVerbose(s: SymbolInfo, workspace: Path): String =
 
 def formatRef(r: Reference, workspace: Path): String =
   val rel = workspace.relativize(r.file)
-  s"  $rel:${r.line} — ${r.contextLine}"
+  val alias = r.aliasInfo.map(a => s" [$a]").getOrElse("")
+  s"  $rel:${r.line} — ${r.contextLine}$alias"
 
 def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String): Unit =
   println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
