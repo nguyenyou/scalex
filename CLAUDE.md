@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Scalex is a Scala code intelligence CLI for AI agents. It provides fast symbol search, find definitions, and find references — without requiring an IDE, build server, or compilation. Designed as a Claude Code plugin.
 
+## Workflow
+
+- Before planning or implementing any feature, first add it to `docs/ROADMAP.md` under the appropriate section
+- The roadmap is the source of truth for what's planned and what's done
+
 ## Build & Run
 
 ```bash
@@ -67,7 +72,8 @@ The SKILL.md contains a version-aware setup block (`EXPECTED_VERSION`) that must
 
 1. Bump `ScalexVersion` in `scalex.scala`
 2. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/SKILL.md`
-3. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries for macOS ARM64, macOS x64, Linux x64 and creates a release
+3. Move `[Unreleased]` section in `CHANGELOG.md` to the new version
+4. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries for macOS ARM64, macOS x64, Linux x64 and creates a release
 
 ## Gotchas
 
@@ -77,3 +83,5 @@ The SKILL.md contains a version-aware setup block (`EXPECTED_VERSION`) that must
 - **Scalameta Tree**: `.collect` doesn't work on Tree in Scala 3 — use manual `traverse` + `visit` pattern
 - **Anonymous givens**: Only named givens are indexed; anonymous givens are skipped
 - **`refs`/`imports` use text search**: They use bloom filters to shortlist candidate files, then do word-boundary text matching. They are NOT index-based and have a 20-second timeout.
+- **Scala 3 indentation in `WorkspaceIndex`**: Deeply nested code can break method boundaries — use brace syntax for nested blocks
+- **Test fixture file counts**: Tests hardcode file counts — adding/removing fixtures requires updating all count assertions

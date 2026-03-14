@@ -87,6 +87,34 @@ class ScalexSuite extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/main/scala/com/client/ExplicitClient.scala",
+      """package com.client
+        |
+        |import com.example.UserService
+        |
+        |class ExplicitClient {
+        |  val svc: UserService = ???
+        |}
+        |""".stripMargin)
+
+    writeFile("src/main/scala/com/client/WildcardClient.scala",
+      """package com.client
+        |
+        |import com.example._
+        |
+        |class WildcardClient {
+        |  val svc: UserService = ???
+        |}
+        |""".stripMargin)
+
+    writeFile("src/main/scala/com/unrelated/NoImportClient.scala",
+      """package com.unrelated
+        |
+        |class NoImportClient {
+        |  val svc: UserService = ???
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
@@ -118,12 +146,15 @@ class ScalexSuite extends FunSuite:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 5)
+    assertEquals(files.size, 8)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
     assert(files.exists(_.path.toString.contains("Helper.scala")))
     assert(files.exists(_.path.toString.contains("UserServiceSpec.scala")))
+    assert(files.exists(_.path.toString.contains("ExplicitClient.scala")))
+    assert(files.exists(_.path.toString.contains("WildcardClient.scala")))
+    assert(files.exists(_.path.toString.contains("NoImportClient.scala")))
   }
 
   test("gitLsFiles returns valid OIDs") {
@@ -227,7 +258,7 @@ class ScalexSuite extends FunSuite:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 5)
+    assert(idx.fileCount == 8)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -370,13 +401,13 @@ class ScalexSuite extends FunSuite:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 5, s"Cold index should parse all 5 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 8, s"Cold index should parse all 8 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 5, s"Warm index should skip all 5 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 8, s"Warm index should skip all 8 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -400,7 +431,7 @@ class ScalexSuite extends FunSuite:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 4, s"Should skip 4 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 7, s"Should skip 7 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────
@@ -671,4 +702,75 @@ class ScalexSuite extends FunSuite:
     Files.delete(scala2File)
     run("git", "add", ".")
     run("git", "commit", "-m", "remove legacy")
+  }
+
+  // ── Confidence annotation ────────────────────────────────────────────
+
+  test("resolveConfidence returns High for same-package references") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserServiceSpec is in com.example, same as UserService definition
+    val refs = idx.findReferences("UserService")
+    val specRef = refs.find(r => workspace.relativize(r.file).toString.contains("UserServiceSpec.scala"))
+    assert(specRef.isDefined, "Should find ref in UserServiceSpec")
+    val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
+    val conf = idx.resolveConfidence(specRef.get, "UserService", targetPkgs)
+    assertEquals(conf, Confidence.High)
+  }
+
+  test("resolveConfidence returns High for explicit import") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val clientRef = refs.find(r => workspace.relativize(r.file).toString.contains("ExplicitClient.scala"))
+    assert(clientRef.isDefined, "Should find ref in ExplicitClient")
+    val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
+    val conf = idx.resolveConfidence(clientRef.get, "UserService", targetPkgs)
+    assertEquals(conf, Confidence.High)
+  }
+
+  test("resolveConfidence returns Medium for wildcard import") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val wcRef = refs.find(r => workspace.relativize(r.file).toString.contains("WildcardClient.scala"))
+    assert(wcRef.isDefined, "Should find ref in WildcardClient")
+    val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
+    val conf = idx.resolveConfidence(wcRef.get, "UserService", targetPkgs)
+    assertEquals(conf, Confidence.Medium)
+  }
+
+  test("resolveConfidence returns Low for no matching import") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val noImpRef = refs.find(r => workspace.relativize(r.file).toString.contains("NoImportClient.scala"))
+    assert(noImpRef.isDefined, "Should find ref in NoImportClient")
+    val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
+    val conf = idx.resolveConfidence(noImpRef.get, "UserService", targetPkgs)
+    assertEquals(conf, Confidence.Low)
+  }
+
+  // ── Wildcard import resolution ───────────────────────────────────────
+
+  test("findImports finds wildcard imports that match target package") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findImports("UserService")
+    // Should find explicit import in ExplicitClient AND wildcard import in WildcardClient
+    val files = results.map(r => workspace.relativize(r.file).toString)
+    assert(files.exists(_.contains("ExplicitClient.scala")),
+      s"Should find explicit import: $files")
+    assert(files.exists(_.contains("WildcardClient.scala")),
+      s"Should find wildcard import: ${files}")
+  }
+
+  test("findImports wildcard result contains the wildcard import line") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findImports("UserService")
+    val wcResult = results.find(r => workspace.relativize(r.file).toString.contains("WildcardClient.scala"))
+    assert(wcResult.isDefined, "Should find wildcard import result")
+    assert(wcResult.get.contextLine.contains("import com.example._"),
+      s"Should contain wildcard import line: ${wcResult.get.contextLine}")
   }
