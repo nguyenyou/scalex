@@ -17,7 +17,7 @@ This document compares Scalex against the MBT (Metal Build Tool) subsystem in Me
 | No build server required | Works without BSP | Works without BSP |
 | No compilation required | Source-level only | Source-level only |
 
-The core architecture is identical. We reimplemented the same ideas in ~700 lines of Scala 3.
+The core architecture is identical. We reimplemented the same ideas in ~800 lines of Scala 3.
 
 ## What Metals v2 MBT does that we don't
 
