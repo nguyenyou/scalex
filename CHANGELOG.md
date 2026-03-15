@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.6.0] — 2026-03-15
 
 ### Added
 - `--json` flag on all commands — structured JSON output for programmatic consumption (#32)
