@@ -1,6 +1,6 @@
 ---
 name: scalex
-description: Scala code intelligence CLI for navigating Scala codebases (Scala 2 and 3). Use this skill whenever you're working in a project with .scala files and need to understand code structure — finding where a class/trait/object is defined, who extends a trait, who uses or imports a symbol, what's in a file, searching for files by name, or exploring packages. Trigger on any Scala navigation task like "where is X defined", "who implements Y", "find usages of Z", "what traits exist", "find the file for X", or when you need to understand impact before renaming/refactoring. Also use proactively when exploring an unfamiliar Scala codebase — scalex is much faster and more structured than grep for Scala-specific queries. Supports fuzzy camelCase search (e.g. "hms" finds HttpMessageService). Always prefer scalex over grep/glob for Scala symbol and file lookups.
+description: Scala code intelligence CLI for navigating Scala codebases (Scala 2 and 3). Use this skill whenever you're working in a project with .scala files and need to understand code structure — finding where a class/trait/object is defined, who extends a trait, who uses or imports a symbol, what's in a file, searching for files by name, finding annotated symbols, or searching file contents. Trigger on any Scala navigation task like "where is X defined", "who implements Y", "find usages of Z", "what traits exist", "find the file for X", "find all @deprecated symbols", "search for a pattern in Scala files", or when you need to understand impact before renaming/refactoring. Also use proactively when exploring an unfamiliar Scala codebase — scalex is much faster and more structured than grep for Scala-specific queries. Supports fuzzy camelCase search (e.g. "hms" finds HttpMessageService). Always prefer scalex over grep/glob for Scala symbol and file lookups. Use `scalex grep` instead of the Grep tool for searching inside .scala files — it integrates with scalex's --path and --no-tests filters.
 ---
 
 You have access to `scalex`, a Scala code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals). It parses source files via Scalameta — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
@@ -29,9 +29,9 @@ Replace `/absolute/path/to/skills/scalex` with the absolute path to the director
 
 ## What scalex indexes
 
-Scalex extracts **top-level declarations** from every git-tracked `.scala` file: classes, traits, objects, enums, defs, vals, types, givens (named only — anonymous givens are skipped), and extension groups. It does NOT index local definitions inside method bodies, method parameters, or pattern bindings.
+Scalex extracts **top-level declarations** from every git-tracked `.scala` file: classes, traits, objects, enums, defs, vals, types, givens (named only — anonymous givens are skipped), and extension groups. It also extracts **annotations** on these declarations (e.g. `@deprecated`, `@main`, `@tailrec`). It does NOT index local definitions inside method bodies, method parameters, or pattern bindings.
 
-The `refs`, `imports`, and `categorize` features work differently — they do text search with word-boundary matching across files, so they find ALL textual occurrences regardless of whether the symbol is in the index.
+The `refs`, `imports`, `grep`, and `categorize` features work differently — they do text search across files, so they find ALL textual occurrences regardless of whether the symbol is in the index.
 
 ## Commands
 
@@ -119,6 +119,37 @@ scalex file PaymentService       # exact/prefix match on filename
 scalex file psl                  # camelCase fuzzy: finds PaymentServiceLive.scala
 ```
 
+### `scalex annotated <annotation> [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — find annotated symbols
+
+Finds all symbols that have a specific annotation. Useful for finding deprecated APIs, entry points (`@main`), or framework-specific annotations. The `@` prefix is optional — `annotated deprecated` and `annotated @deprecated` both work. Annotation matching is case-insensitive.
+
+```bash
+scalex annotated deprecated --verbose          # all @deprecated symbols
+scalex annotated main                          # all @main entry points
+scalex annotated deprecated --kind class       # only @deprecated classes
+scalex annotated tailrec --path core/src/      # @tailrec defs in core
+```
+```
+  class     OldService (com.example) — .../OldService.scala:12
+  def       legacyProcess (com.example) — .../Legacy.scala:45
+```
+
+### `scalex grep <pattern> [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
+
+Regex search inside `.scala` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala files. Has a 20-second timeout for large codebases.
+
+The pattern is a Java regex. Use `-C N` to show context lines around each match (like `grep -C`).
+
+```bash
+scalex grep "def.*process" --no-tests          # find method-like patterns
+scalex grep "ctx\.settings" --path compiler/src/ -C 2  # with context
+scalex grep "TODO|FIXME|HACK"                  # find code markers
+```
+```
+  src/main/scala/Service.scala:45 — def processPayment(amount: BigDecimal): Unit =
+  src/main/scala/Handler.scala:12 — override def processRequest(req: Request): Response =
+```
+
 ### `scalex symbols <file> [--verbose]` — file symbols
 
 Lists everything defined in a file. Use `--verbose` to see signatures.
@@ -159,7 +190,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
 | `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
-| `-C N` | Show N context lines around each reference (refs only) |
+| `-C N` | Show N context lines around each reference (refs, grep) |
+| `--json` | Output results as JSON — structured output for programmatic parsing |
 
 ## Common workflows
 
@@ -183,10 +215,16 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 
 **"I want to see the code around each reference"** → `scalex refs X -C 3` shows 3 lines of context
 
+**"Find all deprecated APIs"** → `scalex annotated deprecated` (or any annotation: `@main`, `@tailrec`, etc.)
+
+**"Search for a pattern in Scala files"** → `scalex grep "pattern"` — prefer this over the Grep tool for `.scala` files since it integrates with `--path` and `--no-tests`
+
+**"I need structured output for scripting"** → append `--json` to any command (e.g. `scalex def X --json`)
+
 ## Fallback
 
 If scalex returns "not found", the symbol might be a local definition (not top-level), in a file with parse errors, or not git-tracked. Fall back to Grep/Glob/Read for manual search.
 
 ## Why scalex over grep
 
-scalex understands Scala syntax. It finds `given` definitions, `enum` declarations, and `extension` groups that grep patterns miss. It returns structured output with symbol kind, package name, and line numbers. `--categorize` provides refactoring-ready impact analysis that would require multiple grep passes. For any Scala-specific navigation, prefer scalex — it's purpose-built for exactly this.
+scalex understands Scala syntax. It finds `given` definitions, `enum` declarations, `extension` groups, and annotated symbols that grep patterns miss. It returns structured output with symbol kind, package name, and line numbers. `--categorize` provides refactoring-ready impact analysis that would require multiple grep passes. And `scalex grep` gives you regex content search with built-in `--no-tests` and `--path` filtering, eliminating the need for the Grep tool on `.scala` files entirely. For any Scala-specific navigation or search, prefer scalex — it's purpose-built for exactly this.
