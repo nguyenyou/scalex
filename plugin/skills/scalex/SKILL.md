@@ -11,24 +11,20 @@ First run on a project indexes all git-tracked `.scala` files (~3s for 14k files
 
 A bootstrap script at `scripts/scalex-cli` (next to this SKILL.md) handles everything automatically — platform detection, downloading the correct native binary from GitHub releases, and caching at `~/.cache/scalex/`. It auto-upgrades when the skill version changes.
 
-Set `$SCALEX` to the absolute path of the bootstrap script, and always invoke with `bash "$SCALEX"` — this is shell-agnostic and works under zsh, dash, or any sandbox:
+**Invocation pattern** — use the absolute path to `scalex-cli` directly in every command. Do NOT use shell variables (`$SCALEX`) — AI agent shells are non-persistent, so variables are lost between commands.
 
 ```bash
-# Set once per session
-SCALEX="/absolute/path/to/skills/scalex/scripts/scalex-cli"
-
-# All commands use: bash "$SCALEX" <command> [args] -w <workspace>
-bash "$SCALEX" def MyTrait --verbose -w /path/to/project
-echo -e "def Foo\nimpl Foo\nrefs Foo" | bash "$SCALEX" batch -w /path/to/project
+# Pattern: bash "<path-to-scripts>/scalex-cli" <command> [args] -w <workspace>
+bash "/absolute/path/to/skills/scalex/scripts/scalex-cli" def MyTrait --verbose -w /project
+bash "/absolute/path/to/skills/scalex/scripts/scalex-cli" impl MyTrait -w /project
+echo -e "def Foo\nimpl Foo\nrefs Foo" | bash "/absolute/path/to/skills/scalex/scripts/scalex-cli" batch -w /project
 ```
 
-Replace `/absolute/path/to/skills/scalex` with the absolute path to the directory containing this SKILL.md.
-
-**IMPORTANT:** Never assign `SCALEX="bash /path/to/scalex-cli"` — putting `bash` inside the variable breaks zsh word splitting. Use `bash "$SCALEX"` (two separate words) instead.
+Replace `/absolute/path/to/skills/scalex` with the absolute path to the directory containing this SKILL.md. Remember this path and substitute it directly into every command.
 
 ## Troubleshooting
 
-- **`permission denied`**: Run `chmod +x "$SCALEX"` once, then retry.
+- **`permission denied`**: Run `chmod +x /path/to/scalex-cli` once, then retry.
 - **macOS quarantine**: `xattr -d com.apple.quarantine ~/.cache/scalex/*`
 
 ## What scalex indexes
