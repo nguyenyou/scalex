@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# If executed by a non-bash shell, re-exec with bash.
+# When eval'd (e.g. zsh eval), $0 is the shell binary — fall through
+# since the script is POSIX-compatible.
+if [ -z "${BASH_VERSION:-}" ] && [ -f "$0" ]; then
+  exec bash "$0" "$@"
+fi
 set -euo pipefail
 
 EXPECTED_VERSION="1.3.0"

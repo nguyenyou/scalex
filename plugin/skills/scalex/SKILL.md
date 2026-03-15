@@ -27,7 +27,7 @@ The `refs`, `imports`, and `categorize` features work differently — they do te
 
 ## Commands
 
-All commands default to current directory. You can pass an explicit workspace path as the first argument after the command (e.g., `scalex def /path/to/project MyTrait`). Every command auto-indexes on first run.
+All commands default to current directory. You can set the workspace with `-w` / `--workspace` (e.g., `scalex def -w /path/to/project MyTrait`) or as a positional argument (e.g., `scalex def /path/to/project MyTrait`). The `-w` flag is preferred — it avoids ambiguity between workspace and symbol. Every command auto-indexes on first run.
 
 ### `scalex def <symbol> [--verbose]` — find definition
 
@@ -119,12 +119,15 @@ scalex symbols src/main/scala/com/example/Service.scala --verbose
 scalex packages
 ```
 
-### `scalex batch` — multiple queries, one index load
+### `scalex batch [-w workspace]` — multiple queries, one index load
 
 Reads queries from stdin, loads index once. Use when you need several lookups — avoids re-loading the index for each command. 5 queries in ~1s instead of ~5s.
 
+The workspace is set on the `batch` subcommand, not per-query. Use `-w` or pass it as a positional arg after `batch`:
+
 ```bash
-echo -e "def UserService\nimpl UserService\nimports UserService" | scalex batch
+echo -e "def UserService\nimpl UserService\nimports UserService" | scalex batch -w /path/to/project
+echo -e "def UserService\nimpl UserService" | scalex batch /path/to/project
 ```
 
 ### `scalex index` — force reindex
@@ -135,6 +138,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 
 | Flag | Effect |
 |---|---|
+| `-w`, `--workspace PATH` | Set workspace path (default: current directory) |
 | `--verbose` | Show signatures, extends clauses, param types |
 | `--categorize` | Group refs into Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage |
 | `--limit N` | Max results (default: 20) |

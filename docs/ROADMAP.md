@@ -113,6 +113,11 @@
 - [x] Support camelCase abbreviation matching in `search` — e.g. "hms" matches `HttpMessageService` by matching initials of each camelCase segment
 - [x] Rank fuzzy results below exact/prefix/substring matches
 
+### zsh compat + UX improvements (#22) — DONE
+- [x] Bash re-exec guard in `scalex-cli` — fixes `(eval):1: permission denied:` when zsh eval's the script
+- [x] `-w` / `--workspace` flag — named flag for workspace, avoids ambiguity with positional args
+- [x] Path-as-symbol hint — detect when symbol looks like a path and suggest correct arg order
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
