@@ -71,6 +71,7 @@ The entire tool is ~1000 lines of Scala 3 in a single file. Here's the architect
                          │                 │
                          │  symbolsByName  │  ← HashMap for O(1) def lookup
                          │  parentIndex    │  ← trait → [implementing classes]
+                         │  annotationIdx  │  ← annotation → [symbols]
                          │  filesByPath    │  ← file → [symbols in that file]
                          │  packages       │  ← all package names
                          │  indexedFiles   │  ← per-file bloom filters
@@ -112,7 +113,7 @@ The entire tool is ~1000 lines of Scala 3 in a single file. Here's the architect
      │  - Extract: class, trait, object, def, val,
      │    type, enum, given, extension
      │  - Record: name, kind, line, package, parents,
-     │    signature
+     │    signature, annotations
      │  - Build bloom filter of all identifiers
      │  Runs on all CPU cores via Java parallel streams.
      │
@@ -190,8 +191,11 @@ scalex impl UserService                 # Who extends this trait?
 scalex refs UserService --categorize    # Who uses it? (grouped by how)
 scalex imports UserService              # Who imports it?
 scalex file PaymentService              # Find files by name (fuzzy camelCase)
+scalex annotated deprecated             # Find all @deprecated symbols
+scalex grep "def.*process" --no-tests   # Regex search in .scala file contents
 scalex symbols src/main/scala/App.scala # What's in this file?
 scalex packages                         # What packages exist?
+scalex def UserService --json           # Structured JSON output
 ```
 
 ## Run Without Installing
@@ -227,6 +231,8 @@ scalex refs <symbol>            Who uses this symbol?           (aka: find refer
 scalex imports <symbol>         Who imports this symbol?        (aka: import graph)
 scalex symbols <file>           What's defined in this file?    (aka: file symbols)
 scalex file <query>             Search files by name            (aka: find file)
+scalex annotated <annotation>   Find symbols with annotation    (aka: find annotated)
+scalex grep <pattern>           Regex search in file contents   (aka: content search)
 scalex packages                 What packages exist?            (aka: list packages)
 scalex index                    Rebuild the index               (aka: reindex)
 scalex batch                    Run multiple queries at once    (aka: batch mode)
@@ -240,6 +246,10 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 | `--categorize` | Group refs into Definition / ExtendedBy / ImportedBy / UsedAsType / Comment / Usage |
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter search: class, trait, object, def, val, type, enum, given, extension |
+| `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
+| `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
+| `-C N` | Show N context lines around each reference (refs, grep) |
+| `--json` | Output results as JSON — structured output for programmatic parsing |
 | `--version` | Print version and exit |
 
 ### AI-Friendly Features
@@ -250,9 +260,12 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 - **`imports`** shows dependency relationships — which files depend on this symbol
 - **Fuzzy camelCase search** — `search "hms"` finds `HttpMessageService`, `file "psl"` finds `PaymentServiceLive.scala`
 - **`file`** command searches file names with the same fuzzy matching — like IntelliJ's file search
+- **`annotated`** finds symbols by annotation — `@deprecated`, `@main`, `@tailrec`, etc.
+- **`grep`** does regex content search inside `.scala` files with `--path` and `--no-tests` filtering built in
+- **`--json`** flag on all commands produces structured JSON output — eliminates fragile text parsing
 - **`batch`** mode loads the index once for multiple queries — 5 queries in ~1s instead of ~5s
 - **Fallback hints** on "not found" — tells the agent how many files were searched and suggests using Grep/Glob as fallback
-- **20s timeout** on reference search — prevents hangs on massive repos, shows partial results
+- **20s timeout** on reference/grep search — prevents hangs on massive repos, shows partial results
 
 ## Scalex vs Grep/Glob/Read — Honest Comparison
 

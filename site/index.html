@@ -486,7 +486,7 @@
 
   <!-- Commands -->
   <section class="reveal">
-    <h2>10 commands. <span class="red">Zero config.</span></h2>
+    <h2>12 commands. <span class="red">Zero config.</span></h2>
     <p class="section-sub">Point it at any git repo with Scala files. Works on Scala 2 and 3, auto-detects dialect per file.</p>
 
     <div class="cmd-grid">
@@ -517,6 +517,14 @@
       <div class="cmd-card">
         <div class="cmd-name">scalex file</div>
         <div class="cmd-desc">Find files by name. Fuzzy camelCase matching — "hms" finds HttpMessageService.scala.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex annotated</div>
+        <div class="cmd-desc">Find symbols by annotation — @deprecated, @main, @tailrec. Filter by kind and path.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex grep</div>
+        <div class="cmd-desc">Regex search in .scala file contents. Like grep, but with --path and --no-tests built in.</div>
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex packages</div>

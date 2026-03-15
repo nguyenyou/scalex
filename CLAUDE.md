@@ -93,6 +93,16 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 
 Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`), NOT inside `plugin/`.
 
+## Feature checklist
+
+When adding or changing commands/flags in `scalex.scala`:
+- Update help text in the `main` function
+- Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter)
+- Update `docs/ROADMAP.md`
+- Update `CHANGELOG.md`
+- Update `README.md` (commands block, options table, AI-Friendly Features, "Use it" examples)
+- Update `site/index.html` (command grid, command count heading)
+
 ## Gotchas
 
 - **Protected main branch**: Cannot push directly to main — all changes require a PR
