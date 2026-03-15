@@ -164,6 +164,24 @@ Feedback from real AI agent usage — `grep` is the most-used subcommand but has
 **`--count` flag for grep:**
 - [x] `scalex grep "pattern" --count` — output match/file count without full results; lets agent triage before committing to reading all output
 
+### POSIX regex auto-correction (#39) — DONE
+- [x] Auto-correct common POSIX regex patterns in `grep` (`\|` → `|`, `\(` → `(`, `\)` → `)`) instead of only hinting after empty results
+- [x] Print correction note to stderr; JSON output includes `"corrected"` field
+
+### AI agent UX improvements (#43)
+
+Feedback from heavy AI agent usage — three targeted improvements for large-codebase workflows.
+
+**Prefix/exact match for `search`:**
+- [ ] `--prefix` flag — only return symbols whose name starts with the query; eliminates noise from substring/fuzzy matches in large codebases (1300+ results → ~20)
+- [ ] `--exact` flag — only return symbols with exact name match
+
+**Short alias for `--categorize`:**
+- [ ] `-c` short alias for `--categorize` on `refs` — saves tokens in agent workflows
+
+**Condensed "not found" in batch mode:**
+- [ ] In batch mode, condense not-found output to a single line instead of multi-line hints; reduce noise when running 5+ queries
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
