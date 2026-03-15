@@ -79,11 +79,13 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 2. Bump `ScalexVersion` in `scalex.scala`
 3. Create PR, get it merged to main
 
-### Step 2: Plugin bump + tag
-4. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
-5. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
-6. Commit, push to main
-7. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries + creates release (done)
+### Step 2: Tag + release
+4. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries + creates release
+
+### Step 3: Plugin version bump
+5. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
+6. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
+7. Commit, push to main
 
 ## Gotchas
 
