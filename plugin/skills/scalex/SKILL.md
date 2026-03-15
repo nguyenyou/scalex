@@ -9,28 +9,26 @@ First run on a project indexes all git-tracked `.scala` files (~3s for 14k files
 
 ## Setup
 
-A bootstrap script at `scripts/scalex-cli` (next to this SKILL.md) handles everything automatically — platform detection, downloading the correct native binary from GitHub releases, and caching at `~/.cache/scalex/`. It auto-upgrades when the skill version changes. The script has a bash shebang and auto-re-execs under zsh — no manual `bash` prefix needed.
+A bootstrap script at `scripts/scalex-cli` (next to this SKILL.md) handles everything automatically — platform detection, downloading the correct native binary from GitHub releases, and caching at `~/.cache/scalex/`. It auto-upgrades when the skill version changes.
 
-Set the `$SCALEX` variable to the absolute path of the bootstrap script:
+Set `$SCALEX` to the absolute path of the bootstrap script, and always invoke with `bash "$SCALEX"` — this is shell-agnostic and works under zsh, dash, or any sandbox:
 
 ```bash
-# Set once per session — use the absolute path, NO "bash" prefix
+# Set once per session
 SCALEX="/absolute/path/to/skills/scalex/scripts/scalex-cli"
 
-# Single query
-$SCALEX def MyTrait --verbose -w /path/to/project
-
-# Batch (multiple queries, one index load)
-echo -e "def Foo\nimpl Foo\nrefs Foo" | $SCALEX batch -w /path/to/project
+# All commands use: bash "$SCALEX" <command> [args] -w <workspace>
+bash "$SCALEX" def MyTrait --verbose -w /path/to/project
+echo -e "def Foo\nimpl Foo\nrefs Foo" | bash "$SCALEX" batch -w /path/to/project
 ```
 
-Replace `/absolute/path/to/skills/scalex` with the absolute path to the directory containing this SKILL.md. Use `$SCALEX` for all commands below.
+Replace `/absolute/path/to/skills/scalex` with the absolute path to the directory containing this SKILL.md.
 
-**IMPORTANT:** Never assign `SCALEX="bash /path/to/scalex-cli"` — putting `bash` inside the variable breaks zsh word splitting. The script handles shell re-exec automatically.
+**IMPORTANT:** Never assign `SCALEX="bash /path/to/scalex-cli"` — putting `bash` inside the variable breaks zsh word splitting. Use `bash "$SCALEX"` (two separate words) instead.
 
 ## Troubleshooting
 
-- **`permission denied`**: Run `chmod +x "$SCALEX"` once, then retry. Do NOT prepend `bash` to `$SCALEX`.
+- **`permission denied`**: Run `chmod +x "$SCALEX"` once, then retry.
 - **macOS quarantine**: `xattr -d com.apple.quarantine ~/.cache/scalex/*`
 
 ## What scalex indexes
