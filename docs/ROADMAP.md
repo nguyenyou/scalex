@@ -118,8 +118,24 @@
 - [x] `-w` / `--workspace` flag — named flag for workspace, avoids ambiguity with positional args
 - [x] Path-as-symbol hint — detect when symbol looks like a path and suggest correct arg order
 
+### AI-agent ergonomics (#29)
+
+Feedback from real agent usage on large codebases (scala3 compiler, 14k+ files).
+
+**High priority — noise reduction:** — DONE
+- [x] `--kind` filter on `def` command — `def` ignores `--kind` today; `scalex def Driver --kind class` should filter by symbol kind (search already supports it)
+- [x] `--exclude-tests` / `--no-tests` global flag — skip common test dirs (`tests/`, `**/test/**`, `bench-*`, `**/testing/**`); ~50% noise reduction on large repos
+- [x] `--path` filter — restrict results to a subtree, e.g. `scalex def Driver --path compiler/src/`; essential for monorepos
+
+**Medium priority — richer output:** — DONE
+- [x] `refs -C N` context lines — show N lines before/after each reference (like `grep -C`); reduces follow-up Read calls
+- [x] Smarter `def` ranking — rank class/trait/object above val/def, main source above test files, shorter package paths first
+
+**Lower priority — new capabilities:**
+- [ ] Override search — `scalex overrides Phase.isRunnable` finds methods overriding a specific def; combines impl lookup with method-level filtering
+- [ ] `scalex hierarchy <class>` — show full inheritance chain (parents + children)
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
-- [ ] `scalex hierarchy <class>` — show full class hierarchy (parents + children)
 - [ ] Publish plugin to Claude Code marketplace

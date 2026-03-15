@@ -37,12 +37,14 @@ The `refs`, `imports`, and `categorize` features work differently — they do te
 
 All commands default to current directory. You can set the workspace with `-w` / `--workspace` (e.g., `scalex def -w /path/to/project MyTrait`) or as a positional argument (e.g., `scalex def /path/to/project MyTrait`). The `-w` flag is preferred — it avoids ambiguity between workspace and symbol. Every command auto-indexes on first run.
 
-### `scalex def <symbol> [--verbose]` — find definition
+### `scalex def <symbol> [--verbose] [--kind K] [--no-tests] [--path PREFIX]` — find definition
 
-Returns where a symbol is defined, including given instances that grep would miss. Use `--verbose` to see the full signature inline — saves a follow-up Read call.
+Returns where a symbol is defined, including given instances that grep would miss. Use `--verbose` to see the full signature inline — saves a follow-up Read call. Results are ranked: class/trait/object/enum first, non-test before test, shorter paths first.
 
 ```bash
 scalex def PaymentService --verbose
+scalex def Driver --kind class              # only class definitions
+scalex def Driver --no-tests --path compiler/src/  # exclude tests, restrict to subtree
 ```
 ```
   trait     PaymentService (com.example.payment) — .../PaymentService.scala:16
@@ -51,26 +53,29 @@ scalex def PaymentService --verbose
              given paymentService: PaymentService
 ```
 
-### `scalex impl <trait> [--verbose] [--limit N]` — find implementations
+### `scalex impl <trait> [--verbose] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — find implementations
 
 Finds all classes/objects/enums that extend or mix in a trait. Uses the index directly — much faster and more targeted than `refs` when you specifically need concrete implementations.
 
 ```bash
 scalex impl PaymentService --verbose
+scalex impl PaymentService --no-tests --path core/src/
 ```
 ```
   class     PaymentServiceLive — .../PaymentServiceLive.scala:43
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--categorize] [--limit N]` — find references
+### `scalex refs <symbol> [--categorize] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
-Use `--categorize` before refactoring — it groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance.
+Use `--categorize` before refactoring — it groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls.
 
 ```bash
 scalex refs PaymentService --categorize
+scalex refs PaymentService --no-tests --path core/src/
+scalex refs PaymentService -C 3          # show 3 lines of context around each ref
 ```
 ```
   Definition:
@@ -87,12 +92,13 @@ scalex refs PaymentService --categorize
 
 Without `--categorize`, returns a flat list (faster for simple lookups).
 
-### `scalex imports <symbol> [--limit N]` — import graph
+### `scalex imports <symbol> [--no-tests] [--path PREFIX] [--limit N]` — import graph
 
 Returns only import statements for a symbol. Use when you need to know which files depend on something — cleaner than `refs` for dependency analysis. Also has a 20-second timeout.
 
 ```bash
 scalex imports PaymentService
+scalex imports PaymentService --no-tests
 ```
 
 ### `scalex search <query> [--kind K] [--verbose] [--limit N]` — search symbols
@@ -150,7 +156,10 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--verbose` | Show signatures, extends clauses, param types |
 | `--categorize` | Group refs into Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage |
 | `--limit N` | Max results (default: 20) |
-| `--kind K` | Filter search: class, trait, object, def, val, type, enum, given, extension |
+| `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
+| `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
+| `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
+| `-C N` | Show N context lines around each reference (refs only) |
 
 ## Common workflows
 
@@ -169,6 +178,10 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 **"What's in this file?"** → `scalex symbols path/to/File.scala --verbose`
 
 **"I need to look up 3+ symbols"** → use `batch` to avoid repeated index loads
+
+**"Too many results / noisy output"** → `--no-tests` and/or `--path compiler/src/` to filter
+
+**"I want to see the code around each reference"** → `scalex refs X -C 3` shows 3 lines of context
 
 ## Fallback
 

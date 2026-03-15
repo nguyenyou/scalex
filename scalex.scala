@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.4.0"
+val ScalexVersion = "1.5.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -691,6 +691,18 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       i = line.indexOf(word, i + 1)
     false
 
+// ── Filtering helpers ────────────────────────────────────────────────────────
+
+def isTestFile(path: Path, workspace: Path): Boolean =
+  val rel = workspace.relativize(path).toString
+  rel.contains("/test/") || rel.contains("/tests/") || rel.contains("/testing/") ||
+  rel.startsWith("bench-") || rel.contains("/bench-") ||
+  rel.endsWith("Test.scala") || rel.endsWith("Spec.scala") || rel.endsWith("Suite.scala")
+
+def matchesPath(file: Path, prefix: String, workspace: Path): Boolean =
+  val rel = workspace.relativize(file).toString
+  rel.startsWith(prefix)
+
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
 def formatSymbol(s: SymbolInfo, workspace: Path): String =
@@ -708,6 +720,25 @@ def formatRef(r: Reference, workspace: Path): String =
   val rel = workspace.relativize(r.file)
   val alias = r.aliasInfo.map(a => s" [$a]").getOrElse("")
   s"  $rel:${r.line} — ${r.contextLine}$alias"
+
+def formatRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
+  val rel = workspace.relativize(r.file)
+  val alias = r.aliasInfo.map(a => s" [$a]").getOrElse("")
+  val header = s"  $rel:${r.line}$alias"
+  val lines = try java.nio.file.Files.readAllLines(r.file).asScala catch
+    case _: Exception => return s"$header\n    > ${r.contextLine}"
+  val total = lines.size
+  val startLine = math.max(1, r.line - contextN)
+  val endLine = math.min(total, r.line + contextN)
+  val buf = new StringBuilder(header)
+  var i = startLine
+  while i <= endLine do
+    val lineContent = lines(i - 1)
+    val marker = if i == r.line then ">" else " "
+    val lineNum = i.toString.reverse.padTo(4, ' ').reverse
+    buf.append(s"\n    $marker $lineNum | $lineContent")
+    i += 1
+  buf.toString
 
 def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String): Unit =
   if symbol.contains("/") || symbol.startsWith(".") then
@@ -728,7 +759,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(Path, String)] =
     case _ => None
 
 def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: Path,
-               limit: Int, kindFilter: Option[String], verbose: Boolean, categorize: Boolean): Unit =
+               limit: Int, kindFilter: Option[String], verbose: Boolean, categorize: Boolean,
+               noTests: Boolean, pathFilter: Option[String], contextLines: Int): Unit =
   val fmt = if verbose then formatSymbolVerbose else formatSymbol
   cmd match
     case "index" =>
@@ -758,6 +790,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             val kk = k.toLowerCase
             results = results.filter(_.kind.toString.toLowerCase == kk)
           }
+          if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
           if results.isEmpty then
             println(s"Found 0 symbols matching \"$query\"")
             printNotFoundHint(query, idx, "search")
@@ -770,19 +804,42 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       rest.headOption match
         case None => println("Usage: scalex def <symbol>")
         case Some(symbol) =>
-          val results = idx.findDefinition(symbol)
+          var results = idx.findDefinition(symbol)
+          kindFilter.foreach { k =>
+            val kk = k.toLowerCase
+            results = results.filter(_.kind.toString.toLowerCase == kk)
+          }
+          if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
+          // Rank: class/trait/object/enum > type/given > def/val/var, non-test > test, shorter path first
+          results = results.sortBy { s =>
+            val kindRank = s.kind match
+              case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
+              case SymbolKind.Type | SymbolKind.Given => 1
+              case _ => 2
+            val testRank = if isTestFile(s.file, workspace) then 1 else 0
+            val pathLen = workspace.relativize(s.file).toString.length
+            (kindRank, testRank, pathLen)
+          }
           if results.isEmpty then
             println(s"Definition of \"$symbol\": not found")
             printNotFoundHint(symbol, idx, "def")
           else
             println(s"Definition of \"$symbol\":")
-            results.foreach(s => println(fmt(s, workspace)))
+            results.take(limit).foreach(s => println(fmt(s, workspace)))
+            if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "impl" =>
       rest.headOption match
         case None => println("Usage: scalex impl <trait>")
         case Some(symbol) =>
-          val results = idx.findImplementations(symbol)
+          var results = idx.findImplementations(symbol)
+          kindFilter.foreach { k =>
+            val kk = k.toLowerCase
+            results = results.filter(_.kind.toString.toLowerCase == kk)
+          }
+          if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
           if results.isEmpty then
             println(s"No implementations of \"$symbol\" found")
             printNotFoundHint(symbol, idx, "impl")
@@ -795,9 +852,17 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       rest.headOption match
         case None => println("Usage: scalex refs <symbol>")
         case Some(symbol) =>
+          val fmtRef: Reference => String =
+            if contextLines > 0 then r => formatRefWithContext(r, workspace, contextLines)
+            else r => formatRef(r, workspace)
           val targetPkgs = idx.symbolsByName.getOrElse(symbol.toLowerCase, Nil).map(_.packageName).toSet
+          def filterRefs(refs: List[Reference]): List[Reference] =
+            var r = refs
+            if noTests then r = r.filter(ref => !isTestFile(ref.file, workspace))
+            pathFilter.foreach { p => r = r.filter(ref => matchesPath(ref.file, p, workspace)) }
+            r
           if categorize then
-            val grouped = idx.categorizeReferences(symbol)
+            val grouped = idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs)))
             val total = grouped.values.map(_.size).sum
             val suffix = if idx.timedOut then " (timed out — partial results)" else ""
             println(s"References to \"$symbol\" — $total found:$suffix")
@@ -818,13 +883,13 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                 order.foreach { cat =>
                   byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
                     println(s"\n    ${cat.toString}:")
-                    entries.take(limit).foreach((_, r, _) => println(s"    ${formatRef(r, workspace)}"))
+                    entries.take(limit).foreach((_, r, _) => println(s"    ${fmtRef(r)}"))
                     if entries.size > limit then println(s"      ... and ${entries.size - limit} more")
                   }
                 }
             }
           else
-            val results = idx.findReferences(symbol)
+            val results = filterRefs(idx.findReferences(symbol))
             val suffix = if idx.timedOut then " (timed out — partial results)" else ""
             println(s"References to \"$symbol\" — ${results.size} found:$suffix")
             val annotated = results.map(r => (r, idx.resolveConfidence(r, symbol, targetPkgs)))
@@ -840,7 +905,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                     case Confidence.Low    => "Low confidence"
                   println(s"\n  [$label]")
                   lastConf = Some(conf)
-                println(formatRef(r, workspace))
+                println(fmtRef(r))
                 shown += 1
             }
             if results.size > limit then println(s"  ... and ${results.size - limit} more")
@@ -849,7 +914,9 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       rest.headOption match
         case None => println("Usage: scalex imports <symbol>")
         case Some(symbol) =>
-          val results = idx.findImports(symbol)
+          var results = idx.findImports(symbol)
+          if noTests then results = results.filter(r => !isTestFile(r.file, workspace))
+          pathFilter.foreach { p => results = results.filter(r => matchesPath(r.file, p, workspace)) }
           if results.isEmpty then
             println(s"No imports of \"$symbol\" found")
             printNotFoundHint(symbol, idx, "imports")
@@ -904,14 +971,21 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     case i => argList.lift(i + 1)
   val verbose = argList.contains("--verbose")
   val categorize = argList.contains("--categorize")
+  val noTests = argList.contains("--no-tests")
+  val pathFilter: Option[String] = argList.indexOf("--path") match
+    case -1 => None
+    case i => argList.lift(i + 1).map(p => p.stripPrefix("/"))
+  val contextLines: Int = argList.indexOf("-C") match
+    case -1 => 0
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
   val explicitWorkspace: Option[String] =
     val longIdx = argList.indexOf("--workspace")
     val shortIdx = argList.indexOf("-w")
     val idx = if longIdx >= 0 then longIdx else shortIdx
     if idx >= 0 then argList.lift(idx + 1) else None
 
-  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w")
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || {
+  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C")
+  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
   })
@@ -938,6 +1012,9 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  --kind K              Filter by kind: class, trait, object, def, val, type, enum, given, extension
         |  --verbose             Show signatures and extends clauses
         |  --categorize          Group refs by: definition, extends, import, type usage, comment
+        |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
+        |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
+        |  -C N                  Show N context lines around each reference (refs only)
         |  --version             Print version and exit
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
@@ -956,7 +1033,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val batchCmd = parts.head
           val batchRest = parts.tail
           println(s">>> $line")
-          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize)
+          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines)
           println()
         line = reader.readLine()
 
@@ -977,4 +1054,4 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val bloomCmds = Set("refs", "imports")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
-      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize)
+      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines)

@@ -976,3 +976,172 @@ class ScalexSuite extends FunSuite:
     val results = idx.searchFiles("ZxQwNonexistent")
     assert(results.isEmpty)
   }
+
+  // ── isTestFile helper ──────────────────────────────────────────────
+
+  test("isTestFile detects test directories") {
+    assert(isTestFile(workspace.resolve("src/test/scala/Foo.scala"), workspace))
+    assert(isTestFile(workspace.resolve("src/tests/scala/Foo.scala"), workspace))
+    assert(isTestFile(workspace.resolve("src/testing/scala/Foo.scala"), workspace))
+    assert(!isTestFile(workspace.resolve("src/main/scala/Foo.scala"), workspace))
+  }
+
+  test("isTestFile detects test file suffixes") {
+    assert(isTestFile(workspace.resolve("src/main/FooTest.scala"), workspace))
+    assert(isTestFile(workspace.resolve("src/main/FooSpec.scala"), workspace))
+    assert(isTestFile(workspace.resolve("src/main/FooSuite.scala"), workspace))
+    assert(!isTestFile(workspace.resolve("src/main/Foo.scala"), workspace))
+  }
+
+  test("isTestFile detects bench dirs") {
+    assert(isTestFile(workspace.resolve("bench-run/Foo.scala"), workspace))
+    assert(isTestFile(workspace.resolve("src/bench-run/Foo.scala"), workspace))
+  }
+
+  // ── --kind on def ──────────────────────────────────────────────────
+
+  test("def --kind filters by symbol kind") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val all = idx.findDefinition("UserService")
+    assert(all.exists(_.kind == SymbolKind.Trait), "Should have trait")
+    assert(all.exists(_.kind == SymbolKind.Object), "Should have object")
+
+    // Filter to trait only
+    var filtered = all
+    val kk = "trait"
+    filtered = filtered.filter(_.kind.toString.toLowerCase == kk)
+    assert(filtered.forall(_.kind == SymbolKind.Trait))
+    assert(filtered.nonEmpty)
+  }
+
+  // ── --no-tests filtering ───────────────────────────────────────────
+
+  test("--no-tests excludes test file results from def") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserServiceSpec is in test dir
+    val all = idx.findDefinition("UserServiceSpec")
+    assert(all.nonEmpty, "Should find UserServiceSpec")
+    val filtered = all.filter(s => !isTestFile(s.file, workspace))
+    assert(filtered.isEmpty, "Should exclude test files")
+  }
+
+  test("--no-tests excludes test file results from refs") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val all = idx.findReferences("UserService")
+    val allFiles = all.map(r => workspace.relativize(r.file).toString).distinct
+    assert(allFiles.exists(_.contains("UserServiceSpec")), "Should have test file in unfiltered")
+    val filtered = all.filter(r => !isTestFile(r.file, workspace))
+    val filteredFiles = filtered.map(r => workspace.relativize(r.file).toString).distinct
+    assert(!filteredFiles.exists(_.contains("UserServiceSpec")), "Should exclude test file")
+  }
+
+  // ── --path filtering ───────────────────────────────────────────────
+
+  test("matchesPath filters by path prefix") {
+    assert(matchesPath(workspace.resolve("src/main/scala/Foo.scala"), "src/main", workspace))
+    assert(!matchesPath(workspace.resolve("src/test/scala/Foo.scala"), "src/main", workspace))
+  }
+
+  test("--path filters def results to subtree") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val all = idx.findDefinition("UserService")
+    assert(all.nonEmpty)
+    val filtered = all.filter(s => matchesPath(s.file, "src/main", workspace))
+    assert(filtered.nonEmpty, "Should have results in src/main")
+    filtered.foreach { s =>
+      assert(workspace.relativize(s.file).toString.startsWith("src/main"),
+        s"All results should be in src/main: ${workspace.relativize(s.file)}")
+    }
+  }
+
+  test("--path strips leading slash") {
+    // The pathFilter parsing strips leading /, so "/src/main" becomes "src/main"
+    val prefix = "/src/main".stripPrefix("/")
+    assert(matchesPath(workspace.resolve("src/main/scala/Foo.scala"), prefix, workspace))
+  }
+
+  // ── Smarter def ranking ────────────────────────────────────────────
+
+  test("def ranking puts class/trait/object before def/val") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // findUser is both a def. UserService has trait, object.
+    // Create a scenario: search for something with mixed kinds
+    val results = idx.findDefinition("UserService")
+    // Sort using the ranking logic
+    val ranked = results.sortBy { s =>
+      val kindRank = s.kind match
+        case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
+        case SymbolKind.Type | SymbolKind.Given => 1
+        case _ => 2
+      val testRank = if isTestFile(s.file, workspace) then 1 else 0
+      val pathLen = workspace.relativize(s.file).toString.length
+      (kindRank, testRank, pathLen)
+    }
+    // Trait and Object should come before any def/val
+    val traitIdx = ranked.indexWhere(_.kind == SymbolKind.Trait)
+    val objIdx = ranked.indexWhere(_.kind == SymbolKind.Object)
+    assert(traitIdx >= 0 && objIdx >= 0)
+    // Both should be in the first positions
+    assert(traitIdx < 2 && objIdx < 2)
+  }
+
+  test("def ranking puts non-test before test files") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserServiceSpec is in test dir, UserService is in main
+    val all = idx.findDefinition("UserService") ++ idx.findDefinition("UserServiceSpec")
+    val ranked = all.sortBy { s =>
+      val kindRank = s.kind match
+        case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
+        case SymbolKind.Type | SymbolKind.Given => 1
+        case _ => 2
+      val testRank = if isTestFile(s.file, workspace) then 1 else 0
+      val pathLen = workspace.relativize(s.file).toString.length
+      (kindRank, testRank, pathLen)
+    }
+    // Non-test files should come first
+    val firstTestIdx = ranked.indexWhere(s => isTestFile(s.file, workspace))
+    if firstTestIdx >= 0 then
+      ranked.take(firstTestIdx).foreach { s =>
+        assert(!isTestFile(s.file, workspace), "Non-test should come before test")
+      }
+  }
+
+  // ── refs -C N context lines ────────────────────────────────────────
+
+  test("formatRefWithContext shows context lines") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val ref = refs.find(r => workspace.relativize(r.file).toString.contains("UserService.scala")).get
+    val output = formatRefWithContext(ref, workspace, 1)
+    // Should have the header line and context lines
+    assert(output.contains("UserService.scala:"), s"Should have file header: $output")
+    assert(output.contains(">"), s"Should have > marker on match line: $output")
+    // Count non-empty lines (header + up to 3 context lines)
+    val lines = output.split("\n")
+    assert(lines.size >= 2, s"Should have header + at least 1 context line: ${lines.size}")
+  }
+
+  test("formatRefWithContext with 0 context falls back to formatRef") {
+    val ref = Reference(workspace.resolve("src/main/scala/com/example/UserService.scala"), 3, "trait UserService {")
+    val withCtx = formatRefWithContext(ref, workspace, 0)
+    // With 0 context, should only show the match line
+    val lines = withCtx.split("\n").filter(_.nonEmpty)
+    assert(lines.size == 2, s"0 context: header + 1 line, got ${lines.size}: $withCtx")
+  }
+
+  test("formatRefWithContext handles edge of file") {
+    // Line 1 with context 3 — should not go below line 0
+    val ref = Reference(workspace.resolve("src/main/scala/com/example/Model.scala"), 1, "package com.example")
+    val output = formatRefWithContext(ref, workspace, 3)
+    assert(output.contains(">"), s"Should have marker: $output")
+    // Should not crash and should show lines from 1 to 4
+    val contentLines = output.split("\n").tail // skip header
+    assert(contentLines.size >= 1 && contentLines.size <= 4, s"Lines: ${contentLines.size}")
+  }

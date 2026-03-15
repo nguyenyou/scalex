@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.0] — 2026-03-15
+
+### Added
+- `--kind` filter now works on `def` and `impl` commands — `scalex def Driver --kind class` filters by symbol kind (#29)
+- `--no-tests` global flag — excludes test files (`test/`, `tests/`, `testing/`, `bench-*`, `*Spec.scala`, `*Test.scala`, `*Suite.scala`) from results; works on `def`, `search`, `impl`, `refs`, `imports` (#29)
+- `--path PREFIX` filter — restricts results to files under a path prefix, e.g. `scalex def Driver --path compiler/src/`; works on all query commands (#29)
+- `refs -C N` context lines — shows N lines before/after each reference with line numbers and `>` marker, like `grep -C` (#29)
+- Smarter `def` ranking — results sorted by: class/trait/object/enum first, then type/given, then def/val/var; non-test before test; shorter paths first (#29)
+
 ## [1.4.0] — 2026-03-15
 
 ### Added
