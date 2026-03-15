@@ -931,3 +931,48 @@ class ScalexSuite extends FunSuite:
     val results = idx.search("zxqw")
     assert(results.isEmpty)
   }
+
+  // ── File search ─────────────────────────────────────────────────────
+
+  test("searchFiles exact match") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.searchFiles("Model")
+    assert(results.exists(_.contains("Model.scala")),
+      s"Should find Model.scala: $results")
+  }
+
+  test("searchFiles prefix match") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.searchFiles("User")
+    assert(results.exists(_.contains("UserService.scala")),
+      s"Should find UserService.scala: $results")
+    assert(results.exists(_.contains("UserServiceSpec.scala")),
+      s"Should find UserServiceSpec.scala: $results")
+  }
+
+  test("searchFiles fuzzy camelCase match") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "usl" should match UserServiceLive (part of UserService.scala filename won't match,
+    // but "ec" should match ExplicitClient)
+    val results = idx.searchFiles("ec")
+    assert(results.exists(_.contains("ExplicitClient.scala")),
+      s"Should find ExplicitClient.scala: $results")
+  }
+
+  test("searchFiles case-insensitive") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val upper = idx.searchFiles("DATABASE")
+    val lower = idx.searchFiles("database")
+    assertEquals(upper, lower)
+  }
+
+  test("searchFiles returns empty for no match") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.searchFiles("ZxQwNonexistent")
+    assert(results.isEmpty)
+  }

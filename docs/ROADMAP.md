@@ -114,7 +114,7 @@
 - [x] Rank fuzzy results below exact/prefix/substring matches
 
 ### Other
-- [ ] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
+- [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
 - [ ] `scalex hierarchy <class>` — show full class hierarchy (parents + children)
 - [ ] Publish plugin to Claude Code marketplace
