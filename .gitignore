@@ -5,3 +5,5 @@ out
 .scala-build
 .scalex/
 scalex-workspace/
+scala3/
+benchmark-results/
