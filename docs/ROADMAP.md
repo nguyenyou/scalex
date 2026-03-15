@@ -148,6 +148,22 @@ Feedback from real agent usage on large codebases (scala3 compiler, 14k+ files).
 - [x] 20s timeout, sorted output, `-C N` context lines support
 - [x] Eliminates the #1 reason agents fall back to grep for Scala files
 
+### Grep improvements for AI agents (#35) — DONE
+
+Feedback from real AI agent usage — `grep` is the most-used subcommand but has the most friction.
+
+**Hint on bad regex syntax:**
+- [x] Detect common regex mistakes (`\|`, `\(`, `\)`) when grep returns zero results — emit hint: "scalex uses Java regex (use `|` not `\|` for alternation)"
+
+**Multi-pattern grep:**
+- [x] `-e` flag for multiple patterns in one call — `scalex grep -e "Ystop" -e "stopAfter" --path compiler/src/`; reduces separate process invocations during exploratory search
+
+**Grep in batch mode:**
+- [x] `grep` already works in batch mode — batch dispatches via `runCommand()` which handles all commands including grep
+
+**`--count` flag for grep:**
+- [x] `scalex grep "pattern" --count` — output match/file count without full results; lets agent triage before committing to reading all output
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)

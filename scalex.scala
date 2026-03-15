@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.6.0"
+val ScalexVersion = "1.7.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -847,6 +847,9 @@ def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String): Unit =
     println(s"  ${idx.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
   println(s"  Fallback: use Grep, Glob, or Read tools to search manually.")
 
+def hasRegexHint(pattern: String): Boolean =
+  pattern.contains("\\|") || pattern.contains("\\(") || pattern.contains("\\)")
+
 def resolveWorkspace(path: String): Path =
   val p = Path.of(path).toAbsolutePath.normalize
   if Files.isDirectory(p) then p else p.getParent
@@ -860,7 +863,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(Path, String)] =
 def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: Path,
                limit: Int, kindFilter: Option[String], verbose: Boolean, categorize: Boolean,
                noTests: Boolean, pathFilter: Option[String], contextLines: Int,
-               jsonOutput: Boolean): Unit =
+               jsonOutput: Boolean, grepPatterns: List[String] = Nil,
+               countOnly: Boolean = false): Unit =
   val fmt = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
     if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines)
@@ -1126,17 +1130,28 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "grep" =>
-      rest.headOption match
+      val patternOpt = if grepPatterns.nonEmpty then Some(grepPatterns.mkString("|"))
+                       else rest.headOption
+      patternOpt match
         case None => println("Usage: scalex grep <pattern>")
         case Some(pattern) =>
           val (results, grepTimedOut) = idx.grepFiles(pattern, noTests, pathFilter)
-          if jsonOutput then
+          if countOnly then
+            val fileCount = results.map(_.file).distinct.size
+            if jsonOutput then println(s"""{"matches":${results.size},"files":$fileCount,"timedOut":$grepTimedOut}""")
+            else
+              val suffix = if grepTimedOut then " (timed out — partial results)" else ""
+              println(s"${results.size} matches across $fileCount files$suffix")
+          else if jsonOutput then
             val arr = results.take(limit).map(jRef).mkString("[", ",", "]")
-            println(s"""{"results":$arr,"timedOut":$grepTimedOut}""")
+            val hint = if results.isEmpty && hasRegexHint(pattern) then ",\"hint\":\"scalex uses Java regex — use | not \\\\| for alternation, ( ) not \\\\( \\\\)\"" else ""
+            println(s"""{"results":$arr,"timedOut":$grepTimedOut$hint}""")
           else
             val suffix = if grepTimedOut then " (timed out — partial results)" else ""
             if results.isEmpty then
               println(s"No matches for \"$pattern\"$suffix")
+              if hasRegexHint(pattern) then
+                println("  Hint: scalex uses Java regex — use | not \\| for alternation, ( ) not \\( \\)")
             else
               val fmtRef: Reference => String =
                 if contextLines > 0 then r => formatRefWithContext(r, workspace, contextLines)
@@ -1171,14 +1186,18 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     case -1 => 0
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
   val jsonOutput = argList.contains("--json")
+  val countOnly = argList.contains("--count")
+  val grepPatterns: List[String] = argList.zipWithIndex.collect {
+    case ("-e", i) if argList.lift(i + 1).exists(a => !a.startsWith("-")) => argList(i + 1)
+  }
   val explicitWorkspace: Option[String] =
     val longIdx = argList.indexOf("--workspace")
     val shortIdx = argList.indexOf("-w")
     val idx = if longIdx >= 0 then longIdx else shortIdx
     if idx >= 0 then argList.lift(idx + 1) else None
 
-  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C")
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || {
+  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e")
+  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
   })
@@ -1210,6 +1229,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
         |  -C N                  Show N context lines around each reference (refs, grep)
+        |  -e PATTERN            Grep: additional pattern (combine multiple with |); repeatable
+        |  --count               Grep: show match/file count only, no full results
         |  --json                Output results as JSON (structured output for programmatic use)
         |  --version             Print version and exit
         |
@@ -1229,7 +1250,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val batchCmd = parts.head
           val batchRest = parts.tail
           println(s">>> $line")
-          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput)
+          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly)
           println()
         line = reader.readLine()
 
@@ -1250,4 +1271,4 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val bloomCmds = Set("refs", "imports")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
-      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput)
+      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly)

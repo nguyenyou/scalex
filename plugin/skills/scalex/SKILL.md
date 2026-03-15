@@ -134,16 +134,20 @@ scalex annotated tailrec --path core/src/      # @tailrec defs in core
   def       legacyProcess (com.example) — .../Legacy.scala:45
 ```
 
-### `scalex grep <pattern> [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
+### `scalex grep <pattern> [-e PAT]... [--count] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
 
 Regex search inside `.scala` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala files. Has a 20-second timeout for large codebases.
 
-The pattern is a Java regex. Use `-C N` to show context lines around each match (like `grep -C`).
+The pattern is a **Java regex** (not POSIX) — use `|` for alternation (not `\|`), `( )` for grouping (not `\( \)`). If you get zero results, check for POSIX-style escapes. Scalex will print a hint if it detects this.
+
+Use `-e` to search multiple patterns in one call — they're combined with `|`. Use `--count` to get match/file counts without full output (great for triaging before reading all results). Use `-C N` to show context lines around each match.
 
 ```bash
 scalex grep "def.*process" --no-tests          # find method-like patterns
 scalex grep "ctx\.settings" --path compiler/src/ -C 2  # with context
 scalex grep "TODO|FIXME|HACK"                  # find code markers
+scalex grep -e "Ystop" -e "stopAfter" --path compiler/src/  # multi-pattern
+scalex grep "isRunnable" --count               # count only: "31 matches across 15 files"
 ```
 ```
   src/main/scala/Service.scala:45 — def processPayment(amount: BigDecimal): Unit =
@@ -166,13 +170,13 @@ scalex packages
 
 ### `scalex batch [-w workspace]` — multiple queries, one index load
 
-Reads queries from stdin, loads index once. Use when you need several lookups — avoids re-loading the index for each command. 5 queries in ~1s instead of ~5s.
+Reads queries from stdin, loads index once. Use when you need several lookups — avoids re-loading the index for each command. 5 queries in ~1s instead of ~5s. Supports all subcommands: `def`, `impl`, `refs`, `search`, `imports`, `annotated`, `grep`, `symbols`, `packages`, `file`.
 
 The workspace is set on the `batch` subcommand, not per-query. Use `-w` or pass it as a positional arg after `batch`:
 
 ```bash
 echo -e "def UserService\nimpl UserService\nimports UserService" | scalex batch -w /path/to/project
-echo -e "def UserService\nimpl UserService" | scalex batch /path/to/project
+echo -e "def UserService\ngrep processPayment\nimpl UserService" | scalex batch /path/to/project
 ```
 
 ### `scalex index` — force reindex
@@ -191,6 +195,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
 | `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
 | `-C N` | Show N context lines around each reference (refs, grep) |
+| `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
+| `--count` | Grep: output match/file count only, no full results |
 | `--json` | Output results as JSON — structured output for programmatic parsing |
 
 ## Common workflows
@@ -218,6 +224,12 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 **"Find all deprecated APIs"** → `scalex annotated deprecated` (or any annotation: `@main`, `@tailrec`, etc.)
 
 **"Search for a pattern in Scala files"** → `scalex grep "pattern"` — prefer this over the Grep tool for `.scala` files since it integrates with `--path` and `--no-tests`
+
+**"Search for multiple patterns at once"** → `scalex grep -e "pattern1" -e "pattern2"` — combined with `|`, one process invocation
+
+**"How many files match this pattern?"** → `scalex grep "pattern" --count` — quick triage before reading all results
+
+**"I need grep + def + refs in one shot"** → use `batch`: `echo -e "grep processPayment\ndef PaymentService\nrefs PaymentService" | scalex batch -w /project`
 
 **"I need structured output for scripting"** → append `--json` to any command (e.g. `scalex def X --json`)
 

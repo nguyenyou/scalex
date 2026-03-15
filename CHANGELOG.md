@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0] — 2026-03-15
+
+### Added
+- `grep -e PATTERN` flag — multi-pattern grep in one call; patterns combined with `|` (#35)
+- `grep --count` flag — output match/file count without full results for quick triage (#35)
+- Regex syntax hint — when grep returns zero results and pattern contains `\|`, `\(`, or `\)`, shows hint about Java regex syntax (#35)
+- Document `grep` support in batch mode (#35)
+
 ## [1.6.0] — 2026-03-15
 
 ### Added
