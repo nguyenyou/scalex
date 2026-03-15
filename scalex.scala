@@ -514,6 +514,23 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
                    else workspace.resolve(path)
     filesByPath.getOrElse(resolved, Nil)
 
+  def searchFiles(query: String): List[String] =
+    val lower = query.toLowerCase
+    val exact = mutable.ListBuffer.empty[String]
+    val prefix = mutable.ListBuffer.empty[String]
+    val contains = mutable.ListBuffer.empty[String]
+    val fuzzy = mutable.ListBuffer.empty[String]
+
+    indexedFiles.foreach { f =>
+      val fileName = f.relativePath.substring(f.relativePath.lastIndexOf('/') + 1).stripSuffix(".scala")
+      val n = fileName.toLowerCase
+      if n == lower then exact += f.relativePath
+      else if n.startsWith(lower) then prefix += f.relativePath
+      else if n.contains(lower) then contains += f.relativePath
+      else if camelCaseMatch(lower, fileName) then fuzzy += f.relativePath
+    }
+    exact.toList ++ prefix.toList ++ contains.toList ++ fuzzy.sortBy(_.length).toList
+
   private val defaultTimeoutMs = 20_000L
   var timedOut: Boolean = false
 
@@ -850,6 +867,19 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             println(s"Symbols in $file:")
             results.foreach(s => println(fmt(s, workspace)))
 
+    case "file" =>
+      rest.headOption match
+        case None => println("Usage: scalex file <query>")
+        case Some(query) =>
+          val results = idx.searchFiles(query)
+          if results.isEmpty then
+            println(s"Found 0 files matching \"$query\"")
+            println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
+          else
+            println(s"Found ${results.size} files matching \"$query\":")
+            results.take(limit).foreach(f => println(s"  $f"))
+            if results.size > limit then println(s"  ... and ${results.size - limit} more")
+
     case "packages" =>
       println(s"Packages (${idx.packages.size}):")
       idx.packages.toList.sorted.foreach(p => println(s"  $p"))
@@ -889,6 +919,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  scalex refs <symbol>            Who uses this symbol?           (aka: find references)
         |  scalex imports <symbol>         Who imports this symbol?        (aka: import graph)
         |  scalex symbols <file>           What's defined in this file?    (aka: file symbols)
+        |  scalex file <query>            Search files by name            (aka: find file)
         |  scalex packages                 What packages exist?            (aka: list packages)
         |  scalex index                    Rebuild the index               (aka: reindex)
         |  scalex batch                    Run multiple queries at once    (aka: batch mode)
