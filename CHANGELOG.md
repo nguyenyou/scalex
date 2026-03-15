@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.8.0] — 2026-03-16
+
+### Improved
+- `grep` auto-corrects POSIX regex to Java regex — `\|` → `|`, `\(` → `(`, `\)` → `)` with a stderr note; JSON output includes `"corrected"` field (#39)
+
 ## [1.7.0] — 2026-03-15
 
 ### Added

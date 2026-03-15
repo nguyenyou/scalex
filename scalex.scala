@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.7.0"
+val ScalexVersion = "1.8.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -850,6 +850,10 @@ def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String): Unit =
 def hasRegexHint(pattern: String): Boolean =
   pattern.contains("\\|") || pattern.contains("\\(") || pattern.contains("\\)")
 
+def fixPosixRegex(pattern: String): (String, Boolean) =
+  val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
+  (fixed, fixed != pattern)
+
 def resolveWorkspace(path: String): Path =
   val p = Path.of(path).toAbsolutePath.normalize
   if Files.isDirectory(p) then p else p.getParent
@@ -1134,24 +1138,26 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                        else rest.headOption
       patternOpt match
         case None => println("Usage: scalex grep <pattern>")
-        case Some(pattern) =>
+        case Some(rawPattern) =>
+          val (pattern, wasFixed) = fixPosixRegex(rawPattern)
+          if wasFixed then
+            System.err.println(s"  Note: auto-corrected POSIX regex to Java regex: \"$rawPattern\" → \"$pattern\"")
           val (results, grepTimedOut) = idx.grepFiles(pattern, noTests, pathFilter)
           if countOnly then
             val fileCount = results.map(_.file).distinct.size
-            if jsonOutput then println(s"""{"matches":${results.size},"files":$fileCount,"timedOut":$grepTimedOut}""")
+            val hint = if wasFixed then s""","corrected":"$pattern"""" else ""
+            if jsonOutput then println(s"""{"matches":${results.size},"files":$fileCount,"timedOut":$grepTimedOut$hint}""")
             else
               val suffix = if grepTimedOut then " (timed out — partial results)" else ""
               println(s"${results.size} matches across $fileCount files$suffix")
           else if jsonOutput then
             val arr = results.take(limit).map(jRef).mkString("[", ",", "]")
-            val hint = if results.isEmpty && hasRegexHint(pattern) then ",\"hint\":\"scalex uses Java regex — use | not \\\\| for alternation, ( ) not \\\\( \\\\)\"" else ""
+            val hint = if wasFixed then s""","corrected":"$pattern"""" else ""
             println(s"""{"results":$arr,"timedOut":$grepTimedOut$hint}""")
           else
             val suffix = if grepTimedOut then " (timed out — partial results)" else ""
             if results.isEmpty then
               println(s"No matches for \"$pattern\"$suffix")
-              if hasRegexHint(pattern) then
-                println("  Hint: scalex uses Java regex — use | not \\| for alternation, ( ) not \\( \\)")
             else
               val fmtRef: Reference => String =
                 if contextLines > 0 then r => formatRefWithContext(r, workspace, contextLines)

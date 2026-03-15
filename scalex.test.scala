@@ -1331,3 +1331,30 @@ class ScalexSuite extends FunSuite:
     val pairs = results.map(r => (workspace.relativize(r.file).toString, r.line))
     assertEquals(pairs, pairs.sorted)
   }
+
+  // ── POSIX regex auto-correction ──────────────────────────────────────────
+
+  test("hasRegexHint detects POSIX-style backslash-pipe") {
+    assert(hasRegexHint("class\\|trait"))
+    assert(hasRegexHint("\\(group\\)"))
+    assert(!hasRegexHint("class|trait"))
+    assert(!hasRegexHint("simple"))
+  }
+
+  test("fixPosixRegex corrects backslash-pipe to pipe") {
+    val (fixed, changed) = fixPosixRegex("class\\|trait")
+    assertEquals(fixed, "class|trait")
+    assert(changed)
+  }
+
+  test("fixPosixRegex corrects backslash-parens") {
+    val (fixed, changed) = fixPosixRegex("\\(foo\\|bar\\)")
+    assertEquals(fixed, "(foo|bar)")
+    assert(changed)
+  }
+
+  test("fixPosixRegex is no-op for valid Java regex") {
+    val (fixed, changed) = fixPosixRegex("class|trait")
+    assertEquals(fixed, "class|trait")
+    assert(!changed)
+  }
