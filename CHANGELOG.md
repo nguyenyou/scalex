@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Fuzzy camelCase search — `search "hms"` matches `HttpMessageService`, `search "usl"` matches `UserServiceLive`
 - `scalex index --verbose` now lists files that had parse errors
 - Not-found hint directs users to `scalex index --verbose` to see failed files
 

@@ -498,14 +498,16 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val exact = mutable.ListBuffer.empty[SymbolInfo]
     val prefix = mutable.ListBuffer.empty[SymbolInfo]
     val contains = mutable.ListBuffer.empty[SymbolInfo]
+    val fuzzy = mutable.ListBuffer.empty[SymbolInfo]
 
     distinctSymbols.foreach { s =>
       val n = s.name.toLowerCase
       if n == lower then exact += s
       else if n.startsWith(lower) then prefix += s
       else if n.contains(lower) then contains += s
+      else if camelCaseMatch(lower, s.name) then fuzzy += s
     }
-    exact.toList ++ prefix.toList ++ contains.toList
+    exact.toList ++ prefix.toList ++ contains.toList ++ fuzzy.sortBy(_.name.length).toList
 
   def fileSymbols(path: String): List[SymbolInfo] =
     val resolved = if Path.of(path).isAbsolute then Path.of(path)
@@ -644,6 +646,24 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
             }
             if hasWildcard then Confidence.Medium
             else Confidence.Low
+
+  private def isSegmentStart(name: String, i: Int): Boolean =
+    i == 0 || name(i).isUpper || (i > 0 && name(i - 1) == '_')
+
+  private def camelCaseMatch(query: String, name: String): Boolean =
+    if query.length < 2 then return false
+    val qLower = query.toLowerCase
+    val nLower = name.toLowerCase
+    var qi = 0
+    var ni = 0
+    while qi < qLower.length && ni < nLower.length do
+      if qLower(qi) == nLower(ni) then
+        qi += 1
+        ni += 1
+      else
+        ni += 1
+        while ni < nLower.length && !isSegmentStart(name, ni) do ni += 1
+    qi == qLower.length
 
   private def containsWord(line: String, word: String): Boolean =
     var i = line.indexOf(word)
