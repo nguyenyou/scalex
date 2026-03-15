@@ -109,7 +109,12 @@
 - [x] `scalex index --verbose` lists the files with parse errors
 - [x] Not-found hint directs users to `scalex index --verbose` to see failed files
 
+### Fuzzy camelCase search — DONE
+- [x] Support camelCase abbreviation matching in `search` — e.g. "hms" matches `HttpMessageService` by matching initials of each camelCase segment
+- [x] Rank fuzzy results below exact/prefix/substring matches
+
 ### Other
+- [ ] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
 - [ ] `scalex hierarchy <class>` — show full class hierarchy (parents + children)
 - [ ] Publish plugin to Claude Code marketplace

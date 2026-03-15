@@ -30,7 +30,7 @@ claude plugin validate plugin/
 
 ## Architecture
 
-Single-file implementation at `scalex.scala` (~800 lines, Scala 3.8.2, JDK 21+).
+Single-file implementation: `scalex.scala` (Scala 3.8.2, JDK 21+), tests in `scalex.test.scala`. To understand the code, just read the whole file — no need to search across multiple files.
 
 ### Pipeline
 

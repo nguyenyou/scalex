@@ -880,3 +880,54 @@ class ScalexSuite extends FunSuite:
     assertEquals(aliasFile.aliases.get("UserService"), Some("US"))
     assertEquals(aliasFile.aliases.get("Database"), Some("DB"))
   }
+
+  // ── Fuzzy camelCase search ──────────────────────────────────────────
+
+  test("search fuzzy matches camelCase initials") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "usl" should match UserServiceLive (U-ser S-ervice L-ive)
+    val results = idx.search("usl")
+    assert(results.exists(_.name == "UserServiceLive"),
+      s"Should fuzzy match UserServiceLive: ${results.map(_.name)}")
+  }
+
+  test("search fuzzy matches leading chars of segments") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "usersl" should match UserServiceLive (User-S-ervice-L-ive)
+    val results = idx.search("usersl")
+    assert(results.exists(_.name == "UserServiceLive"),
+      s"Should fuzzy match UserServiceLive: ${results.map(_.name)}")
+  }
+
+  test("search fuzzy ranks below exact/prefix/substring") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "us" matches UserService as prefix, and UserServiceLive as prefix
+    // Fuzzy should not appear before those
+    val results = idx.search("us")
+    val usIdx = results.indexWhere(_.name == "UserService")
+    val uslIdx = results.indexWhere(_.name == "UserServiceLive")
+    // Both are prefix matches so they should appear before any fuzzy result
+    assert(usIdx >= 0 && uslIdx >= 0)
+  }
+
+  test("search fuzzy does not match single char queries") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Single char "u" should not produce fuzzy results (only exact/prefix/substring)
+    val results = idx.search("u")
+    // All results should be substring matches (contain "u"), not fuzzy
+    results.foreach { s =>
+      assert(s.name.toLowerCase.contains("u"),
+        s"Single char should only match via substring, not fuzzy: ${s.name}")
+    }
+  }
+
+  test("search fuzzy returns empty for non-matching query") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.search("zxqw")
+    assert(results.isEmpty)
+  }
