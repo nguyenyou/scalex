@@ -7,7 +7,7 @@ if [ -z "${BASH_VERSION:-}" ] && [ -f "$0" ]; then
 fi
 set -euo pipefail
 
-EXPECTED_VERSION="1.6.0"
+EXPECTED_VERSION="1.7.0"
 REPO="nguyenyou/scalex"
 
 # Cache location: follow XDG spec (like Mill uses ~/.cache/mill/download/)
