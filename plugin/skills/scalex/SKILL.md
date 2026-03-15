@@ -9,33 +9,15 @@ First run on a project indexes all git-tracked `.scala` files (~3s for 14k files
 
 ## Setup
 
-Pre-built native binaries for all supported platforms are bundled in the `bin/` directory next to this SKILL.md. Before first use, check if the binary has already been set up:
+A bootstrap script at `scripts/scalex-cli` (next to this SKILL.md) handles everything automatically — platform detection, downloading the correct native binary from GitHub releases, and caching at `~/.cache/scalex/`. It auto-upgrades when the skill version changes.
+
+Run all scalex commands through the bootstrap script:
 
 ```bash
-SKILL_BIN="<path-to-this-skills-directory>/bin"
-ls "$SKILL_BIN/scalex" 2>/dev/null && "$SKILL_BIN/scalex" --version
+SCALEX="<path-to-this-skills-directory>/scripts/scalex-cli"
 ```
 
-Replace `<path-to-this-skills-directory>` with the absolute path to the directory containing this SKILL.md file.
-
-If `bin/scalex` exists, skip the rest of this section. Otherwise, run the one-time setup — detect the platform, rename the correct binary to `scalex`, and remove the rest:
-
-```bash
-SKILL_BIN="<path-to-this-skills-directory>/bin"
-OS="$(uname -s)"; ARCH="$(uname -m)"
-case "$OS-$ARCH" in
-  Darwin-arm64)  BIN="scalex-macos-arm64" ;;
-  Darwin-x86_64) BIN="scalex-macos-x64" ;;
-  Linux-x86_64)  BIN="scalex-linux-x64" ;;
-  *) echo "Unsupported platform: $OS-$ARCH" >&2; exit 1 ;;
-esac
-mv "$SKILL_BIN/$BIN" "$SKILL_BIN/scalex"
-rm -f "$SKILL_BIN"/scalex-*
-chmod +x "$SKILL_BIN/scalex"
-"$SKILL_BIN/scalex" --version
-```
-
-After setup, `bin/` contains a single `scalex` binary for the current machine. Use the full path `<path-to-this-skills-directory>/bin/scalex` for all commands below.
+Replace `<path-to-this-skills-directory>` with the absolute path to the directory containing this SKILL.md. Use `$SCALEX` for all commands below.
 
 ## What scalex indexes
 

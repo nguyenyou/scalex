@@ -66,25 +66,20 @@ plugin/
 ├── .claude-plugin/plugin.json    # Manifest
 └── skills/scalex/
     ├── SKILL.md                  # Teaches Claude when/how to use scalex
-    └── bin/                      # Bundled native binaries (from GitHub release)
-        ├── scalex-macos-arm64
-        ├── scalex-macos-x64
-        └── scalex-linux-x64
+    └── scripts/
+        └── scalex-cli            # Bootstrap: downloads + caches binary, forwards args
 ```
 
-The SKILL.md contains a version-aware setup block (`EXPECTED_VERSION`) that must be bumped alongside `ScalexVersion` in `scalex.scala` when releasing.
+The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumped alongside `ScalexVersion` in `scalex.scala` when releasing.
 
 ## Release workflow
 
 1. Bump `ScalexVersion` in `scalex.scala`
-2. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/SKILL.md`
+2. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
 3. Move `[Unreleased]` section in `CHANGELOG.md` to the new version with date
-4. Commit, push to main
-5. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries for macOS ARM64, macOS x64, Linux x64
-6. The release job extracts the tagged version's section from `CHANGELOG.md` and uses it as the GitHub release body
-7. After the release is published, download the binaries into the plugin: `cd plugin/skills/scalex/bin && gh release download vX.Y.Z --pattern 'scalex-macos-arm64' --pattern 'scalex-macos-x64' --pattern 'scalex-linux-x64' --clobber && chmod +x *`
-8. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
-9. Commit the updated binaries and marketplace.json, push to main
+4. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
+5. Commit, push to main
+6. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries + creates release (done)
 
 ## Gotchas
 
