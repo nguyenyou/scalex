@@ -378,6 +378,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   var parsedCount: Int = 0
   var skippedCount: Int = 0
   var parseFailures: Int = 0
+  var parseFailedFiles: List[String] = Nil
   var cachedLoad: Boolean = false
 
   def index(): Unit =
@@ -423,10 +424,13 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         parsedCount = gitFiles.size
 
     indexedFiles = result.toList
-    parseFailures = indexedFiles.count(f => f.symbols.isEmpty && {
-      val p = workspace.resolve(f.relativePath)
-      try Files.size(p) > 0 catch case _: Exception => false
-    })
+    parseFailedFiles = indexedFiles.collect {
+      case f if f.symbols.isEmpty && {
+        val p = workspace.resolve(f.relativePath)
+        try Files.size(p) > 0 catch case _: Exception => false
+      } => f.relativePath
+    }
+    parseFailures = parseFailedFiles.size
     // Single-pass over symbols: build all symbol-level indexes
     val allSyms = mutable.ListBuffer.empty[SymbolInfo]
     val byPath = mutable.HashMap.empty[Path, mutable.ListBuffer[SymbolInfo]]
@@ -671,7 +675,7 @@ def formatRef(r: Reference, workspace: Path): String =
 def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String): Unit =
   println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
   if idx.parseFailures > 0 then
-    println(s"  ${idx.parseFailures} files had parse errors and may be missing symbols.")
+    println(s"  ${idx.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
   println(s"  Fallback: use Grep, Glob, or Read tools to search manually.")
 
 def resolveWorkspace(path: String): Path =
@@ -699,6 +703,12 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size).foreach { (kind, syms) =>
         println(s"  ${kind.toString.padTo(10, ' ')} ${syms.size}")
       }
+      if idx.parseFailures > 0 then
+        println(s"\n${idx.parseFailures} files had parse errors:")
+        if verbose then
+          idx.parseFailedFiles.sorted.foreach(f => println(s"  $f"))
+        else
+          println("  Run with --verbose to see the list.")
 
     case "search" =>
       rest.headOption match

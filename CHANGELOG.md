@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `scalex index --verbose` now lists files that had parse errors
+- Not-found hint directs users to `scalex index --verbose` to see failed files
+
 ## [1.2.0] — 2026-03-15
 
 ### Performance

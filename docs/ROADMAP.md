@@ -104,6 +104,11 @@
 - [x] Adaptive bloom filter capacity — `max(500, source.length / 15)` scales bloom size with file size
 - [x] Single-pass post-index map building — 2 passes instead of 7 separate passes over 200K+ symbols
 
+### Parse error diagnostics — DONE
+- [x] Track which files had parse errors (not just the count)
+- [x] `scalex index --verbose` lists the files with parse errors
+- [x] Not-found hint directs users to `scalex index --verbose` to see failed files
+
 ### Other
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
 - [ ] `scalex hierarchy <class>` — show full class hierarchy (parents + children)
