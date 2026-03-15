@@ -138,7 +138,7 @@ The entire tool is ~1000 lines of Scala 3 in a single file. Here's the architect
 |---|---|---|---|---|
 | Small library | 92 | 259 | ~50ms | ~10ms |
 | Mill build tool | 1,415 | 12,778 | 214ms | 50ms |
-| Production monorepo | 13,958 | 214,803 | 3.3s | 364ms |
+| Production monorepo | 13,970 | 214,154 | 5.2s | 1.0s |
 | Scala 3 compiler | 17,731 | 202,916 | 3.3s | 777ms |
 
 ## Quick Start
