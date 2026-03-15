@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.0] — 2026-03-15
+
+### Added
+- `-w` / `--workspace` flag — named flag for setting workspace path, avoids ambiguity with positional args
+- Path-as-symbol hint — when a symbol looks like a filesystem path, suggests correct arg order
+
+### Fixed
+- zsh compatibility — bash re-exec guard in `scalex-cli` bootstrap script fixes `(eval):1: permission denied:` when zsh eval's the script (#22)
+
 ## [1.3.0] — 2026-03-15
 
 ### Added

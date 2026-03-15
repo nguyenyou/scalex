@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.3.0"
+val ScalexVersion = "1.4.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -710,6 +710,8 @@ def formatRef(r: Reference, workspace: Path): String =
   s"  $rel:${r.line} — ${r.contextLine}$alias"
 
 def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String): Unit =
+  if symbol.contains("/") || symbol.startsWith(".") then
+    println(s"  Note: \"$symbol\" looks like a path. Did you mean: scalex $cmd -w <workspace> $symbol?")
   println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
   if idx.parseFailures > 0 then
     println(s"  ${idx.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
@@ -902,10 +904,16 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     case i => argList.lift(i + 1)
   val verbose = argList.contains("--verbose")
   val categorize = argList.contains("--categorize")
+  val explicitWorkspace: Option[String] =
+    val longIdx = argList.indexOf("--workspace")
+    val shortIdx = argList.indexOf("-w")
+    val idx = if longIdx >= 0 then longIdx else shortIdx
+    if idx >= 0 then argList.lift(idx + 1) else None
 
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || {
+  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w")
+  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || {
     val prev = argList.indexOf(a) - 1
-    prev >= 0 && (argList(prev) == "--limit" || argList(prev) == "--kind")
+    prev >= 0 && flagsWithArgs.contains(argList(prev))
   })
 
   cleanArgs match
@@ -925,18 +933,19 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  scalex batch                    Run multiple queries at once    (aka: batch mode)
         |
         |Options:
-        |  --limit N       Max results (default: 20)
-        |  --kind K        Filter by kind: class, trait, object, def, val, type, enum, given, extension
-        |  --verbose       Show signatures and extends clauses
-        |  --categorize    Group refs by: definition, extends, import, type usage, comment
-        |  --version       Print version and exit
+        |  -w, --workspace PATH  Set workspace path (default: current directory)
+        |  --limit N             Max results (default: 20)
+        |  --kind K              Filter by kind: class, trait, object, def, val, type, enum, given, extension
+        |  --verbose             Show signatures and extends clauses
+        |  --categorize          Group refs by: definition, extends, import, type usage, comment
+        |  --version             Print version and exit
         |
-        |All commands accept an optional [workspace] path (default: current directory).
+        |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
         |First run indexes the project (~3s for 14k files). Subsequent runs use cache (~300ms).
         |""".stripMargin)
 
     case "batch" :: rest =>
-      val workspace = resolveWorkspace(rest.headOption.getOrElse("."))
+      val workspace = resolveWorkspace(explicitWorkspace.orElse(rest.headOption).getOrElse("."))
       val idx = WorkspaceIndex(workspace, needBlooms = true)
       idx.index()
       val reader = BufferedReader(InputStreamReader(System.in))
@@ -952,14 +961,18 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         line = reader.readLine()
 
     case cmd :: rest =>
-      val (workspace, cmdRest) = cmd match
-        case "index" | "packages" =>
-          (resolveWorkspace(rest.headOption.getOrElse(".")), rest)
-        case _ =>
-          rest match
-            case arg :: Nil => (resolveWorkspace("."), List(arg))
-            case ws :: arg :: tail => (resolveWorkspace(ws), arg :: tail)
-            case Nil => (resolveWorkspace("."), Nil)
+      val (workspace, cmdRest) = explicitWorkspace match
+        case Some(ws) =>
+          (resolveWorkspace(ws), rest)
+        case None =>
+          cmd match
+            case "index" | "packages" =>
+              (resolveWorkspace(rest.headOption.getOrElse(".")), rest)
+            case _ =>
+              rest match
+                case arg :: Nil => (resolveWorkspace("."), List(arg))
+                case ws :: arg :: tail => (resolveWorkspace(ws), arg :: tail)
+                case Nil => (resolveWorkspace("."), Nil)
 
       val bloomCmds = Set("refs", "imports")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
