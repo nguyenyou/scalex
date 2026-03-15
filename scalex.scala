@@ -39,7 +39,8 @@ case class SymbolInfo(
     line: Int,
     packageName: String,
     parents: List[String] = Nil,
-    signature: String = ""
+    signature: String = "",
+    annotations: List[String] = Nil
 )
 
 case class Reference(file: Path, line: Int, contextLine: String, aliasInfo: Option[String] = None)
@@ -115,6 +116,14 @@ private def buildSignature(name: String, kind: String, parents: List[String], tp
   val ext = if parents.nonEmpty then s" extends ${parents.mkString(" with ")}" else ""
   s"$kind $name$tps$ext"
 
+private def extractAnnotations(mods: List[Mod]): List[String] =
+  mods.collect { case Mod.Annot(init) =>
+    init.tpe match
+      case Type.Name(name) => name
+      case Type.Select(_, Type.Name(name)) => name
+      case _ => init.tpe.toString()
+  }
+
 private def extractImports(tree: Tree): (List[String], Map[String, String]) =
   val buf = mutable.ListBuffer.empty[String]
   val aliases = mutable.Map.empty[String, String]
@@ -162,41 +171,50 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
       val parents = extractParents(d.templ)
       val tparams = d.tparamClause.values.map(_.name.value)
       val sig = buildSignature(d.name.value, "class", parents, tparams)
-      buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, sig)
+      val annots = extractAnnotations(d.mods)
+      buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Defn.Trait =>
       val parents = extractParents(d.templ)
       val tparams = d.tparamClause.values.map(_.name.value)
       val sig = buildSignature(d.name.value, "trait", parents, tparams)
-      buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, sig)
+      val annots = extractAnnotations(d.mods)
+      buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Defn.Object =>
       val parents = extractParents(d.templ)
       val sig = buildSignature(d.name.value, "object", parents)
-      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig)
+      val annots = extractAnnotations(d.mods)
+      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Defn.Enum =>
       val parents = extractParents(d.templ)
       val tparams = d.tparamClause.values.map(_.name.value)
       val sig = buildSignature(d.name.value, "enum", parents, tparams)
-      buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, sig)
+      val annots = extractAnnotations(d.mods)
+      buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Defn.Given =>
       if d.name.value.nonEmpty then
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, s"given ${d.name.value}")
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, s"given ${d.name.value}", annots)
     case d: Defn.GivenAlias =>
       if d.name.value.nonEmpty then
         val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, sig)
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
     case d: Defn.Type =>
       val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
-      buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, sig)
+      val annots = extractAnnotations(d.mods)
+      buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
     case d: Defn.Def =>
       val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
       val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
       val sig = s"def ${d.name.value}$params$ret"
-      buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, sig)
+      val annots = extractAnnotations(d.mods)
+      buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
     case d: Defn.Val =>
+      val annots = extractAnnotations(d.mods)
       d.pats.foreach {
         case Pat.Var(name) =>
           val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-          buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, s"val ${name.value}$tpe")
+          buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, s"val ${name.value}$tpe", annots)
         case _ =>
       }
     case d: Defn.ExtensionGroup =>
@@ -217,7 +235,7 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
 
 object IndexPersistence:
   private val MAGIC = 0x53584458
-  private val VERSION: Byte = 4
+  private val VERSION: Byte = 5
 
   def indexPath(workspace: Path): Path = workspace.resolve(".scalex").resolve("index.bin")
 
@@ -237,6 +255,7 @@ object IndexPersistence:
         intern(s.packageName)
         intern(s.signature)
         s.parents.foreach(intern)
+        s.annotations.foreach(intern)
       }
       f.imports.foreach(intern)
       f.aliases.foreach { (k, v) => intern(k); intern(v) }
@@ -265,6 +284,8 @@ object IndexPersistence:
           out.writeInt(intern(s.signature))
           out.writeShort(s.parents.size)
           s.parents.foreach(p => out.writeInt(intern(p)))
+          out.writeShort(s.annotations.size)
+          s.annotations.foreach(a => out.writeInt(intern(a)))
         }
 
         // Imports
@@ -321,7 +342,9 @@ object IndexPersistence:
             val sig = strings(in.readInt())
             val parentCount = in.readShort()
             val parents = (0 until parentCount).map(_ => strings(in.readInt())).toList
-            syms += SymbolInfo(name, kind, workspace.resolve(relPath), line, pkg, parents, sig)
+            val annotCount = in.readShort()
+            val annots = (0 until annotCount).map(_ => strings(in.readInt())).toList
+            syms += SymbolInfo(name, kind, workspace.resolve(relPath), line, pkg, parents, sig, annots)
             si += 1
 
           // Imports
@@ -372,6 +395,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   private var packageToSymbols: Map[String, Set[String]] = Map.empty
   private var indexedByPath: Map[String, IndexedFile] = Map.empty
   private var aliasIndex: Map[String, List[(IndexedFile, String)]] = Map.empty
+  private var annotationIndex: Map[String, List[SymbolInfo]] = Map.empty
 
   var fileCount: Int = 0
   var indexTimeMs: Long = 0
@@ -440,6 +464,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val pkgToSyms = mutable.HashMap.empty[String, mutable.HashSet[String]]
     val distinctSeen = mutable.HashSet.empty[(String, Path, Int)]
     val distinctBuf = mutable.ListBuffer.empty[SymbolInfo]
+    val aByAnnot = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
     indexedFiles.foreach { f =>
       f.symbols.foreach { s =>
         allSyms += s
@@ -448,6 +473,9 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         if s.packageName.nonEmpty then pkgs += s.packageName
         s.parents.foreach { p =>
           pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
+        }
+        s.annotations.foreach { a =>
+          aByAnnot.getOrElseUpdate(a.toLowerCase, mutable.ListBuffer.empty) += s
         }
         pkgToSyms.getOrElseUpdate(s.packageName, mutable.HashSet.empty) += s.name
         val key = (s.name, s.file, s.line)
@@ -460,6 +488,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     symbolsByName = byName.map((k, v) => k -> v.toList).toMap
     packages = pkgs.toSet
     parentIndex = pIdx.map((k, v) => k -> v.toList).toMap
+    annotationIndex = aByAnnot.map((k, v) => k -> v.toList).toMap
     packageToSymbols = pkgToSyms.map((k, v) => k -> v.toSet).toMap
 
     // Single-pass over indexedFiles: build file-level indexes
@@ -492,6 +521,37 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
   def findImplementations(name: String): List[SymbolInfo] =
     parentIndex.getOrElse(name.toLowerCase, Nil)
+
+  def findAnnotated(annotation: String): List[SymbolInfo] =
+    annotationIndex.getOrElse(annotation.toLowerCase, Nil)
+
+  def grepFiles(pattern: String, noTests: Boolean, pathFilter: Option[String],
+                timeoutMs: Long = defaultTimeoutMs): (List[Reference], Boolean) =
+    val regex = try java.util.regex.Pattern.compile(pattern)
+    catch
+      case e: java.util.regex.PatternSyntaxException =>
+        System.err.println(s"Invalid regex: ${e.getMessage}")
+        return (Nil, false)
+    var candidates = gitFiles
+    if noTests then candidates = candidates.filter(gf => !isTestFile(gf.path, workspace))
+    pathFilter.foreach { p => candidates = candidates.filter(gf => matchesPath(gf.path, p, workspace)) }
+    val deadline = System.nanoTime() + timeoutMs * 1_000_000
+    var grepTimedOut = false
+    val results = ConcurrentLinkedQueue[Reference]()
+    candidates.asJava.parallelStream().forEach { gf =>
+      if System.nanoTime() < deadline then {
+        try {
+          val lines = Files.readAllLines(gf.path).asScala
+          lines.zipWithIndex.foreach { case (line, idx) =>
+            if System.nanoTime() < deadline then {
+              if regex.matcher(line).find() then
+                results.add(Reference(gf.path, idx + 1, line.trim))
+            } else grepTimedOut = true
+          }
+        } catch { case _: Exception => () }
+      } else grepTimedOut = true
+    }
+    (results.asScala.toList.sortBy(r => (workspace.relativize(r.file).toString, r.line)), grepTimedOut)
 
   def search(query: String): List[SymbolInfo] =
     val lower = query.toLowerCase
@@ -705,6 +765,45 @@ def matchesPath(file: Path, prefix: String, workspace: Path): Boolean =
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
 
+def jsonEscape(s: String): String =
+  val sb = new StringBuilder(s.length + 8)
+  var i = 0
+  while i < s.length do
+    s.charAt(i) match
+      case '"'  => sb.append("\\\"")
+      case '\\' => sb.append("\\\\")
+      case '\n' => sb.append("\\n")
+      case '\r' => sb.append("\\r")
+      case '\t' => sb.append("\\t")
+      case c if c < 0x20 => sb.append(f"\\u${c.toInt}%04x")
+      case c    => sb.append(c)
+    i += 1
+  sb.toString
+
+def jsonSymbol(s: SymbolInfo, workspace: Path): String =
+  val rel = jsonEscape(workspace.relativize(s.file).toString)
+  val parents = s.parents.map(p => s""""${jsonEscape(p)}"""").mkString("[", ",", "]")
+  val annots = s.annotations.map(a => s""""${jsonEscape(a)}"""").mkString("[", ",", "]")
+  s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"$rel","line":${s.line},"package":"${jsonEscape(s.packageName)}","parents":$parents,"signature":"${jsonEscape(s.signature)}","annotations":$annots}"""
+
+def jsonRef(r: Reference, workspace: Path): String =
+  val rel = jsonEscape(workspace.relativize(r.file).toString)
+  val alias = r.aliasInfo.map(a => s""""${jsonEscape(a)}"""").getOrElse("null")
+  s"""{"file":"$rel","line":${r.line},"context":"${jsonEscape(r.contextLine)}","alias":$alias}"""
+
+def jsonRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
+  val rel = jsonEscape(workspace.relativize(r.file).toString)
+  val alias = r.aliasInfo.map(a => s""""${jsonEscape(a)}"""").getOrElse("null")
+  val lines = try java.nio.file.Files.readAllLines(r.file).asScala catch
+    case _: Exception => Seq.empty
+  val total = lines.size
+  val startLine = math.max(1, r.line - contextN)
+  val endLine = math.min(total, r.line + contextN)
+  val ctxLines = (startLine to endLine).map { i =>
+    s"""{"line":$i,"content":"${jsonEscape(lines(i - 1))}","match":${i == r.line}}"""
+  }.mkString("[", ",", "]")
+  s"""{"file":"$rel","line":${r.line},"context":"${jsonEscape(r.contextLine)}","alias":$alias,"contextLines":$ctxLines}"""
+
 def formatSymbol(s: SymbolInfo, workspace: Path): String =
   val rel = workspace.relativize(s.file)
   val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
@@ -760,26 +859,35 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(Path, String)] =
 
 def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: Path,
                limit: Int, kindFilter: Option[String], verbose: Boolean, categorize: Boolean,
-               noTests: Boolean, pathFilter: Option[String], contextLines: Int): Unit =
+               noTests: Boolean, pathFilter: Option[String], contextLines: Int,
+               jsonOutput: Boolean): Unit =
   val fmt = if verbose then formatSymbolVerbose else formatSymbol
+  val jRef: Reference => String =
+    if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines)
+    else r => jsonRef(r, workspace)
   cmd match
     case "index" =>
-      if idx.cachedLoad then
-        println(s"Indexed ${idx.fileCount} files (${idx.skippedCount} cached, ${idx.parsedCount} parsed) in ${idx.indexTimeMs}ms")
+      if jsonOutput then
+        val byKind = idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size)
+          .map((k, v) => s""""${k.toString.toLowerCase}":${v.size}""").mkString(",")
+        println(s"""{"fileCount":${idx.fileCount},"symbolCount":${idx.symbols.size},"packageCount":${idx.packages.size},"symbolsByKind":{$byKind},"indexTimeMs":${idx.indexTimeMs},"cachedLoad":${idx.cachedLoad},"parsedCount":${idx.parsedCount},"skippedCount":${idx.skippedCount},"parseFailures":${idx.parseFailures}}""")
       else
-        println(s"Indexed ${idx.fileCount} files, ${idx.symbols.size} symbols in ${idx.indexTimeMs}ms")
-      println(s"Packages: ${idx.packages.size}")
-      println()
-      println("Symbols by kind:")
-      idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size).foreach { (kind, syms) =>
-        println(s"  ${kind.toString.padTo(10, ' ')} ${syms.size}")
-      }
-      if idx.parseFailures > 0 then
-        println(s"\n${idx.parseFailures} files had parse errors:")
-        if verbose then
-          idx.parseFailedFiles.sorted.foreach(f => println(s"  $f"))
+        if idx.cachedLoad then
+          println(s"Indexed ${idx.fileCount} files (${idx.skippedCount} cached, ${idx.parsedCount} parsed) in ${idx.indexTimeMs}ms")
         else
-          println("  Run with --verbose to see the list.")
+          println(s"Indexed ${idx.fileCount} files, ${idx.symbols.size} symbols in ${idx.indexTimeMs}ms")
+        println(s"Packages: ${idx.packages.size}")
+        println()
+        println("Symbols by kind:")
+        idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size).foreach { (kind, syms) =>
+          println(s"  ${kind.toString.padTo(10, ' ')} ${syms.size}")
+        }
+        if idx.parseFailures > 0 then
+          println(s"\n${idx.parseFailures} files had parse errors:")
+          if verbose then
+            idx.parseFailedFiles.sorted.foreach(f => println(s"  $f"))
+          else
+            println("  Run with --verbose to see the list.")
 
     case "search" =>
       rest.headOption match
@@ -792,13 +900,17 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           }
           if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
           pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
-          if results.isEmpty then
-            println(s"Found 0 symbols matching \"$query\"")
-            printNotFoundHint(query, idx, "search")
+          if jsonOutput then
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            println(arr)
           else
-            println(s"Found ${results.size} symbols matching \"$query\":")
-            results.take(limit).foreach(s => println(fmt(s, workspace)))
-            if results.size > limit then println(s"  ... and ${results.size - limit} more")
+            if results.isEmpty then
+              println(s"Found 0 symbols matching \"$query\"")
+              printNotFoundHint(query, idx, "search")
+            else
+              println(s"Found ${results.size} symbols matching \"$query\":")
+              results.take(limit).foreach(s => println(fmt(s, workspace)))
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "def" =>
       rest.headOption match
@@ -821,13 +933,17 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             val pathLen = workspace.relativize(s.file).toString.length
             (kindRank, testRank, pathLen)
           }
-          if results.isEmpty then
-            println(s"Definition of \"$symbol\": not found")
-            printNotFoundHint(symbol, idx, "def")
+          if jsonOutput then
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            println(arr)
           else
-            println(s"Definition of \"$symbol\":")
-            results.take(limit).foreach(s => println(fmt(s, workspace)))
-            if results.size > limit then println(s"  ... and ${results.size - limit} more")
+            if results.isEmpty then
+              println(s"Definition of \"$symbol\": not found")
+              printNotFoundHint(symbol, idx, "def")
+            else
+              println(s"Definition of \"$symbol\":")
+              results.take(limit).foreach(s => println(fmt(s, workspace)))
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "impl" =>
       rest.headOption match
@@ -840,13 +956,17 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           }
           if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
           pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
-          if results.isEmpty then
-            println(s"No implementations of \"$symbol\" found")
-            printNotFoundHint(symbol, idx, "impl")
+          if jsonOutput then
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            println(arr)
           else
-            println(s"Implementations of \"$symbol\" — ${results.size} found:")
-            results.take(limit).foreach(s => println(fmt(s, workspace)))
-            if results.size > limit then println(s"  ... and ${results.size - limit} more")
+            if results.isEmpty then
+              println(s"No implementations of \"$symbol\" found")
+              printNotFoundHint(symbol, idx, "impl")
+            else
+              println(s"Implementations of \"$symbol\" — ${results.size} found:")
+              results.take(limit).foreach(s => println(fmt(s, workspace)))
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "refs" =>
       rest.headOption match
@@ -861,54 +981,67 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             if noTests then r = r.filter(ref => !isTestFile(ref.file, workspace))
             pathFilter.foreach { p => r = r.filter(ref => matchesPath(ref.file, p, workspace)) }
             r
-          if categorize then
-            val grouped = idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs)))
-            val total = grouped.values.map(_.size).sum
-            val suffix = if idx.timedOut then " (timed out — partial results)" else ""
-            println(s"References to \"$symbol\" — $total found:$suffix")
-            val confidenceOrder = List(Confidence.High, Confidence.Medium, Confidence.Low)
-            confidenceOrder.foreach { conf =>
-              val catRefs = grouped.flatMap { (cat, refs) =>
-                refs.map(r => (cat, r, idx.resolveConfidence(r, symbol, targetPkgs)))
-              }.filter(_._3 == conf).toList
-              if catRefs.nonEmpty then
-                val label = conf match
-                  case Confidence.High   => "High confidence (import-matched)"
-                  case Confidence.Medium => "Medium confidence (wildcard import)"
-                  case Confidence.Low    => "Low confidence (no matching import)"
-                println(s"\n  $label:")
-                val byCat = catRefs.groupBy(_._1)
-                val order = List(RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
-                                 RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
-                order.foreach { cat =>
-                  byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
-                    println(s"\n    ${cat.toString}:")
-                    entries.take(limit).foreach((_, r, _) => println(s"    ${fmtRef(r)}"))
-                    if entries.size > limit then println(s"      ... and ${entries.size - limit} more")
-                  }
-                }
-            }
+          if jsonOutput then
+            if categorize then
+              val grouped = idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs)))
+              val entries = grouped.map { (cat, refs) =>
+                val arr = refs.take(limit).map(jRef).mkString("[", ",", "]")
+                s""""${cat.toString}":$arr"""
+              }.mkString(",")
+              println(s"""{"categories":{$entries},"timedOut":${idx.timedOut}}""")
+            else
+              val results = filterRefs(idx.findReferences(symbol))
+              val arr = results.take(limit).map(jRef).mkString("[", ",", "]")
+              println(s"""{"results":$arr,"timedOut":${idx.timedOut}}""")
           else
-            val results = filterRefs(idx.findReferences(symbol))
-            val suffix = if idx.timedOut then " (timed out — partial results)" else ""
-            println(s"References to \"$symbol\" — ${results.size} found:$suffix")
-            val annotated = results.map(r => (r, idx.resolveConfidence(r, symbol, targetPkgs)))
-            val sorted = annotated.sortBy { case (_, c) => c.ordinal }
-            var lastConf: Option[Confidence] = None
-            var shown = 0
-            sorted.foreach { case (r, conf) =>
-              if shown < limit then
-                if !lastConf.contains(conf) then
+            if categorize then
+              val grouped = idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs)))
+              val total = grouped.values.map(_.size).sum
+              val suffix = if idx.timedOut then " (timed out — partial results)" else ""
+              println(s"References to \"$symbol\" — $total found:$suffix")
+              val confidenceOrder = List(Confidence.High, Confidence.Medium, Confidence.Low)
+              confidenceOrder.foreach { conf =>
+                val catRefs = grouped.flatMap { (cat, refs) =>
+                  refs.map(r => (cat, r, idx.resolveConfidence(r, symbol, targetPkgs)))
+                }.filter(_._3 == conf).toList
+                if catRefs.nonEmpty then
                   val label = conf match
-                    case Confidence.High   => "High confidence"
-                    case Confidence.Medium => "Medium confidence"
-                    case Confidence.Low    => "Low confidence"
-                  println(s"\n  [$label]")
-                  lastConf = Some(conf)
-                println(fmtRef(r))
-                shown += 1
-            }
-            if results.size > limit then println(s"  ... and ${results.size - limit} more")
+                    case Confidence.High   => "High confidence (import-matched)"
+                    case Confidence.Medium => "Medium confidence (wildcard import)"
+                    case Confidence.Low    => "Low confidence (no matching import)"
+                  println(s"\n  $label:")
+                  val byCat = catRefs.groupBy(_._1)
+                  val order = List(RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
+                                   RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
+                  order.foreach { cat =>
+                    byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
+                      println(s"\n    ${cat.toString}:")
+                      entries.take(limit).foreach((_, r, _) => println(s"    ${fmtRef(r)}"))
+                      if entries.size > limit then println(s"      ... and ${entries.size - limit} more")
+                    }
+                  }
+              }
+            else
+              val results = filterRefs(idx.findReferences(symbol))
+              val suffix = if idx.timedOut then " (timed out — partial results)" else ""
+              println(s"References to \"$symbol\" — ${results.size} found:$suffix")
+              val annotated = results.map(r => (r, idx.resolveConfidence(r, symbol, targetPkgs)))
+              val sorted = annotated.sortBy { case (_, c) => c.ordinal }
+              var lastConf: Option[Confidence] = None
+              var shown = 0
+              sorted.foreach { case (r, conf) =>
+                if shown < limit then
+                  if !lastConf.contains(conf) then
+                    val label = conf match
+                      case Confidence.High   => "High confidence"
+                      case Confidence.Medium => "Medium confidence"
+                      case Confidence.Low    => "Low confidence"
+                    println(s"\n  [$label]")
+                    lastConf = Some(conf)
+                  println(fmtRef(r))
+                  shown += 1
+              }
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "imports" =>
       rest.headOption match
@@ -917,41 +1050,100 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           var results = idx.findImports(symbol)
           if noTests then results = results.filter(r => !isTestFile(r.file, workspace))
           pathFilter.foreach { p => results = results.filter(r => matchesPath(r.file, p, workspace)) }
-          if results.isEmpty then
-            println(s"No imports of \"$symbol\" found")
-            printNotFoundHint(symbol, idx, "imports")
+          if jsonOutput then
+            val arr = results.take(limit).map(r => jsonRef(r, workspace)).mkString("[", ",", "]")
+            println(s"""{"results":$arr,"timedOut":${idx.timedOut}}""")
           else
-            val suffix = if idx.timedOut then " (timed out — partial results)" else ""
-            println(s"Imports of \"$symbol\" — ${results.size} found:$suffix")
-            results.take(limit).foreach(r => println(formatRef(r, workspace)))
-            if results.size > limit then println(s"  ... and ${results.size - limit} more")
+            if results.isEmpty then
+              println(s"No imports of \"$symbol\" found")
+              printNotFoundHint(symbol, idx, "imports")
+            else
+              val suffix = if idx.timedOut then " (timed out — partial results)" else ""
+              println(s"Imports of \"$symbol\" — ${results.size} found:$suffix")
+              results.take(limit).foreach(r => println(formatRef(r, workspace)))
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "symbols" =>
       rest.headOption match
         case None => println("Usage: scalex symbols <file>")
         case Some(file) =>
           val results = idx.fileSymbols(file)
-          if results.isEmpty then println(s"No symbols found in $file")
+          if jsonOutput then
+            val arr = results.map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            println(arr)
           else
-            println(s"Symbols in $file:")
-            results.foreach(s => println(fmt(s, workspace)))
+            if results.isEmpty then println(s"No symbols found in $file")
+            else
+              println(s"Symbols in $file:")
+              results.foreach(s => println(fmt(s, workspace)))
 
     case "file" =>
       rest.headOption match
         case None => println("Usage: scalex file <query>")
         case Some(query) =>
           val results = idx.searchFiles(query)
-          if results.isEmpty then
-            println(s"Found 0 files matching \"$query\"")
-            println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
+          if jsonOutput then
+            val arr = results.take(limit).map(f => s""""${jsonEscape(f)}"""").mkString("[", ",", "]")
+            println(arr)
           else
-            println(s"Found ${results.size} files matching \"$query\":")
-            results.take(limit).foreach(f => println(s"  $f"))
-            if results.size > limit then println(s"  ... and ${results.size - limit} more")
+            if results.isEmpty then
+              println(s"Found 0 files matching \"$query\"")
+              println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
+            else
+              println(s"Found ${results.size} files matching \"$query\":")
+              results.take(limit).foreach(f => println(s"  $f"))
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case "packages" =>
-      println(s"Packages (${idx.packages.size}):")
-      idx.packages.toList.sorted.foreach(p => println(s"  $p"))
+      if jsonOutput then
+        val arr = idx.packages.toList.sorted.map(p => s""""${jsonEscape(p)}"""").mkString("[", ",", "]")
+        println(arr)
+      else
+        println(s"Packages (${idx.packages.size}):")
+        idx.packages.toList.sorted.foreach(p => println(s"  $p"))
+
+    case "annotated" =>
+      rest.headOption match
+        case None => println("Usage: scalex annotated <annotation>")
+        case Some(query) =>
+          val annot = query.stripPrefix("@")
+          var results = idx.findAnnotated(annot)
+          kindFilter.foreach { k =>
+            val kk = k.toLowerCase
+            results = results.filter(_.kind.toString.toLowerCase == kk)
+          }
+          if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
+          if jsonOutput then
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            println(arr)
+          else
+            if results.isEmpty then
+              println(s"No symbols with @$annot annotation found")
+            else
+              println(s"Symbols annotated with @$annot — ${results.size} found:")
+              results.take(limit).foreach(s => println(fmt(s, workspace)))
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
+
+    case "grep" =>
+      rest.headOption match
+        case None => println("Usage: scalex grep <pattern>")
+        case Some(pattern) =>
+          val (results, grepTimedOut) = idx.grepFiles(pattern, noTests, pathFilter)
+          if jsonOutput then
+            val arr = results.take(limit).map(jRef).mkString("[", ",", "]")
+            println(s"""{"results":$arr,"timedOut":$grepTimedOut}""")
+          else
+            val suffix = if grepTimedOut then " (timed out — partial results)" else ""
+            if results.isEmpty then
+              println(s"No matches for \"$pattern\"$suffix")
+            else
+              val fmtRef: Reference => String =
+                if contextLines > 0 then r => formatRefWithContext(r, workspace, contextLines)
+                else r => formatRef(r, workspace)
+              println(s"Matches for \"$pattern\" — ${results.size} found:$suffix")
+              results.take(limit).foreach(r => println(fmtRef(r)))
+              if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
     case other =>
       println(s"Unknown command: $other")
@@ -978,6 +1170,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
   val contextLines: Int = argList.indexOf("-C") match
     case -1 => 0
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
+  val jsonOutput = argList.contains("--json")
   val explicitWorkspace: Option[String] =
     val longIdx = argList.indexOf("--workspace")
     val shortIdx = argList.indexOf("-w")
@@ -1001,7 +1194,9 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  scalex refs <symbol>            Who uses this symbol?           (aka: find references)
         |  scalex imports <symbol>         Who imports this symbol?        (aka: import graph)
         |  scalex symbols <file>           What's defined in this file?    (aka: file symbols)
-        |  scalex file <query>            Search files by name            (aka: find file)
+        |  scalex file <query>             Search files by name            (aka: find file)
+        |  scalex annotated <annotation>   Find symbols with annotation    (aka: find annotated)
+        |  scalex grep <pattern>           Regex search in file contents   (aka: content search)
         |  scalex packages                 What packages exist?            (aka: list packages)
         |  scalex index                    Rebuild the index               (aka: reindex)
         |  scalex batch                    Run multiple queries at once    (aka: batch mode)
@@ -1014,7 +1209,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  --categorize          Group refs by: definition, extends, import, type usage, comment
         |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
-        |  -C N                  Show N context lines around each reference (refs only)
+        |  -C N                  Show N context lines around each reference (refs, grep)
+        |  --json                Output results as JSON (structured output for programmatic use)
         |  --version             Print version and exit
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
@@ -1033,7 +1229,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val batchCmd = parts.head
           val batchRest = parts.tail
           println(s">>> $line")
-          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines)
+          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput)
           println()
         line = reader.readLine()
 
@@ -1054,4 +1250,4 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val bloomCmds = Set("refs", "imports")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
-      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines)
+      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput)

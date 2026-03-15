@@ -135,6 +135,19 @@ Feedback from real agent usage on large codebases (scala3 compiler, 14k+ files).
 - [ ] Override search — `scalex overrides Phase.isRunnable` finds methods overriding a specific def; combines impl lookup with method-level filtering
 - [ ] `scalex hierarchy <class>` — show full inheritance chain (parents + children)
 
+### JSON output (#32) — DONE
+- [x] `--json` flag on all commands — structured output for programmatic consumption; eliminates fragile text parsing by agent consumers
+
+### Annotation search (#32) — DONE
+- [x] `scalex annotated <annotation>` — find symbols with a specific annotation (e.g. `@deprecated`, `@tailrec`)
+- [x] Combine with `--path`, `--no-tests`, and `--kind` filters
+- [x] Extract annotations from Scalameta AST during indexing; stored in binary index (v5)
+
+### Body search (#32) — DONE
+- [x] `scalex grep <pattern>` — regex search inside file contents, combining scalex's file-filtering intelligence (`--path`, `--no-tests`) with content search
+- [x] 20s timeout, sorted output, `-C N` context lines support
+- [x] Eliminates the #1 reason agents fall back to grep for Scala files
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)

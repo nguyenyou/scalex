@@ -127,6 +127,17 @@ class ScalexSuite extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/main/scala/com/example/Annotated.scala",
+      """package com.example
+        |
+        |@deprecated class OldThing
+        |@deprecated("use NewService", "2.0") class OldService extends UserService {
+        |  def findUser(id: String): Option[User] = None
+        |  def createUser(name: String): User = User(name, name)
+        |}
+        |@specialized val fastVal: Int = 42
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
@@ -158,7 +169,7 @@ class ScalexSuite extends FunSuite:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 9)
+    assertEquals(files.size, 10)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
@@ -168,6 +179,7 @@ class ScalexSuite extends FunSuite:
     assert(files.exists(_.path.toString.contains("WildcardClient.scala")))
     assert(files.exists(_.path.toString.contains("NoImportClient.scala")))
     assert(files.exists(_.path.toString.contains("AliasClient.scala")))
+    assert(files.exists(_.path.toString.contains("Annotated.scala")))
   }
 
   test("gitLsFiles returns valid OIDs") {
@@ -271,7 +283,7 @@ class ScalexSuite extends FunSuite:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 9)
+    assert(idx.fileCount == 10)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -414,13 +426,13 @@ class ScalexSuite extends FunSuite:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 9, s"Cold index should parse all 9 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 10, s"Cold index should parse all 10 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 9, s"Warm index should skip all 9 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 10, s"Warm index should skip all 10 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -444,7 +456,7 @@ class ScalexSuite extends FunSuite:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 8, s"Should skip 8 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 9, s"Should skip 9 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────
@@ -1144,4 +1156,178 @@ class ScalexSuite extends FunSuite:
     // Should not crash and should show lines from 1 to 4
     val contentLines = output.split("\n").tail // skip header
     assert(contentLines.size >= 1 && contentLines.size <= 4, s"Lines: ${contentLines.size}")
+  }
+
+  // ── JSON output helpers ─────────────────────────────────────────────
+
+  test("jsonEscape handles special characters") {
+    assertEquals(jsonEscape("""hello "world""""), """hello \"world\"""")
+    assertEquals(jsonEscape("line1\nline2"), "line1\\nline2")
+    assertEquals(jsonEscape("tab\there"), "tab\\there")
+    assertEquals(jsonEscape("""back\slash"""), """back\\slash""")
+    assertEquals(jsonEscape("normal text"), "normal text")
+  }
+
+  test("jsonEscape handles control characters") {
+    val s = "before\u0001after"
+    val escaped = jsonEscape(s)
+    assert(escaped.contains("\\u0001"), s"Should escape control char: $escaped")
+  }
+
+  test("jsonSymbol produces valid JSON structure") {
+    val s = SymbolInfo("Foo", SymbolKind.Class, workspace.resolve("Foo.scala"), 10, "com.example",
+      List("Bar"), "class Foo extends Bar", List("deprecated"))
+    val json = jsonSymbol(s, workspace)
+    assert(json.startsWith("{"), s"Should start with {: $json")
+    assert(json.endsWith("}"), s"Should end with }: $json")
+    assert(json.contains(""""name":"Foo""""), s"Should contain name: $json")
+    assert(json.contains(""""kind":"class""""), s"Should contain kind: $json")
+    assert(json.contains(""""line":10"""), s"Should contain line: $json")
+    assert(json.contains(""""parents":["Bar"]"""), s"Should contain parents: $json")
+    assert(json.contains(""""annotations":["deprecated"]"""), s"Should contain annotations: $json")
+  }
+
+  test("jsonRef produces valid JSON structure") {
+    val r = Reference(workspace.resolve("Foo.scala"), 5, "val x = Foo()", Some("via alias F"))
+    val json = jsonRef(r, workspace)
+    assert(json.contains(""""line":5"""), s"Should contain line: $json")
+    assert(json.contains(""""context":"val x = Foo()""""), s"Should contain context: $json")
+    assert(json.contains(""""alias":"via alias F""""), s"Should contain alias: $json")
+  }
+
+  test("jsonRef null alias when no alias") {
+    val r = Reference(workspace.resolve("Foo.scala"), 5, "val x = Foo()")
+    val json = jsonRef(r, workspace)
+    assert(json.contains(""""alias":null"""), s"Should have null alias: $json")
+  }
+
+  test("jsonRefWithContext includes context lines") {
+    val ref = Reference(workspace.resolve("src/main/scala/com/example/UserService.scala"), 3, "trait UserService {")
+    val json = jsonRefWithContext(ref, workspace, 1)
+    assert(json.contains(""""contextLines":["""), s"Should have contextLines: $json")
+    assert(json.contains(""""match":true"""), s"Should mark matching line: $json")
+    assert(json.contains(""""match":false"""), s"Should mark non-matching lines: $json")
+  }
+
+  // ── Annotation extraction ─────────────────────────────────────────
+
+  test("extractSymbols captures annotations") {
+    val file = workspace.resolve("src/main/scala/com/example/Annotated.scala")
+    val (syms, _, _, _) = extractSymbols(file)
+    val oldThing = syms.find(_.name == "OldThing").get
+    assert(oldThing.annotations.contains("deprecated"), s"Should have @deprecated: ${oldThing.annotations}")
+  }
+
+  test("extractSymbols captures annotations with arguments") {
+    val file = workspace.resolve("src/main/scala/com/example/Annotated.scala")
+    val (syms, _, _, _) = extractSymbols(file)
+    val oldService = syms.find(_.name == "OldService").get
+    assert(oldService.annotations.contains("deprecated"), s"Should have @deprecated: ${oldService.annotations}")
+  }
+
+  test("extractSymbols captures annotations on vals") {
+    val file = workspace.resolve("src/main/scala/com/example/Annotated.scala")
+    val (syms, _, _, _) = extractSymbols(file)
+    val fastVal = syms.find(_.name == "fastVal").get
+    assert(fastVal.annotations.contains("specialized"), s"Should have @specialized: ${fastVal.annotations}")
+  }
+
+  test("findAnnotated finds annotated symbols") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findAnnotated("deprecated")
+    assert(results.nonEmpty, "Should find @deprecated symbols")
+    assert(results.exists(_.name == "OldThing"), s"Should find OldThing: ${results.map(_.name)}")
+    assert(results.exists(_.name == "OldService"), s"Should find OldService: ${results.map(_.name)}")
+  }
+
+  test("findAnnotated is case-insensitive") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val upper = idx.findAnnotated("DEPRECATED")
+    val lower = idx.findAnnotated("deprecated")
+    assertEquals(upper.size, lower.size)
+  }
+
+  test("findAnnotated returns empty for unknown annotation") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findAnnotated("nonexistent")
+    assert(results.isEmpty)
+  }
+
+  test("binary v5 roundtrip preserves annotations") {
+    val cacheDir = workspace.resolve(".scalex")
+    if Files.exists(cacheDir) then
+      Files.list(cacheDir).iterator().asScala.foreach(Files.delete)
+
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+
+    val loaded = IndexPersistence.load(workspace)
+    assert(loaded.isDefined, "Should load from cache")
+
+    val cachedFiles = loaded.get
+    val annotFile = cachedFiles.values.find(_.relativePath.contains("Annotated.scala")).get
+    val oldThing = annotFile.symbols.find(_.name == "OldThing").get
+    assert(oldThing.annotations.contains("deprecated"),
+      s"Annotations should survive roundtrip: ${oldThing.annotations}")
+  }
+
+  // ── Grep ──────────────────────────────────────────────────────────
+
+  test("grepFiles finds matching lines") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (results, timedOut) = idx.grepFiles("def findUser", noTests = false, pathFilter = None)
+    assert(!timedOut)
+    assert(results.nonEmpty, "Should find 'def findUser'")
+    assert(results.exists(_.contextLine.contains("def findUser")),
+      s"Should contain matching line: ${results.map(_.contextLine)}")
+  }
+
+  test("grepFiles supports regex") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (results, _) = idx.grepFiles("def\\s+create\\w+", noTests = false, pathFilter = None)
+    assert(results.nonEmpty, "Should match regex pattern")
+    assert(results.exists(_.contextLine.contains("createUser")),
+      s"Should find createUser: ${results.map(_.contextLine)}")
+  }
+
+  test("grepFiles returns empty for invalid regex") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (results, timedOut) = idx.grepFiles("[invalid", noTests = false, pathFilter = None)
+    assert(results.isEmpty, "Invalid regex should return empty")
+    assert(!timedOut)
+  }
+
+  test("grepFiles respects --no-tests filter") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (all, _) = idx.grepFiles("UserService", noTests = false, pathFilter = None)
+    val (filtered, _) = idx.grepFiles("UserService", noTests = true, pathFilter = None)
+    val allFiles = all.map(r => workspace.relativize(r.file).toString).distinct
+    val filteredFiles = filtered.map(r => workspace.relativize(r.file).toString).distinct
+    assert(allFiles.exists(_.contains("UserServiceSpec")), "Unfiltered should include test file")
+    assert(!filteredFiles.exists(_.contains("UserServiceSpec")), "Filtered should exclude test file")
+  }
+
+  test("grepFiles respects --path filter") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (results, _) = idx.grepFiles("UserService", noTests = false, pathFilter = Some("src/main"))
+    results.foreach { r =>
+      val rel = workspace.relativize(r.file).toString
+      assert(rel.startsWith("src/main"), s"Should be under src/main: $rel")
+    }
+  }
+
+  test("grepFiles results are sorted by file and line") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (results, _) = idx.grepFiles("User", noTests = false, pathFilter = None)
+    val pairs = results.map(r => (workspace.relativize(r.file).toString, r.line))
+    assertEquals(pairs, pairs.sorted)
   }

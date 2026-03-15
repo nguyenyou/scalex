@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `--json` flag on all commands — structured JSON output for programmatic consumption (#32)
+- `scalex annotated <annotation>` — find symbols with a specific annotation (e.g. `@deprecated`, `@main`); supports `--kind`, `--path`, `--no-tests` filters (#32)
+- `scalex grep <pattern>` — regex search inside `.scala` file contents with `--path`, `--no-tests` filtering and 20s timeout; supports `-C N` context lines (#32)
+- Annotation extraction from Scalameta AST during indexing — stored in binary index (format bumped to v5)
+
 ## [1.5.0] — 2026-03-15
 
 ### Added
