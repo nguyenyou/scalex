@@ -85,10 +85,9 @@ def gitLsFiles(workspace: Path): List[GitFile] =
 
 // ── Symbol extraction + bloom filter ────────────────────────────────────────
 
-def buildBloomFilter(file: Path): BloomFilter[CharSequence] =
-  val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
-  val source = try Files.readString(file) catch
-    case _: Exception => return bloom
+def buildBloomFilterFromSource(source: String): BloomFilter[CharSequence] =
+  val expected = math.max(500, source.length / 15)
+  val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), expected, 0.01)
   var i = 0
   val len = source.length
   while i < len do
@@ -135,10 +134,12 @@ private def extractImports(tree: Tree): (List[String], Map[String, String]) =
   (buf.toList, aliases.toMap)
 
 def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], List[String], Map[String, String]) =
-  val bloom = buildBloomFilter(file)
-
   val source = try Files.readString(file) catch
-    case _: Exception => return (Nil, bloom, Nil, Map.empty)
+    case _: Exception =>
+      val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
+      return (Nil, bloom, Nil, Map.empty)
+
+  val bloom = buildBloomFilterFromSource(source)
 
   val input = Input.VirtualFile(file.toString, source)
   val tree = try
@@ -286,7 +287,7 @@ object IndexPersistence:
       }
     finally out.close()
 
-  def load(workspace: Path): Option[Map[String, IndexedFile]] =
+  def load(workspace: Path, loadBlooms: Boolean = true): Option[Map[String, IndexedFile]] =
     val p = indexPath(workspace)
     if !Files.exists(p) then return None
 
@@ -337,12 +338,16 @@ object IndexPersistence:
 
           // Bloom filter
           val bloomLen = in.readInt()
-          val bloomBytes = new Array[Byte](bloomLen)
-          in.readFully(bloomBytes)
-          val bloom = BloomFilter.readFrom(
-            java.io.ByteArrayInputStream(bloomBytes),
-            Funnels.unencodedCharsFunnel()
-          )
+          val bloom = if loadBlooms then
+            val bloomBytes = new Array[Byte](bloomLen)
+            in.readFully(bloomBytes)
+            BloomFilter.readFrom(
+              java.io.ByteArrayInputStream(bloomBytes),
+              Funnels.unencodedCharsFunnel()
+            )
+          else
+            in.skipBytes(bloomLen)
+            null
 
           result(relPath) = IndexedFile(relPath, oid, syms.result(), bloom, imports, aliases)
           fi += 1
@@ -354,7 +359,7 @@ object IndexPersistence:
 
 // ── Workspace index ─────────────────────────────────────────────────────────
 
-class WorkspaceIndex(val workspace: Path):
+class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   var symbols: List[SymbolInfo] = Nil
   var filesByPath: Map[Path, List[SymbolInfo]] = Map.empty
   var symbolsByName: Map[String, List[SymbolInfo]] = Map.empty
@@ -363,6 +368,7 @@ class WorkspaceIndex(val workspace: Path):
   private var indexedFiles: List[IndexedFile] = Nil
   private var parentIndex: Map[String, List[SymbolInfo]] = Map.empty
 
+  private var distinctSymbols: List[SymbolInfo] = Nil
   private var packageToSymbols: Map[String, Set[String]] = Map.empty
   private var indexedByPath: Map[String, IndexedFile] = Map.empty
   private var aliasIndex: Map[String, List[(IndexedFile, String)]] = Map.empty
@@ -379,7 +385,7 @@ class WorkspaceIndex(val workspace: Path):
     gitFiles = gitLsFiles(workspace)
     fileCount = gitFiles.size
 
-    val cached = IndexPersistence.load(workspace)
+    val cached = IndexPersistence.load(workspace, needBlooms)
     val result = mutable.ListBuffer.empty[IndexedFile]
 
     cached match
@@ -421,30 +427,61 @@ class WorkspaceIndex(val workspace: Path):
       val p = workspace.resolve(f.relativePath)
       try Files.size(p) > 0 catch case _: Exception => false
     })
-    symbols = indexedFiles.flatMap(_.symbols)
-    filesByPath = symbols.groupBy(_.file)
-    symbolsByName = symbols.groupBy(_.name.toLowerCase)
-    packages = symbols.map(_.packageName).filter(_.nonEmpty).toSet
-    // Build parent → children index for impl command
+    // Single-pass over symbols: build all symbol-level indexes
+    val allSyms = mutable.ListBuffer.empty[SymbolInfo]
+    val byPath = mutable.HashMap.empty[Path, mutable.ListBuffer[SymbolInfo]]
+    val byName = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
+    val pkgs = mutable.HashSet.empty[String]
     val pIdx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-    symbols.foreach { s =>
-      s.parents.foreach { p =>
-        pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
+    val pkgToSyms = mutable.HashMap.empty[String, mutable.HashSet[String]]
+    val distinctSeen = mutable.HashSet.empty[(String, Path, Int)]
+    val distinctBuf = mutable.ListBuffer.empty[SymbolInfo]
+    indexedFiles.foreach { f =>
+      f.symbols.foreach { s =>
+        allSyms += s
+        byPath.getOrElseUpdate(s.file, mutable.ListBuffer.empty) += s
+        byName.getOrElseUpdate(s.name.toLowerCase, mutable.ListBuffer.empty) += s
+        if s.packageName.nonEmpty then pkgs += s.packageName
+        s.parents.foreach { p =>
+          pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
+        }
+        pkgToSyms.getOrElseUpdate(s.packageName, mutable.HashSet.empty) += s.name
+        val key = (s.name, s.file, s.line)
+        if distinctSeen.add(key) then distinctBuf += s
       }
     }
+    symbols = allSyms.toList
+    distinctSymbols = distinctBuf.toList
+    filesByPath = byPath.map((k, v) => k -> v.toList).toMap
+    symbolsByName = byName.map((k, v) => k -> v.toList).toMap
+    packages = pkgs.toSet
     parentIndex = pIdx.map((k, v) => k -> v.toList).toMap
-    packageToSymbols = symbols.groupBy(_.packageName).map((k, v) => k -> v.map(_.name).toSet)
-    indexedByPath = indexedFiles.map(f => f.relativePath -> f).toMap
+    packageToSymbols = pkgToSyms.map((k, v) => k -> v.toSet).toMap
+
+    // Single-pass over indexedFiles: build file-level indexes
+    val iByPath = mutable.HashMap.empty[String, IndexedFile]
     val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(IndexedFile, String)]]
     indexedFiles.foreach { f =>
+      iByPath(f.relativePath) = f
       f.aliases.foreach { (orig, alias) =>
         aIdx.getOrElseUpdate(orig, mutable.ListBuffer.empty) += ((f, alias))
       }
     }
+    indexedByPath = iByPath.toMap
     aliasIndex = aIdx.map((k, v) => k -> v.toList).toMap
     indexTimeMs = (System.nanoTime() - t0) / 1_000_000
 
-    IndexPersistence.save(workspace, indexedFiles)
+    if parsedCount > 0 then
+      if !needBlooms then
+        // Reload with blooms for newly parsed files that have null blooms
+        indexedFiles = indexedFiles.map { f =>
+          if f.identifierBloom == null then
+            val source = try Files.readString(workspace.resolve(f.relativePath)) catch
+              case _: Exception => ""
+            f.copy(identifierBloom = buildBloomFilterFromSource(source))
+          else f
+        }
+      IndexPersistence.save(workspace, indexedFiles)
 
   def findDefinition(name: String): List[SymbolInfo] =
     symbolsByName.getOrElse(name.toLowerCase, Nil)
@@ -458,7 +495,7 @@ class WorkspaceIndex(val workspace: Path):
     val prefix = mutable.ListBuffer.empty[SymbolInfo]
     val contains = mutable.ListBuffer.empty[SymbolInfo]
 
-    symbols.distinctBy(s => (s.name, s.file, s.line)).foreach { s =>
+    distinctSymbols.foreach { s =>
       val n = s.name.toLowerCase
       if n == lower then exact += s
       else if n.startsWith(lower) then prefix += s
@@ -475,7 +512,7 @@ class WorkspaceIndex(val workspace: Path):
   var timedOut: Boolean = false
 
   def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs): List[Reference] =
-    val candidates = indexedFiles.filter(_.identifierBloom.mightContain(name))
+    val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
     val aliasFiles = aliasIndex.getOrElse(name, Nil)
     val candidateSet = candidates.map(_.relativePath).toSet
     val extraFiles = aliasFiles.collect {
@@ -531,7 +568,7 @@ class WorkspaceIndex(val workspace: Path):
     }
 
   def findImports(name: String, timeoutMs: Long = defaultTimeoutMs): List[Reference] =
-    val candidates = indexedFiles.filter(_.identifierBloom.mightContain(name))
+    val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
@@ -839,7 +876,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
 
     case "batch" :: rest =>
       val workspace = resolveWorkspace(rest.headOption.getOrElse("."))
-      val idx = WorkspaceIndex(workspace)
+      val idx = WorkspaceIndex(workspace, needBlooms = true)
       idx.index()
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
@@ -863,6 +900,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             case ws :: arg :: tail => (resolveWorkspace(ws), arg :: tail)
             case Nil => (resolveWorkspace("."), Nil)
 
-      val idx = WorkspaceIndex(workspace)
+      val bloomCmds = Set("refs", "imports")
+      val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
       runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize)

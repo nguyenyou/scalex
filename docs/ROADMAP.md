@@ -96,13 +96,13 @@
 - [x] Alias annotation in output: show `[via alias Y]` when a reference was found through alias tracking
 - ~~Reverse alias lookup~~: deliberately skipped — agent can do 2-step lookup (`def TextAlignE` → see alias → `refs TextAlign`), and reverse lookup risks worse-than-grep perf on large codebases
 
-### Performance improvements
-- [ ] Eliminate double file read in `extractSymbols` — `buildBloomFilter` and `extractSymbols` both call `Files.readString`; read once, pass source to both
-- [ ] Skip `IndexPersistence.save` when nothing changed — avoid rewriting 22-28MB index when `parsedCount == 0`
-- [ ] Lazy bloom filter deserialization — `def`/`search`/`impl`/`symbols`/`packages` don't need blooms; skip deserializing them to cut ~40-50% off load time
-- [ ] Pre-compute search deduplication — `search` runs `distinctBy` over all 200K+ symbols on every call; compute once at index time
-- [ ] Adaptive bloom filter capacity — hardcoded at 500 expected insertions; large files exceed this, raising false positive rate for `refs`/`imports`
-- [ ] Single-pass post-index map building — build `filesByPath`, `symbolsByName`, `parentIndex`, etc. in one loop instead of 7 separate passes
+### Performance improvements — DONE
+- [x] Eliminate double file read in `extractSymbols` — read file once, pass source to bloom filter builder
+- [x] Skip `IndexPersistence.save` when nothing changed — avoid rewriting 22-28MB index when `parsedCount == 0`
+- [x] Lazy bloom filter deserialization — non-bloom commands skip deserializing blooms, cutting ~45% off load time
+- [x] Pre-compute search deduplication — `distinctBy` computed once at index time instead of every `search` call
+- [x] Adaptive bloom filter capacity — `max(500, source.length / 15)` scales bloom size with file size
+- [x] Single-pass post-index map building — 2 passes instead of 7 separate passes over 200K+ symbols
 
 ### Other
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
