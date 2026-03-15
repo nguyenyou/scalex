@@ -74,12 +74,16 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 
 ## Release workflow
 
-1. Bump `ScalexVersion` in `scalex.scala`
-2. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
-3. Move `[Unreleased]` section in `CHANGELOG.md` to the new version with date
-4. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
-5. Commit, push to main
-6. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries + creates release (done)
+### Step 1: Changelog PR (merge first)
+1. Move `[Unreleased]` section in `CHANGELOG.md` to the new version with date
+2. Create PR, get it merged to main
+
+### Step 2: Version bump + tag
+3. Bump `ScalexVersion` in `scalex.scala`
+4. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
+5. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
+6. Commit, push to main
+7. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries + creates release (done)
 
 ## Gotchas
 
