@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.2.0"
+val ScalexVersion = "1.3.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
