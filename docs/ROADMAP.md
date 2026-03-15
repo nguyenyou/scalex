@@ -103,6 +103,11 @@
 - [x] Pre-compute search deduplication — `distinctBy` computed once at index time instead of every `search` call
 - [x] Adaptive bloom filter capacity — `max(500, source.length / 15)` scales bloom size with file size
 - [x] Single-pass post-index map building — 2 passes instead of 7 separate passes over 200K+ symbols
+- [x] Merge `extractImports` into main AST traversal — eliminate redundant full tree walk per file
+- [x] Eliminate regex in `gitLsFiles` — direct char scanning instead of `split("\\s+")` per line
+- [x] Zero-alloc bloom filter inserts — `SubSeq` CharSequence view avoids `substring` allocation per identifier
+- [x] While-loop line scanning in `findReferences`/`findImports` — eliminate `zipWithIndex` tuple allocation per line
+- [x] Long-key dedup in `findReferences` — pack file hash + line number into a `Long` instead of string concatenation
 
 ### Parse error diagnostics — DONE
 - [x] Track which files had parse errors (not just the count)

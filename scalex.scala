@@ -74,16 +74,27 @@ def gitLsFiles(workspace: Path): List[GitFile] =
     val tabIdx = line.indexOf('\t')
     if tabIdx < 0 then None
     else
-      val parts = line.substring(0, tabIdx).split("\\s+")
       val path = line.substring(tabIdx + 1)
-      if parts.length >= 2 && path.endsWith(".scala") then
-        Some(GitFile(workspace.resolve(path), parts(1)))
+      if path.endsWith(".scala") then
+        // Format: "<mode> <oid> <stage>\t<path>" — extract OID between first and second space
+        val sp1 = line.indexOf(' ')
+        if sp1 >= 0 then
+          val sp2 = line.indexOf(' ', sp1 + 1)
+          if sp2 > sp1 then Some(GitFile(workspace.resolve(path), line.substring(sp1 + 1, sp2)))
+          else None
+        else None
       else None
   }.toList
   proc.waitFor()
   files
 
 // ── Symbol extraction + bloom filter ────────────────────────────────────────
+
+// Lightweight CharSequence view — avoids allocating a new String per identifier
+private class SubSeq(val s: String, val start: Int, val end: Int) extends CharSequence:
+  def length(): Int = end - start
+  def charAt(index: Int): Char = s.charAt(start + index)
+  def subSequence(s2: Int, e2: Int): CharSequence = SubSeq(s, start + s2, start + e2)
 
 def buildBloomFilterFromSource(source: String): BloomFilter[CharSequence] =
   val expected = math.max(500, source.length / 15)
@@ -94,8 +105,7 @@ def buildBloomFilterFromSource(source: String): BloomFilter[CharSequence] =
     if source(i).isLetter || source(i) == '_' then
       val start = i
       while i < len && (source(i).isLetterOrDigit || source(i) == '_') do i += 1
-      val word = source.substring(start, i)
-      if word.length >= 2 then bloom.put(word)
+      if i - start >= 2 then bloom.put(SubSeq(source, start, i))
     else
       i += 1
   bloom
@@ -114,24 +124,6 @@ private def buildSignature(name: String, kind: String, parents: List[String], tp
   val tps = if tparams.nonEmpty then tparams.mkString("[", ", ", "]") else ""
   val ext = if parents.nonEmpty then s" extends ${parents.mkString(" with ")}" else ""
   s"$kind $name$tps$ext"
-
-private def extractImports(tree: Tree): (List[String], Map[String, String]) =
-  val buf = mutable.ListBuffer.empty[String]
-  val aliases = mutable.Map.empty[String, String]
-  def visit(t: Tree): Unit =
-    t match
-      case i: Import =>
-        buf += i.toString()
-        i.importers.foreach { importer =>
-          importer.importees.foreach {
-            case r: Importee.Rename => aliases(r.name.value) = r.rename.value
-            case _ =>
-          }
-        }
-      case _ =>
-    t.children.foreach(visit)
-  visit(tree)
-  (buf.toList, aliases.toMap)
 
 def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], List[String], Map[String, String]) =
   val source = try Files.readString(file) catch
@@ -154,64 +146,73 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
         case _: Exception => return (Nil, bloom, Nil, Map.empty)
 
   val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
-  val (imports, aliases) = extractImports(tree)
   val buf = mutable.ListBuffer.empty[SymbolInfo]
+  val importBuf = mutable.ListBuffer.empty[String]
+  val aliases = mutable.Map.empty[String, String]
 
-  def visit(t: Tree): Unit = t match
-    case d: Defn.Class =>
-      val parents = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "class", parents, tparams)
-      buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, sig)
-    case d: Defn.Trait =>
-      val parents = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "trait", parents, tparams)
-      buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, sig)
-    case d: Defn.Object =>
-      val parents = extractParents(d.templ)
-      val sig = buildSignature(d.name.value, "object", parents)
-      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig)
-    case d: Defn.Enum =>
-      val parents = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "enum", parents, tparams)
-      buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, sig)
-    case d: Defn.Given =>
-      if d.name.value.nonEmpty then
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, s"given ${d.name.value}")
-    case d: Defn.GivenAlias =>
-      if d.name.value.nonEmpty then
-        val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, sig)
-    case d: Defn.Type =>
-      val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
-      buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, sig)
-    case d: Defn.Def =>
-      val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
-      val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-      val sig = s"def ${d.name.value}$params$ret"
-      buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, sig)
-    case d: Defn.Val =>
-      d.pats.foreach {
-        case Pat.Var(name) =>
-          val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-          buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, s"val ${name.value}$tpe")
-        case _ =>
-      }
-    case d: Defn.ExtensionGroup =>
-      val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
-        s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})"
-      ).getOrElse("")
-      buf += SymbolInfo("<extension>", SymbolKind.Extension, file, d.pos.startLine + 1, pkg, Nil, s"extension $recv")
-    case _ =>
+  // Single-pass: extract symbols AND imports in one traversal
+  def visit(t: Tree): Unit = {
+    t match
+      case i: Import =>
+        importBuf += i.toString()
+        i.importers.foreach { importer =>
+          importer.importees.foreach {
+            case r: Importee.Rename => aliases(r.name.value) = r.rename.value
+            case _ =>
+          }
+        }
+      case d: Defn.Class =>
+        val parents = extractParents(d.templ)
+        val tparams = d.tparamClause.values.map(_.name.value)
+        val sig = buildSignature(d.name.value, "class", parents, tparams)
+        buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, sig)
+      case d: Defn.Trait =>
+        val parents = extractParents(d.templ)
+        val tparams = d.tparamClause.values.map(_.name.value)
+        val sig = buildSignature(d.name.value, "trait", parents, tparams)
+        buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, sig)
+      case d: Defn.Object =>
+        val parents = extractParents(d.templ)
+        val sig = buildSignature(d.name.value, "object", parents)
+        buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig)
+      case d: Defn.Enum =>
+        val parents = extractParents(d.templ)
+        val tparams = d.tparamClause.values.map(_.name.value)
+        val sig = buildSignature(d.name.value, "enum", parents, tparams)
+        buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, sig)
+      case d: Defn.Given =>
+        if d.name.value.nonEmpty then
+          buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, s"given ${d.name.value}")
+      case d: Defn.GivenAlias =>
+        if d.name.value.nonEmpty then
+          val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
+          buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, sig)
+      case d: Defn.Type =>
+        val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
+        buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, sig)
+      case d: Defn.Def =>
+        val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+        val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+        val sig = s"def ${d.name.value}$params$ret"
+        buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, sig)
+      case d: Defn.Val =>
+        d.pats.foreach {
+          case Pat.Var(name) =>
+            val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+            buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, s"val ${name.value}$tpe")
+          case _ =>
+        }
+      case d: Defn.ExtensionGroup =>
+        val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
+          s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})"
+        ).getOrElse("")
+        buf += SymbolInfo("<extension>", SymbolKind.Extension, file, d.pos.startLine + 1, pkg, Nil, s"extension $recv")
+      case _ =>
+    t.children.foreach(visit)
+  }
 
-  def traverse(t: Tree): Unit =
-    visit(t)
-    t.children.foreach(traverse)
-
-  traverse(tree)
-  (buf.toList, bloom, imports, aliases)
+  visit(tree)
+  (buf.toList, bloom, importBuf.toList, aliases.toMap)
 
 // ── Binary persistence ──────────────────────────────────────────────────────
 
@@ -547,24 +548,29 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
-    val seen = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    val seen = java.util.concurrent.ConcurrentHashMap.newKeySet[Long]()
     allCandidates.asJava.parallelStream().forEach { idxFile =>
-      if System.nanoTime() < deadline then
+      if System.nanoTime() < deadline then {
         val path = workspace.resolve(idxFile.relativePath)
-        val lines = try Files.readAllLines(path).asScala catch
-          case _: Exception => Seq.empty
+        val lines = try Files.readAllLines(path) catch
+          case _: Exception => java.util.Collections.emptyList[String]()
         val aliasName = fileAliasMap.get(idxFile.relativePath)
-        lines.zipWithIndex.foreach {
-          case (line, idx) if System.nanoTime() < deadline =>
-            val key = s"${idxFile.relativePath}:${idx + 1}"
-            if containsWord(line, name) && seen.add(key) then
-              results.add(Reference(path, idx + 1, line.trim))
-            else aliasName match
-              case Some(alias) if containsWord(line, alias) && seen.add(key) =>
-                results.add(Reference(path, idx + 1, line.trim, Some(s"via alias $alias")))
-              case _ =>
-          case _ =>
+        val fileHash = idxFile.relativePath.hashCode.toLong << 32
+        var idx = 0
+        val sz = lines.size()
+        while idx < sz && System.nanoTime() < deadline do {
+          val line = lines.get(idx)
+          val lineNum = idx + 1
+          val key = fileHash | lineNum.toLong
+          if containsWord(line, name) && seen.add(key) then
+            results.add(Reference(path, lineNum, line.trim))
+          else aliasName match
+            case Some(alias) if containsWord(line, alias) && seen.add(key) =>
+              results.add(Reference(path, lineNum, line.trim, Some(s"via alias $alias")))
+            case _ =>
+          idx += 1
         }
+      }
       else timedOut = true
     }
     results.asScala.toList
@@ -595,18 +601,23 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
-    val resultPaths = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    val resultPaths = java.util.concurrent.ConcurrentHashMap.newKeySet[Long]()
     candidates.asJava.parallelStream().forEach { idxFile =>
-      if System.nanoTime() < deadline then
+      if System.nanoTime() < deadline then {
         val path = workspace.resolve(idxFile.relativePath)
-        val lines = try Files.readAllLines(path).asScala catch
-          case _: Exception => Seq.empty
-        lines.zipWithIndex.foreach {
-          case (line, idx) if System.nanoTime() < deadline && line.trim.startsWith("import ") && containsWord(line, name) =>
+        val lines = try Files.readAllLines(path) catch
+          case _: Exception => java.util.Collections.emptyList[String]()
+        val fileHash = idxFile.relativePath.hashCode.toLong << 32
+        var idx = 0
+        val sz = lines.size()
+        while idx < sz && System.nanoTime() < deadline do {
+          val line = lines.get(idx)
+          if line.trim.startsWith("import ") && containsWord(line, name) then
             results.add(Reference(path, idx + 1, line.trim))
-            resultPaths.add(s"${idxFile.relativePath}:${idx + 1}")
-          case _ =>
+            resultPaths.add(fileHash | (idx + 1).toLong)
+          idx += 1
         }
+      }
       else timedOut = true
     }
 
@@ -621,13 +632,17 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
             if targetPkgs.contains(pkg) then
               val path = workspace.resolve(idxFile.relativePath)
               try {
-                val lines = Files.readAllLines(path).asScala
-                lines.zipWithIndex.foreach { case (line, lineIdx) =>
-                  if line.trim == imp.trim then
-                    val key = s"${idxFile.relativePath}:${lineIdx + 1}"
+                val lines = Files.readAllLines(path)
+                val fileHash = idxFile.relativePath.hashCode.toLong << 32
+                var lineIdx = 0
+                val sz = lines.size()
+                while lineIdx < sz do {
+                  if lines.get(lineIdx).trim == imp.trim then
+                    val key = fileHash | (lineIdx + 1).toLong
                     if !resultPaths.contains(key) then
-                      results.add(Reference(path, lineIdx + 1, line.trim))
+                      results.add(Reference(path, lineIdx + 1, lines.get(lineIdx).trim))
                       resultPaths.add(key)
+                  lineIdx += 1
                 }
               } catch { case _: Exception => () }
 
