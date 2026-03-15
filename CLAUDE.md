@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Scalex is a Scala code intelligence CLI for AI agents. It provides fast symbol search, find definitions, and find references — without requiring an IDE, build server, or compilation. Designed as a Claude Code plugin.
 
+## IMPORTANT: No company references
+
+NEVER mention any company names, internal project names, proprietary codebases, or organization-specific details in any output — including commit messages, PR descriptions, changelogs, roadmaps, documentation, code comments, or conversations. Always use generic examples (e.g. `HttpMessageService`, `UserServiceLive`) instead.
+
 ## Workflow
 
 - Before planning or implementing any feature, first add it to `docs/ROADMAP.md` under the appropriate section
