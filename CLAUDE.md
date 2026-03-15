@@ -91,7 +91,11 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 6. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
 7. Commit, push to main
 
+Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`), NOT inside `plugin/`.
+
 ## Gotchas
+
+- **Protected main branch**: Cannot push directly to main — all changes require a PR
 
 - **Guava group ID**: `com.google.guava:guava`, NOT `com.google.common:guava`
 - **GraalVM native image**: Guava needs `--initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies` (see `build-native.sh`)
