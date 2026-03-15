@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Performance
+- Lazy bloom filter deserialization — non-bloom commands (`def`, `search`, `impl`, `symbols`, `packages`) skip deserializing blooms, cutting ~45% off index load time
+- Skip index save when nothing changed — warm index no longer writes 22MB to disk when all files hit OID cache
+- Eliminate double file read — `extractSymbols` reads each file once instead of twice (bloom filter + symbol extraction)
+- Single-pass post-index map building — symbol/file maps built in 2 passes instead of 7 separate passes over 200K+ symbols
+- Pre-computed search deduplication — `distinctBy` computed once at index time instead of every `search` call
+- Adaptive bloom filter capacity — `max(500, source.length / 15)` scales bloom size with file size, reducing false positives for large files
+
 ## [1.1.0] — 2026-03-14
 
 ### Added
