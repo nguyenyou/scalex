@@ -54,7 +54,7 @@ Build the fastest possible Scala code navigation tool, designed from the ground 
 
 ## How It Works
 
-The entire tool is ~800 lines of Scala 3 in a single file. Here's the architecture:
+The entire tool is ~1000 lines of Scala 3 in a single file. Here's the architecture:
 
 ```
                          ┌─────────────────┐
@@ -62,7 +62,8 @@ The entire tool is ~800 lines of Scala 3 in a single file. Here's the architectu
                          │                 │
                          │  search · def   │
                          │  impl · refs    │
-                         │  imports · batch│
+                         │  imports · file │
+                         │  batch          │
                          └────────┬────────┘
                                   │
                          ┌────────▼────────┐
@@ -138,7 +139,7 @@ The entire tool is ~800 lines of Scala 3 in a single file. Here's the architectu
 | Small library | 92 | 259 | ~50ms | ~10ms |
 | Mill build tool | 1,415 | 12,778 | 214ms | 50ms |
 | Production monorepo | 13,958 | 214,803 | 3.3s | 364ms |
-| Scala 3 compiler | 17,731 | 202,916 | 3.1s | 723ms |
+| Scala 3 compiler | 17,731 | 202,916 | 3.3s | 777ms |
 
 ## Quick Start
 
@@ -183,10 +184,12 @@ Place the `scalex/` folder wherever your agent reads skills from.
 cd /path/to/your/scala/project
 
 scalex search Service --kind trait      # Find all traits with "Service" in the name
+scalex search hms                       # Fuzzy camelCase: finds HttpMessageService
 scalex def UserService --verbose        # Where is it defined? (with signature)
 scalex impl UserService                 # Who extends this trait?
 scalex refs UserService --categorize    # Who uses it? (grouped by how)
 scalex imports UserService              # Who imports it?
+scalex file PaymentService              # Find files by name (fuzzy camelCase)
 scalex symbols src/main/scala/App.scala # What's in this file?
 scalex packages                         # What packages exist?
 ```
@@ -210,7 +213,7 @@ Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.g
 git clone https://github.com/nguyenyou/scalex.git
 cd scalex
 ./build-native.sh
-# Output: 26MB standalone binary, no JVM needed
+# Output: 28MB standalone binary, no JVM needed
 cp scalex ~/.local/bin/scalex
 ```
 
@@ -223,6 +226,7 @@ scalex impl <trait>             Who extends this trait/class?   (aka: find imple
 scalex refs <symbol>            Who uses this symbol?           (aka: find references)
 scalex imports <symbol>         Who imports this symbol?        (aka: import graph)
 scalex symbols <file>           What's defined in this file?    (aka: file symbols)
+scalex file <query>             Search files by name            (aka: find file)
 scalex packages                 What packages exist?            (aka: list packages)
 scalex index                    Rebuild the index               (aka: reindex)
 scalex batch                    Run multiple queries at once    (aka: batch mode)
@@ -244,6 +248,8 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 - **`--categorize`** on `refs` groups results by relationship — the agent sees who defines it, extends it, imports it, and uses it in one call
 - **`impl`** finds concrete implementations of a trait — much more targeted than `refs`
 - **`imports`** shows dependency relationships — which files depend on this symbol
+- **Fuzzy camelCase search** — `search "hms"` finds `HttpMessageService`, `file "psl"` finds `PaymentServiceLive.scala`
+- **`file`** command searches file names with the same fuzzy matching — like IntelliJ's file search
 - **`batch`** mode loads the index once for multiple queries — 5 queries in ~1s instead of ~5s
 - **Fallback hints** on "not found" — tells the agent how many files were searched and suggests using Grep/Glob as fallback
 - **20s timeout** on reference search — prevents hangs on massive repos, shows partial results
@@ -364,7 +370,7 @@ scalex refs Compiler --categorize --limit 5
 
 **What AI agents actually prefer**: It depends on the task.
 
-- **"Find a file by name"** → Glob wins. Scalex doesn't do file search.
+- **"Find a file by name"** → Both work. Glob for exact patterns, `scalex file` for fuzzy camelCase matching.
 - **"Does this string appear anywhere?"** → Grep wins. Faster, simpler.
 - **"Where is this trait defined?"** → Scalex wins. Finds givens, shows package + signature.
 - **"Who implements this trait?"** → Scalex wins. `impl` vs multi-step grep + filter.
@@ -387,7 +393,7 @@ The name also nods to "Scala" itself — Italian for "staircase" or "scale" — 
 
 The Scalex mascot is a **kestrel** — the smallest falcon. It was chosen because it mirrors the tool's core qualities:
 
-- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~800 lines, single 26MB binary)
+- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~1000 lines, single 28MB binary)
 - **Incredible eyesight** — spots symbols across 14k files, like a kestrel spots prey from 50 meters
 - **Hovers before diving** — systematically scans an area before striking, like indexing before querying
 - **Lives alongside people** — kestrels thrive near humans, like Scalex works alongside AI agents
@@ -398,7 +404,7 @@ See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
 Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team.
 
-Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~800 lines of Scala 3.
+Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~1000 lines of Scala 3.
 
 - **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
 - **From Scalameta**: the parser that makes source-level symbol extraction possible
