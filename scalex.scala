@@ -52,7 +52,8 @@ case class IndexedFile(
     symbols: List[SymbolInfo],
     identifierBloom: BloomFilter[CharSequence],
     imports: List[String] = Nil,
-    aliases: Map[String, String] = Map.empty
+    aliases: Map[String, String] = Map.empty,
+    parseFailed: Boolean = false
 )
 
 enum RefCategory:
@@ -142,11 +143,11 @@ private def extractImports(tree: Tree): (List[String], Map[String, String]) =
   visit(tree)
   (buf.toList, aliases.toMap)
 
-def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], List[String], Map[String, String]) =
+def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], List[String], Map[String, String], Boolean) =
   val source = try Files.readString(file) catch
     case _: Exception =>
       val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
-      return (Nil, bloom, Nil, Map.empty)
+      return (Nil, bloom, Nil, Map.empty, true)
 
   val bloom = buildBloomFilterFromSource(source)
 
@@ -160,7 +161,7 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
         given scala.meta.Dialect = scala.meta.dialects.Scala213
         input.parse[Source].get
       catch
-        case _: Exception => return (Nil, bloom, Nil, Map.empty)
+        case _: Exception => return (Nil, bloom, Nil, Map.empty, true)
 
   val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
   val (imports, aliases) = extractImports(tree)
@@ -184,6 +185,10 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
       val sig = buildSignature(d.name.value, "object", parents)
       val annots = extractAnnotations(d.mods)
       buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+    case d: Pkg.Object =>
+      val parents = extractParents(d.templ)
+      val sig = buildSignature(d.name.value, "object", parents)
+      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig)
     case d: Defn.Enum =>
       val parents = extractParents(d.templ)
       val tparams = d.tparamClause.values.map(_.name.value)
@@ -229,7 +234,7 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
     t.children.foreach(traverse)
 
   traverse(tree)
-  (buf.toList, bloom, imports, aliases)
+  (buf.toList, bloom, imports, aliases, false)
 
 // ── Source parsing helper ────────────────────────────────────────────────────
 
@@ -864,7 +869,7 @@ def astPatternSearch(idx: WorkspaceIndex, workspace: Path,
 
 object IndexPersistence:
   private val MAGIC = 0x53584458
-  private val VERSION: Byte = 5
+  private val VERSION: Byte = 6
 
   def indexPath(workspace: Path): Path = workspace.resolve(".scalex").resolve("index.bin")
 
@@ -934,6 +939,9 @@ object IndexPersistence:
         val ba = bloomBytes.toByteArray
         out.writeInt(ba.length)
         out.write(ba)
+
+        // Parse failed flag
+        out.writeBoolean(f.parseFailed)
       }
     finally out.close()
 
@@ -1001,7 +1009,10 @@ object IndexPersistence:
             in.skipBytes(bloomLen)
             null
 
-          result(relPath) = IndexedFile(relPath, oid, syms.result(), bloom, imports, aliases)
+          // Parse failed flag
+          val parseFailed = in.readBoolean()
+
+          result(relPath) = IndexedFile(relPath, oid, syms.result(), bloom, imports, aliases, parseFailed)
           fi += 1
 
         Some(result.toMap)
@@ -1060,8 +1071,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
         toParse.asJava.parallelStream().forEach { gf =>
           val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports, aliases) = extractSymbols(gf.path)
-          toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases))
+          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+          toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
         }
         result ++= toParseQueue.asScala
         parsedCount = toParse.size
@@ -1070,18 +1081,15 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         val queue = ConcurrentLinkedQueue[IndexedFile]()
         gitFiles.asJava.parallelStream().forEach { gf =>
           val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports, aliases) = extractSymbols(gf.path)
-          queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases))
+          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+          queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
         }
         result ++= queue.asScala
         parsedCount = gitFiles.size
 
     indexedFiles = result.toList
     parseFailedFiles = indexedFiles.collect {
-      case f if f.symbols.isEmpty && {
-        val p = workspace.resolve(f.relativePath)
-        try Files.size(p) > 0 catch case _: Exception => false
-      } => f.relativePath
+      case f if f.parseFailed => f.relativePath
     }
     parseFailures = parseFailedFiles.size
     // Single-pass over symbols: build all symbol-level indexes
