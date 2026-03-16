@@ -263,7 +263,7 @@ Config format (`.scalex/config.json` in primary workspace):
 - `IndexPersistence` format — no schema change, slim index is a valid v6 file with zeroed optional fields
 - No new CLI flags except `--reindex-includes` — cross-project is config-driven, not flag-driven
 
-**Benchmarks** (stargazer 14k files + design 2.4k files after excluding 11.9k scalablytyped):
+**Benchmarks** (primary 14k files + included 2.4k files after excluding 11.9k generated files):
 
 | Scenario | Time |
 |---|---|
@@ -272,7 +272,7 @@ Config format (`.scalex/config.json` in primary workspace):
 | Cold include (first run, one-time) | ~4s |
 | `--reindex-includes` (clean re-parse) | ~4s |
 | Per-query cost | <1ms (unchanged) |
-| Include cache size | 1.4MB slim (`include-design.bin`) |
+| Include cache size | 1.4MB slim |
 | Primary index size | 30MB (unchanged) |
 
 ### Other
