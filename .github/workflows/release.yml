@@ -42,7 +42,7 @@ jobs:
 
       - name: Build native image
         run: |
-          scala-cli --power package --native-image scalex.scala \
+          scala-cli --power package --native-image src/ \
             -o ${{ matrix.artifact }} \
             --force \
             -- --no-fallback \
@@ -54,7 +54,7 @@ jobs:
           ./${{ matrix.artifact }} index .
           ./${{ matrix.artifact }} search . Scalex
           ./${{ matrix.artifact }} def . SymbolKind
-          ./${{ matrix.artifact }} symbols . scalex.scala
+          ./${{ matrix.artifact }} symbols . src/model.scala
 
       - name: Generate checksum
         run: shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
