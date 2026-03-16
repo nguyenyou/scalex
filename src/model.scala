@@ -102,3 +102,53 @@ case class CommandContext(
   val fmtRef: Reference => String =
     if contextLines > 0 then r => formatRefWithContext(r, workspace, contextLines)
     else r => formatRef(r, workspace)
+
+// ── CmdResult types ────────────────────────────────────────────────────────
+
+case class NotFoundHint(symbol: String, fileCount: Int, parseFailures: Int, cmd: String, batchMode: Boolean, looksLikePath: Boolean)
+
+case class MemberSectionData(
+  file: Path, ownerKind: SymbolKind, packageName: String, line: Int,
+  ownMembers: List[MemberInfo],
+  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])]
+)
+
+case class DocEntryData(sym: SymbolInfo, doc: Option[String])
+
+case class OverviewData(
+  fileCount: Int, symbolCount: Int, packageCount: Int,
+  symbolsByKind: List[(kind: SymbolKind, count: Int)],
+  topPackages: List[(pkg: String, count: Int)],
+  mostExtended: List[(name: String, count: Int)],
+  pkgDeps: Map[String, Set[String]],
+  hubTypes: List[(name: String, score: Int)],
+  hasArchitecture: Boolean
+)
+
+case class TestCaseResult(name: String, line: Int, body: Option[BodyInfo])
+case class TestSuiteResult(name: String, file: Path, line: Int, tests: List[TestCaseResult])
+
+enum CmdResult:
+  case SymbolList(header: String, symbols: List[SymbolInfo], total: Int, emptyMessage: String = "", truncate: Boolean = true)
+  case RefList(header: String, refs: List[Reference], timedOut: Boolean, hint: Option[String] = None, useContext: Boolean = true, emptyMessage: String = "", stderrHint: Option[String] = None)
+  case CategorizedRefs(symbol: String, grouped: Map[RefCategory, List[Reference]], targetPkgs: Set[String], timedOut: Boolean, stderrHint: Option[String] = None)
+  case FlatRefs(symbol: String, refs: List[Reference], targetPkgs: Set[String], timedOut: Boolean)
+  case StringList(header: String, items: List[String], total: Int, emptyMessage: String = "")
+  case IndexStats(fileCount: Int, symbolCount: Int, packageCount: Int, symbolsByKind: List[(kind: SymbolKind, count: Int)], indexTimeMs: Long, cachedLoad: Boolean, parsedCount: Int, skippedCount: Int, parseFailures: Int, parseFailedFiles: List[String])
+  case MemberSections(symbol: String, sections: List[MemberSectionData])
+  case DocEntries(symbol: String, entries: List[DocEntryData])
+  case Overview(data: OverviewData)
+  case SourceBlocks(symbol: String, blocks: List[(file: Path, body: BodyInfo)])
+  case TestSuites(suites: List[TestSuiteResult], showBody: Boolean, emptyMessage: String = "No test suites found")
+  case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String])
+  case HierarchyResult(symbol: String, tree: HierarchyTree)
+  case OverrideList(header: String, results: List[OverrideInfo])
+  case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importCount: Int)
+  case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
+  case Scopes(file: Path, line: Int, scopes: List[ScopeInfo])
+  case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])
+  case AstMatches(filters: String, results: List[AstPatternMatch])
+  case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
+  case Packages(packages: List[String])
+  case NotFound(message: String, hint: NotFoundHint)
+  case UsageError(message: String)

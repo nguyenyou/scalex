@@ -76,3 +76,673 @@ def formatRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
     buf.append(s"\n    $marker $lineNum | $lineContent")
     i += 1
   buf.toString
+
+// ── Render ─────────────────────────────────────────────────────────────────
+
+def render(result: CmdResult, ctx: CommandContext): Unit = {
+  import CmdResult.*
+  result match {
+    case r: SymbolList      => renderSymbolList(r, ctx)
+    case r: RefList          => renderRefList(r, ctx)
+    case r: CategorizedRefs  => renderCategorizedRefs(r, ctx)
+    case r: FlatRefs         => renderFlatRefs(r, ctx)
+    case r: StringList       => renderStringList(r, ctx)
+    case r: IndexStats       => renderIndexStats(r, ctx)
+    case r: MemberSections   => renderMemberSections(r, ctx)
+    case r: DocEntries       => renderDocEntries(r, ctx)
+    case r: Overview         => renderOverview(r, ctx)
+    case r: SourceBlocks     => renderSourceBlocks(r, ctx)
+    case r: TestSuites       => renderTestSuites(r, ctx)
+    case r: CoverageReport   => renderCoverageReport(r, ctx)
+    case r: HierarchyResult  => renderHierarchyResult(r, ctx)
+    case r: OverrideList     => renderOverrideList(r, ctx)
+    case r: Explanation      => renderExplanation(r, ctx)
+    case r: Dependencies     => renderDependencies(r, ctx)
+    case r: Scopes           => renderScopes(r, ctx)
+    case r: SymbolDiff       => renderSymbolDiff(r, ctx)
+    case r: AstMatches       => renderAstMatches(r, ctx)
+    case r: GrepCount        => renderGrepCount(r, ctx)
+    case r: Packages         => renderPackages(r, ctx)
+    case r: NotFound         => renderNotFound(r, ctx)
+    case r: UsageError       => println(r.message)
+  }
+}
+
+private def renderHint(h: NotFoundHint): Unit = {
+  if h.batchMode then
+    println(s"  not found (0 matches in ${h.fileCount} files)")
+  else {
+    if h.looksLikePath then
+      println(s"""  Note: "${h.symbol}" looks like a path. Did you mean: scalex ${h.cmd} -w <workspace> ${h.symbol}?""")
+    println(s"  Hint: scalex indexes ${h.fileCount} git-tracked .scala files.")
+    if h.parseFailures > 0 then
+      println(s"  ${h.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
+    println(s"  Fallback: use Grep, Glob, or Read tools to search manually.")
+  }
+}
+
+private def mkNotFoundHint(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
+  NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode, symbol.contains("/") || symbol.startsWith("."))
+
+private def renderSymbolList(r: CmdResult.SymbolList, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val items = if r.truncate then r.symbols.take(ctx.limit) else r.symbols
+    val arr = items.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
+    println(arr)
+  } else {
+    if r.symbols.isEmpty then {
+      if r.emptyMessage.nonEmpty then println(r.emptyMessage)
+    } else {
+      println(r.header)
+      val items = if r.truncate then r.symbols.take(ctx.limit) else r.symbols
+      items.foreach(s => println(ctx.fmt(s, ctx.workspace)))
+      if r.truncate && r.total > ctx.limit then println(s"  ... and ${r.total - ctx.limit} more")
+    }
+  }
+}
+
+private def renderRefList(r: CmdResult.RefList, ctx: CommandContext): Unit = {
+  r.stderrHint.foreach(System.err.println)
+  if ctx.jsonOutput then {
+    val jFn: Reference => String = if r.useContext then ctx.jRef else ref => jsonRef(ref, ctx.workspace)
+    val arr = r.refs.take(ctx.limit).map(jFn).mkString("[", ",", "]")
+    val hintStr = r.hint.getOrElse("")
+    println(s"""{"results":$arr,"timedOut":${r.timedOut}$hintStr}""")
+  } else {
+    if r.refs.isEmpty then {
+      if r.emptyMessage.nonEmpty then println(r.emptyMessage)
+    } else {
+      println(r.header)
+      val fFn: Reference => String = if r.useContext then ctx.fmtRef else ref => formatRef(ref, ctx.workspace)
+      r.refs.take(ctx.limit).foreach(ref => println(fFn(ref)))
+      if r.refs.size > ctx.limit then println(s"  ... and ${r.refs.size - ctx.limit} more")
+    }
+  }
+}
+
+private def renderCategorizedRefs(r: CmdResult.CategorizedRefs, ctx: CommandContext): Unit = {
+  r.stderrHint.foreach(System.err.println)
+  if ctx.jsonOutput then {
+    val entries = r.grouped.map { (cat, refs) =>
+      val arr = refs.take(ctx.limit).map(ctx.jRef).mkString("[", ",", "]")
+      s""""${cat.toString}":$arr"""
+    }.mkString(",")
+    println(s"""{"categories":{$entries},"timedOut":${r.timedOut}}""")
+  } else {
+    val total = r.grouped.values.map(_.size).sum
+    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    println(s"""References to "${r.symbol}" — $total found:$suffix""")
+    val confidenceOrder = List(Confidence.High, Confidence.Medium, Confidence.Low)
+    confidenceOrder.foreach { conf =>
+      val catRefs = r.grouped.flatMap { (cat, refs) =>
+        refs.map(ref => (cat, ref, ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
+      }.filter(_._3 == conf).toList
+      if catRefs.nonEmpty then {
+        val label = conf match {
+          case Confidence.High   => "High confidence (import-matched)"
+          case Confidence.Medium => "Medium confidence (wildcard import)"
+          case Confidence.Low    => "Low confidence (no matching import)"
+        }
+        println(s"\n  $label:")
+        val byCat = catRefs.groupBy(_._1)
+        val order = List(RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
+                         RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
+        order.foreach { cat =>
+          byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
+            println(s"\n    ${cat.toString}:")
+            entries.take(ctx.limit).foreach((_, ref, _) => println(s"    ${ctx.fmtRef(ref)}"))
+            if entries.size > ctx.limit then println(s"      ... and ${entries.size - ctx.limit} more")
+          }
+        }
+      }
+    }
+  }
+}
+
+private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.refs.take(ctx.limit).map(ctx.jRef).mkString("[", ",", "]")
+    println(s"""{"results":$arr,"timedOut":${r.timedOut}}""")
+  } else {
+    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    println(s"""References to "${r.symbol}" — ${r.refs.size} found:$suffix""")
+    val annotated = r.refs.map(ref => (ref, ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
+    val sorted = annotated.sortBy { case (_, c) => c.ordinal }
+    var lastConf: Option[Confidence] = None
+    var shown = 0
+    sorted.foreach { case (ref, conf) =>
+      if shown < ctx.limit then {
+        if !lastConf.contains(conf) then {
+          val label = conf match {
+            case Confidence.High   => "High confidence"
+            case Confidence.Medium => "Medium confidence"
+            case Confidence.Low    => "Low confidence"
+          }
+          println(s"\n  [$label]")
+          lastConf = Some(conf)
+        }
+        println(ctx.fmtRef(ref))
+        shown += 1
+      }
+    }
+    if r.refs.size > ctx.limit then println(s"  ... and ${r.refs.size - ctx.limit} more")
+  }
+}
+
+private def renderStringList(r: CmdResult.StringList, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.items.take(ctx.limit).map(f => s""""${jsonEscape(f)}"""").mkString("[", ",", "]")
+    println(arr)
+  } else {
+    if r.items.isEmpty then {
+      if r.emptyMessage.nonEmpty then println(r.emptyMessage)
+    } else {
+      println(r.header)
+      r.items.take(ctx.limit).foreach(f => println(s"  $f"))
+      if r.total > ctx.limit then println(s"  ... and ${r.total - ctx.limit} more")
+    }
+  }
+}
+
+private def renderIndexStats(r: CmdResult.IndexStats, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val byKind = r.symbolsByKind.map((k, c) => s""""${k.toString.toLowerCase}":$c""").mkString(",")
+    println(s"""{"fileCount":${r.fileCount},"symbolCount":${r.symbolCount},"packageCount":${r.packageCount},"symbolsByKind":{$byKind},"indexTimeMs":${r.indexTimeMs},"cachedLoad":${r.cachedLoad},"parsedCount":${r.parsedCount},"skippedCount":${r.skippedCount},"parseFailures":${r.parseFailures}}""")
+  } else {
+    if r.cachedLoad then
+      println(s"Indexed ${r.fileCount} files (${r.skippedCount} cached, ${r.parsedCount} parsed) in ${r.indexTimeMs}ms")
+    else
+      println(s"Indexed ${r.fileCount} files, ${r.symbolCount} symbols in ${r.indexTimeMs}ms")
+    println(s"Packages: ${r.packageCount}")
+    println()
+    println("Symbols by kind:")
+    r.symbolsByKind.foreach { (kind, count) =>
+      println(s"  ${kind.toString.padTo(10, ' ')} $count")
+    }
+    if r.parseFailures > 0 then {
+      println(s"\n${r.parseFailures} files had parse errors:")
+      if ctx.verbose then
+        r.parseFailedFiles.sorted.foreach(f => println(s"  $f"))
+      else
+        println("  Run with --verbose to see the list.")
+    }
+  }
+}
+
+private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val allMembers = r.sections.flatMap { sec =>
+      val ownMembers = sec.ownMembers.map { m =>
+        val rel = jsonEscape(ctx.workspace.relativize(sec.file).toString)
+        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(r.symbol)}","ownerKind":"${sec.ownerKind.toString.toLowerCase}","package":"${jsonEscape(sec.packageName)}","inherited":false}"""
+      }
+      val inheritedMembers = sec.inherited.flatMap { (parentName, parentFile, parentPackage, members) =>
+        members.map { m =>
+          val rel = parentFile.map(f => jsonEscape(ctx.workspace.relativize(f).toString)).getOrElse("")
+          s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(parentName)}","ownerKind":"inherited","package":"${jsonEscape(parentPackage)}","inherited":true}"""
+        }
+      }
+      ownMembers ++ inheritedMembers
+    }
+    println(allMembers.take(ctx.limit).mkString("[", ",", "]"))
+  } else {
+    if r.sections.isEmpty then {
+      println(s"""No class/trait/object/enum "${r.symbol}" found""")
+    } else {
+      r.sections.foreach { sec =>
+        val rel = ctx.workspace.relativize(sec.file)
+        val pkg = if sec.packageName.nonEmpty then s" (${sec.packageName})" else ""
+        println(s"Members of ${sec.ownerKind.toString.toLowerCase} ${r.symbol}$pkg — $rel:${sec.line}:")
+        if sec.ownMembers.isEmpty then println("  (no members)")
+        else {
+          println(s"  Defined in ${r.symbol}:")
+          sec.ownMembers.take(ctx.limit).foreach { m =>
+            if ctx.verbose then
+              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
+            else
+              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+          }
+          if sec.ownMembers.size > ctx.limit then println(s"    ... and ${sec.ownMembers.size - ctx.limit} more")
+        }
+        sec.inherited.foreach { (parentName, _, _, pMembers) =>
+          println(s"  Inherited from $parentName:")
+          pMembers.take(ctx.limit).foreach { m =>
+            if ctx.verbose then
+              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
+            else
+              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+          }
+          if pMembers.size > ctx.limit then println(s"    ... and ${pMembers.size - ctx.limit} more")
+        }
+      }
+    }
+  }
+}
+
+private def renderDocEntries(r: CmdResult.DocEntries, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val entries = r.entries.take(ctx.limit).map { e =>
+      val rel = jsonEscape(ctx.workspace.relativize(e.sym.file).toString)
+      val doc = e.doc.map(d => s""""${jsonEscape(d)}"""").getOrElse("null")
+      s"""{"name":"${jsonEscape(e.sym.name)}","kind":"${e.sym.kind.toString.toLowerCase}","file":"$rel","line":${e.sym.line},"package":"${jsonEscape(e.sym.packageName)}","doc":$doc}"""
+    }
+    println(entries.mkString("[", ",", "]"))
+  } else {
+    r.entries.take(ctx.limit).foreach { e =>
+      val rel = ctx.workspace.relativize(e.sym.file)
+      val pkg = if e.sym.packageName.nonEmpty then s" (${e.sym.packageName})" else ""
+      println(s"${e.sym.kind.toString.toLowerCase} ${r.symbol}$pkg — $rel:${e.sym.line}:")
+      e.doc match {
+        case Some(doc) => println(doc)
+        case None => println("  (no scaladoc)")
+      }
+      println()
+    }
+  }
+}
+
+private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
+  val d = r.data
+  if ctx.jsonOutput then {
+    val kindJson = d.symbolsByKind.map((k, c) => s""""${k.toString.toLowerCase}":$c""").mkString("{", ",", "}")
+    val pkgJson = d.topPackages.map((p, c) => s"""{"package":"${jsonEscape(p)}","count":$c}""").mkString("[", ",", "]")
+    val extJson = d.mostExtended.map((n, c) => s"""{"name":"${jsonEscape(n)}","implementations":$c}""").mkString("[", ",", "]")
+    if d.hasArchitecture then {
+      val depsJson = d.pkgDeps.map { (pkg, deps) =>
+        val dArr = deps.map(dep => s""""${jsonEscape(dep)}"""").mkString("[", ",", "]")
+        s""""${jsonEscape(pkg)}":$dArr"""
+      }.mkString("{", ",", "}")
+      val hubJson = d.hubTypes.map((n, c) => s"""{"name":"${jsonEscape(n)}","score":$c}""").mkString("[", ",", "]")
+      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson,"packageDependencies":$depsJson,"hubTypes":$hubJson}""")
+    } else {
+      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
+    }
+  } else {
+    println(s"Project overview (${d.fileCount} files, ${d.symbolCount} symbols):\n")
+    println("Symbols by kind:")
+    d.symbolsByKind.foreach { (kind, count) =>
+      println(s"  ${kind.toString.padTo(10, ' ')} $count")
+    }
+    println(s"\nTop packages (by symbol count):")
+    d.topPackages.foreach { (pkg, count) =>
+      println(s"  ${pkg.padTo(50, ' ')} $count")
+    }
+    println(s"\nMost extended (by implementation count):")
+    d.mostExtended.foreach { (name, count) =>
+      println(s"  ${name.padTo(30, ' ')} $count impl")
+    }
+    if d.hasArchitecture then {
+      println(s"\nPackage dependencies:")
+      if d.pkgDeps.isEmpty then println("  (no cross-package dependencies found)")
+      else d.pkgDeps.toList.sortBy(_._1).foreach { (pkg, deps) =>
+        println(s"  $pkg → ${deps.toList.sorted.mkString(", ")}")
+      }
+      println(s"\nHub types (by extension count):")
+      if d.hubTypes.isEmpty then println("  (none)")
+      else d.hubTypes.foreach { (name, count) =>
+        println(s"  ${name.padTo(30, ' ')} $count references")
+      }
+    }
+  }
+}
+
+private def renderSourceBlocks(r: CmdResult.SourceBlocks, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.blocks.take(ctx.limit).map { (file, b) =>
+      val rel = jsonEscape(ctx.workspace.relativize(file).toString)
+      s"""{"name":"${jsonEscape(b.symbolName)}","owner":"${jsonEscape(b.ownerName)}","file":"$rel","startLine":${b.startLine},"endLine":${b.endLine},"body":"${jsonEscape(b.sourceText)}"}"""
+    }.mkString("[", ",", "]")
+    println(arr)
+  } else {
+    r.blocks.take(ctx.limit).foreach { (file, b) =>
+      val ownerStr = if b.ownerName.nonEmpty then s" — ${b.ownerName}" else ""
+      val rel = ctx.workspace.relativize(file)
+      println(s"Body of ${b.symbolName}$ownerStr — $rel:${b.startLine}:")
+      val bodyLines = b.sourceText.split("\n")
+      bodyLines.zipWithIndex.foreach { case (line, i) =>
+        println(s"  ${(b.startLine + i).toString.padTo(4, ' ')} | $line")
+      }
+      println()
+    }
+  }
+}
+
+private def renderTestSuites(r: CmdResult.TestSuites, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.suites.take(ctx.limit).map { suite =>
+      val rel = jsonEscape(ctx.workspace.relativize(suite.file).toString)
+      val testsJson = suite.tests.map { tc =>
+        val bodyField = if r.showBody then {
+          tc.body.map(b => s""","body":"${jsonEscape(b.sourceText)}"""").getOrElse("")
+        } else ""
+        s"""{"name":"${jsonEscape(tc.name)}","line":${tc.line}$bodyField}"""
+      }.mkString("[", ",", "]")
+      s"""{"suite":"${jsonEscape(suite.name)}","file":"$rel","line":${suite.line},"tests":$testsJson}"""
+    }.mkString("[", ",", "]")
+    println(arr)
+  } else {
+    if r.suites.isEmpty then {
+      println(r.emptyMessage)
+    } else {
+      r.suites.take(ctx.limit).foreach { suite =>
+        val rel = ctx.workspace.relativize(suite.file)
+        println(s"${suite.name} — $rel:${suite.line}:")
+        suite.tests.foreach { tc =>
+          println(s"""  test  "${tc.name}"  :${tc.line}""")
+          if r.showBody || ctx.verbose then {
+            tc.body.foreach { b =>
+              val bodyLines = b.sourceText.split("\n")
+              bodyLines.zipWithIndex.foreach { case (line, i) =>
+                println(s"    ${(b.startLine + i).toString.padTo(4, ' ')} | $line")
+              }
+              println()
+            }
+          }
+        }
+        if !r.showBody && !ctx.verbose then println()
+      }
+    }
+  }
+}
+
+private def renderCoverageReport(r: CmdResult.CoverageReport, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val refsJson = r.testRefs.take(ctx.limit).map(ctx.jRef).mkString("[", ",", "]")
+    println(s"""{"symbol":"${jsonEscape(r.symbol)}","testFileCount":${r.testFiles.size},"referenceCount":${r.testRefs.size},"references":$refsJson}""")
+  } else {
+    if r.testRefs.isEmpty then {
+      if r.totalRefs == 0 then {
+        println(s"""Coverage of "${r.symbol}" — no references found""")
+        renderHint(mkNotFoundHint(r.symbol, ctx, "coverage"))
+      } else {
+        println(s"""Coverage of "${r.symbol}" — ${r.totalRefs} refs but 0 in test files""")
+      }
+    } else {
+      println(s"""Coverage of "${r.symbol}" — ${r.testRefs.size} refs in ${r.testFiles.size} test files:""")
+      r.testFiles.sorted.foreach { f =>
+        val fileRefs = r.testRefs.filter(ref => ctx.workspace.relativize(ref.file).toString == f)
+        println(s"  $f")
+        fileRefs.take(ctx.limit).foreach { ref =>
+          println(s"    :${ref.line}  ${ref.contextLine}")
+        }
+      }
+    }
+  }
+}
+
+private def renderHierarchyResult(r: CmdResult.HierarchyResult, ctx: CommandContext): Unit = {
+  val tree = r.tree
+  def nodeJson(n: HierarchyNode): String = {
+    val file = n.file.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
+    val kind = n.kind.map(k => s""""${k.toString.toLowerCase}"""").getOrElse("null")
+    val line = n.line.map(_.toString).getOrElse("null")
+    s"""{"name":"${jsonEscape(n.name)}","kind":$kind,"file":$file,"line":$line,"package":"${jsonEscape(n.packageName)}","isExternal":${n.isExternal}}"""
+  }
+  def treeJson(t: HierarchyTree): String = {
+    val ps = t.parents.map(treeJson).mkString("[", ",", "]")
+    val cs = t.children.map(treeJson).mkString("[", ",", "]")
+    s"""{"node":${nodeJson(t.root)},"parents":$ps,"children":$cs}"""
+  }
+  if ctx.jsonOutput then {
+    println(treeJson(tree))
+  } else {
+    val rootNode = tree.root
+    val pkg = if rootNode.packageName.nonEmpty then s" (${rootNode.packageName})" else ""
+    val kind = rootNode.kind.map(_.toString.toLowerCase).getOrElse("unknown")
+    val loc = rootNode.file.map(f => s" — ${ctx.workspace.relativize(f)}:${rootNode.line.getOrElse(0)}").getOrElse("")
+    println(s"Hierarchy of $kind ${rootNode.name}$pkg$loc:")
+    if ctx.goUp then {
+      println("  Parents:")
+      def printParents(parents: List[HierarchyTree], indent: String): Unit = {
+        parents.zipWithIndex.foreach { case (pt, i) =>
+          val isLast = i == parents.size - 1
+          val prefix = if isLast then s"$indent└── " else s"$indent├── "
+          val nextIndent = if isLast then s"$indent    " else s"$indent│   "
+          val n = pt.root
+          val npkg = if n.packageName.nonEmpty then s" (${n.packageName})" else ""
+          val nkind = n.kind.map(_.toString.toLowerCase + " ").getOrElse("")
+          val nloc = if n.isExternal then " [external]"
+                     else n.file.map(f => s" — ${ctx.workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
+          println(s"$prefix$nkind${n.name}$npkg$nloc")
+          printParents(pt.parents, nextIndent)
+        }
+      }
+      if tree.parents.isEmpty then println("    (none)")
+      else printParents(tree.parents, "    ")
+    }
+    if ctx.goDown then {
+      println("  Children:")
+      def printChildren(children: List[HierarchyTree], indent: String): Unit = {
+        children.zipWithIndex.foreach { case (ct, i) =>
+          val isLast = i == children.size - 1
+          val prefix = if isLast then s"$indent└── " else s"$indent├── "
+          val nextIndent = if isLast then s"$indent    " else s"$indent│   "
+          val n = ct.root
+          val npkg = if n.packageName.nonEmpty then s" (${n.packageName})" else ""
+          val nkind = n.kind.map(_.toString.toLowerCase + " ").getOrElse("")
+          val nloc = n.file.map(f => s" — ${ctx.workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
+          println(s"$prefix$nkind${n.name}$npkg$nloc")
+          printChildren(ct.children, nextIndent)
+        }
+      }
+      if tree.children.isEmpty then println("    (none)")
+      else printChildren(tree.children, "    ")
+    }
+  }
+}
+
+private def renderOverrideList(r: CmdResult.OverrideList, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.results.map { o =>
+      val rel = jsonEscape(ctx.workspace.relativize(o.file).toString)
+      s"""{"enclosingClass":"${jsonEscape(o.enclosingClass)}","enclosingKind":"${o.enclosingKind.toString.toLowerCase}","file":"$rel","line":${o.line},"signature":"${jsonEscape(o.signature)}","package":"${jsonEscape(o.packageName)}"}"""
+    }.mkString("[", ",", "]")
+    println(arr)
+  } else {
+    println(r.header)
+    r.results.foreach { o =>
+      val rel = ctx.workspace.relativize(o.file)
+      val pkg = if o.packageName.nonEmpty then s" (${o.packageName})" else ""
+      println(s"  ${o.enclosingClass}$pkg — $rel:${o.line}")
+      println(s"    ${o.signature}")
+    }
+  }
+}
+
+private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Unit = {
+  val sym = r.sym
+  val rel = ctx.workspace.relativize(sym.file)
+  val pkg = if sym.packageName.nonEmpty then s" (${sym.packageName})" else ""
+  if ctx.jsonOutput then {
+    val docJson = r.doc.map(d => s""""${jsonEscape(d)}"""").getOrElse("null")
+    val membersJson = r.members.map { m =>
+      s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+    }.mkString("[", ",", "]")
+    val implsJson = r.impls.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
+    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":${r.importCount}}""")
+  } else {
+    println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
+    println(s"  Definition: $rel:${sym.line}")
+    println(s"  Signature: ${sym.signature}")
+    if sym.parents.nonEmpty then println(s"  Extends: ${sym.parents.mkString(", ")}")
+    println()
+    r.doc match {
+      case Some(d) =>
+        println("  Scaladoc:")
+        d.split("\n").foreach(l => println(s"    $l"))
+        println()
+      case None =>
+        println("  Scaladoc: (none)\n")
+    }
+    if r.members.nonEmpty then {
+      println(s"  Members (top ${r.members.size}):")
+      r.members.foreach(m => println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
+      println()
+    }
+    if r.impls.nonEmpty then {
+      println(s"  Implementations (top ${r.impls.size}):")
+      r.impls.foreach(s => println(formatSymbol(s, ctx.workspace)))
+      println()
+    }
+    println(s"  Imported by: ${r.importCount} files")
+  }
+}
+
+private def renderDependencies(r: CmdResult.Dependencies, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val iArr = r.importDeps.map { d =>
+      val file = d.file.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
+      val line = d.line.map(_.toString).getOrElse("null")
+      s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
+    }.mkString("[", ",", "]")
+    val bArr = r.bodyDeps.map { d =>
+      val file = d.file.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
+      val line = d.line.map(_.toString).getOrElse("null")
+      s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
+    }.mkString("[", ",", "]")
+    println(s"""{"imports":$iArr,"bodyReferences":$bArr}""")
+  } else {
+    println(s"""Dependencies of "${r.symbol}":""")
+    if r.importDeps.nonEmpty then {
+      println(s"\n  Imports:")
+      r.importDeps.take(ctx.limit).foreach { d =>
+        val loc = d.file.map(f => s" — ${ctx.workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
+        println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
+      }
+      if r.importDeps.size > ctx.limit then println(s"    ... and ${r.importDeps.size - ctx.limit} more")
+    }
+    if r.bodyDeps.nonEmpty then {
+      println(s"\n  Body references:")
+      r.bodyDeps.take(ctx.limit).foreach { d =>
+        val loc = d.file.map(f => s" — ${ctx.workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
+        println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
+      }
+      if r.bodyDeps.size > ctx.limit then println(s"    ... and ${r.bodyDeps.size - ctx.limit} more")
+    }
+  }
+}
+
+private def renderScopes(r: CmdResult.Scopes, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.scopes.map { s =>
+      s"""{"name":"${jsonEscape(s.name)}","kind":"${jsonEscape(s.kind)}","line":${s.line}}"""
+    }.mkString("[", ",", "]")
+    val rel = jsonEscape(ctx.workspace.relativize(r.file).toString)
+    println(s"""{"file":"$rel","line":${r.line},"scopes":$arr}""")
+  } else {
+    val rel = ctx.workspace.relativize(r.file)
+    println(s"Context at $rel:${r.line}:")
+    if r.scopes.isEmpty then println("  (no enclosing scopes found)")
+    else {
+      r.scopes.foreach { s =>
+        println(s"  ${s.kind.padTo(9, ' ')} ${s.name} (line ${s.line})")
+      }
+    }
+  }
+}
+
+private def renderSymbolDiff(r: CmdResult.SymbolDiff, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    if r.filesChanged == 0 then {
+      println("""{"added":[],"removed":[],"modified":[]}""")
+    } else {
+      def diffSymJson(s: DiffSymbol): String =
+        s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"${jsonEscape(s.file)}","line":${s.line},"package":"${jsonEscape(s.packageName)}","signature":"${jsonEscape(s.signature)}"}"""
+      val addedJson = r.added.take(ctx.limit).map(diffSymJson).mkString("[", ",", "]")
+      val removedJson = r.removed.take(ctx.limit).map(diffSymJson).mkString("[", ",", "]")
+      val modifiedJson = r.modified.take(ctx.limit).map { (o, n) =>
+        s"""{"old":${diffSymJson(o)},"new":${diffSymJson(n)}}"""
+      }.mkString("[", ",", "]")
+      println(s"""{"ref":"${jsonEscape(r.ref)}","filesChanged":${r.filesChanged},"added":$addedJson,"removed":$removedJson,"modified":$modifiedJson}""")
+    }
+  } else {
+    if r.filesChanged == 0 then {
+      println(s"No Scala files changed compared to ${r.ref}")
+    } else {
+      println(s"Symbol changes compared to ${r.ref} (${r.filesChanged} files changed):")
+      if r.added.nonEmpty then {
+        println(s"\n  Added (${r.added.size}):")
+        r.added.take(ctx.limit).foreach { s =>
+          println(s"    + ${s.kind.toString.toLowerCase.padTo(9, ' ')} ${s.name} — ${s.file}:${s.line}")
+        }
+        if r.added.size > ctx.limit then println(s"    ... and ${r.added.size - ctx.limit} more")
+      }
+      if r.removed.nonEmpty then {
+        println(s"\n  Removed (${r.removed.size}):")
+        r.removed.take(ctx.limit).foreach { s =>
+          println(s"    - ${s.kind.toString.toLowerCase.padTo(9, ' ')} ${s.name} — ${s.file}:${s.line}")
+        }
+        if r.removed.size > ctx.limit then println(s"    ... and ${r.removed.size - ctx.limit} more")
+      }
+      if r.modified.nonEmpty then {
+        println(s"\n  Modified (${r.modified.size}):")
+        r.modified.take(ctx.limit).foreach { (_, n) =>
+          println(s"    ~ ${n.kind.toString.toLowerCase.padTo(9, ' ')} ${n.name} — ${n.file}:${n.line}")
+        }
+        if r.modified.size > ctx.limit then println(s"    ... and ${r.modified.size - ctx.limit} more")
+      }
+      if r.added.isEmpty && r.removed.isEmpty && r.modified.isEmpty then
+        println("  No symbol-level changes detected")
+    }
+  }
+}
+
+private def renderAstMatches(r: CmdResult.AstMatches, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.results.map { m =>
+      val rel = jsonEscape(ctx.workspace.relativize(m.file).toString)
+      s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","file":"$rel","line":${m.line},"package":"${jsonEscape(m.packageName)}","signature":"${jsonEscape(m.signature)}"}"""
+    }.mkString("[", ",", "]")
+    println(arr)
+  } else {
+    if r.results.isEmpty then
+      println(s"No types matching AST pattern (${r.filters})")
+    else {
+      println(s"Types matching AST pattern (${r.filters}) — ${r.results.size} found:")
+      r.results.foreach { m =>
+        val rel = ctx.workspace.relativize(m.file)
+        val pkg = if m.packageName.nonEmpty then s" (${m.packageName})" else ""
+        println(s"  ${m.kind.toString.toLowerCase.padTo(9, ' ')} ${m.name}$pkg — $rel:${m.line}")
+      }
+    }
+  }
+}
+
+private def renderGrepCount(r: CmdResult.GrepCount, ctx: CommandContext): Unit = {
+  r.stderrHint.foreach(System.err.println)
+  if ctx.jsonOutput then {
+    val hintStr = r.hint.getOrElse("")
+    println(s"""{"matches":${r.matches},"files":${r.files},"timedOut":${r.timedOut}$hintStr}""")
+  } else {
+    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    println(s"${r.matches} matches across ${r.files} files$suffix")
+  }
+}
+
+private def renderPackages(r: CmdResult.Packages, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.packages.map(p => s""""${jsonEscape(p)}"""").mkString("[", ",", "]")
+    println(arr)
+  } else {
+    println(s"Packages (${r.packages.size}):")
+    r.packages.foreach(p => println(s"  $p"))
+  }
+}
+
+private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    r.hint.cmd match {
+      case "hierarchy" =>
+        // hierarchy never emits JSON for not-found case (matches original behavior)
+        println(r.message)
+        renderHint(r.hint)
+      case "explain" => println("""{"error":"not found"}""")
+      case "imports" => println(s"""{"results":[],"timedOut":${ctx.idx.timedOut}}""")
+      case "deps" => println("""{"imports":[],"bodyReferences":[]}""")
+      case _ => println("[]")
+    }
+  } else {
+    println(r.message)
+    renderHint(r.hint)
+  }
+}

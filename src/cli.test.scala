@@ -290,26 +290,26 @@ class CliSuite extends ScalexTestBase:
 
   // ── condensed not-found in batch mode ──────────────────────────────────
 
-  test("printNotFoundHint in batch mode prints single line") {
+  test("not-found hint in batch mode is condensed") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      printNotFoundHint("NonExistent", idx, "def", batchMode = true)
+      runCommand("def", List("NonExistent"), CommandContext(idx = idx, workspace = workspace, batchMode = true))
     }
-    val output = out.toString.trim
-    assert(output.startsWith("not found"), s"Batch not-found should be single line: $output")
+    val output = out.toString
+    assert(output.contains("not found"), s"Should contain not found: $output")
     assert(output.contains("files"), s"Should mention file count: $output")
     assert(!output.contains("Hint:"), s"Should NOT contain verbose hints: $output")
     assert(!output.contains("Fallback:"), s"Should NOT contain fallback: $output")
   }
 
-  test("printNotFoundHint in normal mode prints full hints") {
+  test("not-found hint in normal mode has full hints") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      printNotFoundHint("NonExistent", idx, "def", batchMode = false)
+      runCommand("def", List("NonExistent"), CommandContext(idx = idx, workspace = workspace, batchMode = false))
     }
     val output = out.toString
     assert(output.contains("Hint:"), s"Normal mode should contain Hint: $output")
