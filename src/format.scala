@@ -103,6 +103,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: AstMatches       => renderAstMatches(r, ctx)
     case r: GrepCount        => renderGrepCount(r, ctx)
     case r: Packages         => renderPackages(r, ctx)
+    case r: PackageSymbols   => renderPackageSymbols(r, ctx)
     case r: NotFound         => renderNotFound(r, ctx)
     case r: UsageError       => println(r.message)
   }
@@ -110,10 +111,17 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
 
 private def renderHint(h: NotFoundHint): Unit = {
   if h.batchMode then
-    println(s"  not found (0 matches in ${h.fileCount} files)")
+    if h.suggestions.nonEmpty then
+      println(s"  not found (0 matches in ${h.fileCount} files). Did you mean: ${h.suggestions.take(3).mkString(", ")}?")
+    else
+      println(s"  not found (0 matches in ${h.fileCount} files)")
   else {
     if h.looksLikePath then
       println(s"""  Note: "${h.symbol}" looks like a path. Did you mean: scalex ${h.cmd} -w <workspace> ${h.symbol}?""")
+    if h.suggestions.nonEmpty then {
+      println(s"  Did you mean:")
+      h.suggestions.foreach(s => println(s"    $s"))
+    }
     println(s"  Hint: scalex indexes ${h.fileCount} git-tracked .scala files.")
     if h.parseFailures > 0 then
       println(s"  ${h.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
@@ -353,7 +361,8 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
         s""""${jsonEscape(pkg)}":$dArr"""
       }.mkString("{", ",", "}")
       val hubJson = d.hubTypes.map((n, c) => s"""{"name":"${jsonEscape(n)}","score":$c}""").mkString("[", ",", "]")
-      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson,"packageDependencies":$depsJson,"hubTypes":$hubJson}""")
+      val focusPkgJson = d.focusPackage.map(p => s""","focusPackage":"${jsonEscape(p)}"""").getOrElse("")
+      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson,"packageDependencies":$depsJson,"hubTypes":$hubJson$focusPkgJson}""")
     } else {
       println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
     }
@@ -372,10 +381,23 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
       println(s"  ${name.padTo(30, ' ')} $count impl")
     }
     if d.hasArchitecture then {
-      println(s"\nPackage dependencies:")
-      if d.pkgDeps.isEmpty then println("  (no cross-package dependencies found)")
-      else d.pkgDeps.toList.sortBy(_._1).foreach { (pkg, deps) =>
-        println(s"  $pkg → ${deps.toList.sorted.mkString(", ")}")
+      d.focusPackage match {
+        case Some(fpkg) =>
+          println(s"\nPackage focus: $fpkg")
+          val directDeps = d.pkgDeps.getOrElse(fpkg, Set.empty)
+          println(s"\n  Depends on:")
+          if directDeps.isEmpty then println("    (none)")
+          else directDeps.toList.sorted.foreach(dep => println(s"    $dep"))
+          val dependents = d.pkgDeps.filter((pkg, deps) => pkg != fpkg && deps.contains(fpkg)).keySet
+          println(s"\n  Depended on by:")
+          if dependents.isEmpty then println("    (none)")
+          else dependents.toList.sorted.foreach(dep => println(s"    $dep"))
+        case None =>
+          println(s"\nPackage dependencies:")
+          if d.pkgDeps.isEmpty then println("  (no cross-package dependencies found)")
+          else d.pkgDeps.toList.sortBy(_._1).foreach { (pkg, deps) =>
+            println(s"  $pkg → ${deps.toList.sorted.mkString(", ")}")
+          }
       }
       println(s"\nHub types (by extension count):")
       if d.hubTypes.isEmpty then println("  (none)")
@@ -729,17 +751,45 @@ private def renderPackages(r: CmdResult.Packages, ctx: CommandContext): Unit = {
   }
 }
 
+private def renderPackageSymbols(r: CmdResult.PackageSymbols, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.symbols.take(ctx.limit).map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
+    println(s"""{"package":"${jsonEscape(r.pkg)}","symbolCount":${r.symbols.size},"symbols":$arr}""")
+  } else {
+    if r.symbols.isEmpty then {
+      println(s"""Package ${r.pkg}: (no symbols)""")
+    } else {
+      println(s"Package ${r.pkg} (${r.symbols.size} symbols):\n")
+      val byKind = r.symbols.groupBy(_.kind).toList.sortBy(-_._2.size)
+      byKind.foreach { (kind, syms) =>
+        val kindName = kind.toString
+        println(s"  ${kindName}s (${syms.size}):")
+        val items = syms.sortBy(_.name).take(ctx.limit)
+        items.foreach { s =>
+          if ctx.verbose then
+            println(s"    ${s.name.padTo(30, ' ')} ${s.signature.take(60)}  — ${ctx.workspace.relativize(s.file)}:${s.line}")
+          else
+            println(s"    ${s.name.padTo(30, ' ')} ${ctx.workspace.relativize(s.file)}:${s.line}")
+        }
+        if syms.size > ctx.limit then println(s"    ... and ${syms.size - ctx.limit} more")
+      }
+    }
+  }
+}
+
 private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
+  val suggestionsJson = r.hint.suggestions.map(s => s""""${jsonEscape(s)}"""").mkString("[", ",", "]")
   if ctx.jsonOutput then {
     r.hint.cmd match {
       case "hierarchy" =>
         // hierarchy never emits JSON for not-found case (matches original behavior)
         println(r.message)
         renderHint(r.hint)
-      case "explain" => println("""{"error":"not found"}""")
-      case "imports" => println(s"""{"results":[],"timedOut":${ctx.idx.timedOut}}""")
-      case "deps" => println("""{"imports":[],"bodyReferences":[]}""")
-      case _ => println("[]")
+      case "explain" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
+      case "imports" => println(s"""{"results":[],"timedOut":${ctx.idx.timedOut},"suggestions":$suggestionsJson}""")
+      case "deps" => println(s"""{"imports":[],"bodyReferences":[],"suggestions":$suggestionsJson}""")
+      case "package" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
+      case _ => println(s"""{"results":[],"suggestions":$suggestionsJson}""")
     }
   } else {
     println(r.message)

@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `scalex package <pkg>` command — list all symbols in a package grouped by kind; supports `--verbose`, `--kind`, `--no-tests`, `--path`; fuzzy match on package name (exact → suffix → substring) (#95)
+- `--focus-package PKG` flag for `overview` — scopes `--architecture` dependency graph to a single package, showing direct dependencies and dependents; auto-enables `--architecture` when used (#96)
+- Fuzzy "did you mean?" suggestions on not-found — when `def`, `explain`, `members`, `doc`, `body`, `hierarchy`, `overrides`, `deps`, `impl` return zero results, suggests close matches from the index; shown in text, batch, and JSON output (#94)
+- `overview --no-tests` filtering — excludes test files from symbol counts, top packages, most-extended lists, and hub types (#93)
+
 ## [1.15.0] — 2026-03-16
 
 ### Added

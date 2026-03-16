@@ -135,16 +135,20 @@ trait PaymentService (com.example) — src/.../PaymentService.scala:7:
  */
 ```
 
-### `scalex overview [--architecture] [--limit N]` — codebase summary
+### `scalex overview [--architecture] [--focus-package PKG] [--no-tests] [--limit N]` — codebase summary
 
 One-shot architectural summary. Shows symbols by kind, top packages by symbol count, and most-extended traits/classes. All computed from existing in-memory index data — no extra I/O. Use `--limit N` to control "top N" lists (default: 20).
 
 Use `--architecture` to also show package dependency graph (from imports) and hub types (most-extended + most-referenced) — gives a structural understanding of the codebase in one call.
 
+Use `--focus-package PKG` to scope the dependency graph to a single package — shows direct dependencies and direct dependents only. Auto-enables `--architecture` when used. Use `--no-tests` to exclude test files from all counts and lists.
+
 ```bash
 scalex overview
 scalex overview --limit 5
 scalex overview --architecture               # + package deps + hub types
+scalex overview --focus-package com.example   # scoped dependency view
+scalex overview --no-tests                   # exclude test fixtures
 ```
 ```
 Project overview (14,000 files, 215,000 symbols):
@@ -380,6 +384,32 @@ Types matching AST pattern (extends=UserService, has-method=findUser) — 2 foun
   class     OldService (com.example) — .../Annotated.scala:4
 ```
 
+### `scalex package <pkg> [--verbose] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — explore package
+
+Lists all symbols in a package, grouped by kind (Class, Trait, Object, Enum, etc.). Fills the gap between `overview` (top packages) and `symbols` (per-file) — enables top-down exploration: overview → package → explain.
+
+Package name is fuzzy matched: exact → suffix (`.example` matches `com.example`) → substring. On not-found, suggests matching package names.
+
+```bash
+scalex package com.example                  # all symbols in com.example
+scalex package example                      # fuzzy match: resolves to com.example
+scalex package com.example --kind trait     # only traits
+scalex package com.example --no-tests       # exclude test symbols
+scalex package com.example --verbose        # show signatures
+```
+```
+Package com.example (45 symbols):
+
+  Traits (3):
+    UserService                    src/main/.../UserService.scala:3
+    Database                       src/main/.../Database.scala:3
+    PaymentService                 src/main/.../Documented.scala:7
+
+  Classes (5):
+    UserServiceLive                src/main/.../UserService.scala:8
+    ...
+```
+
 ### `scalex symbols <file> [--verbose]` / `scalex packages` — file symbols / list packages
 
 `symbols` lists everything defined in a file (`--verbose` for signatures). `packages` lists all packages in the index.
@@ -460,6 +490,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--down` | Hierarchy: show only children (default: both) |
 | `--inherited` | Members: include inherited members from parent types |
 | `--architecture` | Overview: show package dependency graph and hub types |
+| `--focus-package PKG` | Overview: scope dependency graph to a single package |
 | `--has-method NAME` | AST pattern: match types that have a method with NAME |
 | `--extends TRAIT` | AST pattern: match types that extend TRAIT |
 | `--body-contains PAT` | AST pattern: match types whose body contains PAT |
@@ -470,6 +501,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 Most commands are self-explanatory from their name — `scalex def X`, `scalex members X`, `scalex doc X`. These workflows cover the non-obvious choices:
 
 **"What's the impact of renaming X?"** → `scalex refs X` (categorized by default — groups by Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment)
+
+**"What's in this package?"** → `scalex package com.example` — all symbols grouped by kind; fuzzy match on package name
 
 **"Too many results / noisy output"** → combine `--no-tests`, `--path compiler/src/`, `--kind class`, or `search --prefix`/`--exact`
 

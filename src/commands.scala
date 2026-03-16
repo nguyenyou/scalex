@@ -11,6 +11,19 @@ def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
   val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
   (fixed, fixed != pattern)
 
+// ── Suggestions for not-found ────────────────────────────────────────────────
+
+def suggestMatches(query: String, idx: WorkspaceIndex, limit: Int = 5): List[String] =
+  val results = idx.search(query)
+  results.take(limit).map { s =>
+    s"${s.kind.toString.toLowerCase} ${s.name} (${s.packageName})"
+  }
+
+def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
+  val suggestions = suggestMatches(symbol, ctx.idx)
+  NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode,
+    symbol.contains("/") || symbol.startsWith("."), suggestions)
+
 // ── Shared filters ──────────────────────────────────────────────────────────
 
 def filterSymbols(symbols: List[SymbolInfo], ctx: CommandContext): List[SymbolInfo] =
@@ -92,7 +105,7 @@ def cmdDef(args: List[String], ctx: CommandContext): CmdResult =
       if results.isEmpty then
         CmdResult.NotFound(
           s"""Definition of "$symbol": not found""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "def", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "def"))
       else
         CmdResult.SymbolList(
           header = s"""Definition of "$symbol":""",
@@ -107,7 +120,7 @@ def cmdImpl(args: List[String], ctx: CommandContext): CmdResult =
       if results.isEmpty then
         CmdResult.NotFound(
           s"""No implementations of "$symbol" found""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "impl", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "impl"))
       else
         CmdResult.SymbolList(
           header = s"""Implementations of "$symbol" — ${results.size} found:""",
@@ -145,7 +158,7 @@ def cmdImports(args: List[String], ctx: CommandContext): CmdResult =
       if results.isEmpty then
         CmdResult.NotFound(
           s"""No imports of "$symbol" found""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "imports", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "imports"))
       else
         val suffix = if ctx.idx.timedOut then " (timed out — partial results)" else ""
         CmdResult.RefList(
@@ -252,7 +265,7 @@ def cmdMembers(args: List[String], ctx: CommandContext): CmdResult =
       if defs.isEmpty then
         CmdResult.NotFound(
           s"""No class/trait/object/enum "$symbol" found""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "members", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "members"))
       else
         val sections = defs.map { s =>
           val members = extractMembers(s.file, symbol)
@@ -276,7 +289,7 @@ def cmdDoc(args: List[String], ctx: CommandContext): CmdResult =
       if defs.isEmpty then
         CmdResult.NotFound(
           s"""Definition of "$symbol": not found""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "doc", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "doc"))
       else
         val entries = defs.map { s =>
           DocEntryData(s, extractScaladoc(s.file, s.line))
@@ -284,16 +297,26 @@ def cmdDoc(args: List[String], ctx: CommandContext): CmdResult =
         CmdResult.DocEntries(symbol, entries)
 
 def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
-  val symbolsByKind = ctx.idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size)
-  val topPackages = ctx.idx.packageToSymbols.toList.sortBy(-_._2.size).take(ctx.limit)
+  val allSymbols = if ctx.noTests then ctx.idx.symbols.filter(s => !isTestFile(s.file, ctx.workspace))
+                   else ctx.idx.symbols
+  val symbolsByKind = allSymbols.groupBy(_.kind).toList.sortBy(-_._2.size)
+  val topPackages = allSymbols.groupBy(_.packageName).filter(_._1.nonEmpty)
+    .map((pkg, syms) => (pkg, syms)).toList.sortBy(-_._2.size).take(ctx.limit)
   val mostExtended = ctx.idx.parentIndex.toList
     .filter((name, _) => ctx.idx.symbolsByName.contains(name))
+    .map { (name, impls) =>
+      if ctx.noTests then (name, impls.filter(s => !isTestFile(s.file, ctx.workspace)))
+      else (name, impls)
+    }
+    .filter(_._2.nonEmpty)
     .sortBy(-_._2.size).take(ctx.limit)
 
+  val effectiveArch = ctx.architecture || ctx.focusPackage.isDefined
+
   // Architecture: compute package dependency graph from imports
-  val archPkgDeps: Map[String, Set[String]] = if ctx.architecture then {
+  val archPkgDeps: Map[String, Set[String]] = if effectiveArch then {
     val deps = mutable.HashMap.empty[String, mutable.HashSet[String]]
-    ctx.idx.symbols.groupBy(_.file).foreach { (file, syms) =>
+    allSymbols.groupBy(_.file).foreach { (file, syms) =>
       val filePkg = syms.headOption.map(_.packageName).getOrElse("")
       if filePkg.nonEmpty then {
         parseFile(file).foreach { tree =>
@@ -316,26 +339,38 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     deps.map((k, v) => k -> v.toSet).toMap
   } else Map.empty
 
+  // Focus package: filter dependency graph to direct deps/dependents
+  val filteredPkgDeps = ctx.focusPackage match
+    case Some(fpkg) =>
+      val directDeps = archPkgDeps.getOrElse(fpkg, Set.empty)
+      val dependents = archPkgDeps.filter((_, deps) => deps.contains(fpkg)).keySet
+      val relevant = Set(fpkg) ++ directDeps ++ dependents
+      archPkgDeps.filter((pkg, _) => relevant.contains(pkg))
+        .map((pkg, deps) => pkg -> deps.filter(relevant.contains))
+    case None => archPkgDeps
+
   // Architecture: hub types (most-referenced + most-extended)
-  val hubTypes: List[(name: String, score: Int)] = if ctx.architecture then {
+  val hubTypes: List[(name: String, score: Int)] = if effectiveArch then {
     val refCounts = mutable.HashMap.empty[String, Int]
     ctx.idx.parentIndex.foreach { (name, impls) =>
       if ctx.idx.symbolsByName.contains(name) then
-        refCounts(name) = refCounts.getOrElse(name, 0) + impls.size
+        val filteredImpls = if ctx.noTests then impls.filter(s => !isTestFile(s.file, ctx.workspace)) else impls
+        refCounts(name) = refCounts.getOrElse(name, 0) + filteredImpls.size
     }
-    refCounts.toList.sortBy(-_._2).take(ctx.limit)
+    refCounts.filter(_._2 > 0).toList.sortBy(-_._2).take(ctx.limit)
   } else Nil
 
   CmdResult.Overview(OverviewData(
-    fileCount = ctx.idx.fileCount,
-    symbolCount = ctx.idx.symbols.size,
-    packageCount = ctx.idx.packages.size,
+    fileCount = if ctx.noTests then allSymbols.map(_.file).distinct.size else ctx.idx.fileCount,
+    symbolCount = allSymbols.size,
+    packageCount = if ctx.noTests then allSymbols.map(_.packageName).filter(_.nonEmpty).distinct.size else ctx.idx.packages.size,
     symbolsByKind = symbolsByKind.map((k, syms) => (kind = k, count = syms.size)),
     topPackages = topPackages.map((p, syms) => (pkg = p, count = syms.size)),
     mostExtended = mostExtended.map((n, impls) => (name = n, count = impls.size)),
-    pkgDeps = archPkgDeps,
+    pkgDeps = filteredPkgDeps,
     hubTypes = hubTypes,
-    hasArchitecture = ctx.architecture
+    hasArchitecture = effectiveArch,
+    focusPackage = ctx.focusPackage
   ))
 
 def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
@@ -365,7 +400,7 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
       if blocks.isEmpty then
         CmdResult.NotFound(
           s"""No body found for "$symbol"""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "body", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "body"))
       else
         CmdResult.SourceBlocks(symbol, blocks)
 
@@ -411,7 +446,7 @@ def cmdHierarchy(args: List[String], ctx: CommandContext): CmdResult =
         case None =>
           CmdResult.NotFound(
             s"""No definition of "$symbol" found""",
-            NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "hierarchy", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+            mkNotFoundWithSuggestions(symbol, ctx, "hierarchy"))
         case Some(tree) =>
           CmdResult.HierarchyResult(symbol, tree)
 
@@ -424,7 +459,7 @@ def cmdOverrides(args: List[String], ctx: CommandContext): CmdResult =
         val ofStr = ctx.ofTrait.map(t => s" of $t").getOrElse("")
         CmdResult.NotFound(
           s"""No overrides of "$methodName"$ofStr found""",
-          NotFoundHint(methodName, ctx.idx.fileCount, ctx.idx.parseFailures, "overrides", ctx.batchMode, methodName.contains("/") || methodName.startsWith(".")))
+          mkNotFoundWithSuggestions(methodName, ctx, "overrides"))
       else
         val ofStr = ctx.ofTrait.map(t => s" (in implementations of $t)").getOrElse("")
         CmdResult.OverrideList(
@@ -451,7 +486,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
       if defs.isEmpty then
         CmdResult.NotFound(
           s"""No definition of "$symbol" found""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "explain", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "explain"))
       else
         val sym = defs.head
         // Scaladoc
@@ -473,7 +508,7 @@ def cmdDeps(args: List[String], ctx: CommandContext): CmdResult =
       if importDeps.isEmpty && bodyDeps.isEmpty then
         CmdResult.NotFound(
           s"""No dependencies found for "$symbol"""",
-          NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, "deps", ctx.batchMode, symbol.contains("/") || symbol.startsWith(".")))
+          mkNotFoundWithSuggestions(symbol, ctx, "deps"))
       else
         CmdResult.Dependencies(symbol, importDeps, bodyDeps)
 
@@ -542,12 +577,31 @@ def cmdAstPattern(args: List[String], ctx: CommandContext): CmdResult =
   ).flatten.mkString(", ")
   CmdResult.AstMatches(filters, results)
 
+def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
+  args.headOption match
+    case None => CmdResult.UsageError("Usage: scalex package <pkg>")
+    case Some(pkg) =>
+      val lower = pkg.toLowerCase
+      // Match: exact → suffix (.pkg) → substring
+      val matched = ctx.idx.packages.find(_.equalsIgnoreCase(pkg))
+        .orElse(ctx.idx.packages.find(_.toLowerCase.endsWith("." + lower)))
+        .orElse(ctx.idx.packages.find(_.toLowerCase.contains(lower)))
+      matched match
+        case None =>
+          val pkgSuggestions = ctx.idx.packages.filter(_.toLowerCase.contains(lower)).toList.sorted.take(5)
+          CmdResult.NotFound(
+            s"""Package "$pkg" not found""",
+            NotFoundHint(pkg, ctx.idx.fileCount, ctx.idx.parseFailures, "package", ctx.batchMode, false, pkgSuggestions))
+        case Some(resolvedPkg) =>
+          val symbols = filterSymbols(ctx.idx.symbols.filter(_.packageName == resolvedPkg), ctx)
+          CmdResult.PackageSymbols(resolvedPkg, symbols)
+
 // ── Command dispatch ────────────────────────────────────────────────────────
 
 val commands: Map[String, (List[String], CommandContext) => CmdResult] = Map(
   "index" -> cmdIndex, "search" -> cmdSearch, "def" -> cmdDef, "impl" -> cmdImpl,
   "refs" -> cmdRefs, "imports" -> cmdImports, "symbols" -> cmdSymbols, "file" -> cmdFile,
-  "packages" -> cmdPackages, "annotated" -> cmdAnnotated, "grep" -> cmdGrep,
+  "packages" -> cmdPackages, "package" -> cmdPackage, "annotated" -> cmdAnnotated, "grep" -> cmdGrep,
   "members" -> cmdMembers, "doc" -> cmdDoc, "overview" -> cmdOverview,
   "body" -> cmdBody, "tests" -> cmdTests, "coverage" -> cmdCoverage,
   "hierarchy" -> cmdHierarchy, "overrides" -> cmdOverrides, "explain" -> cmdExplain,

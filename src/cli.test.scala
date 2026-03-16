@@ -639,6 +639,134 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("(no scaladoc)"), s"Should report no scaladoc: $output")
   }
 
+  // ── #93: overview --no-tests ────────────────────────────────────────────
+
+  test("overview --no-tests excludes test files from counts") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10, noTests = true))
+    }
+    val output = out.toString
+    // Test files (UserServiceSpec, UserServiceTest) should be excluded
+    assert(!output.contains("UserServiceSpec"), s"Should exclude test class: $output")
+    assert(!output.contains("UserServiceTest"), s"Should exclude test class: $output")
+  }
+
+  // ── #94: fuzzy suggestions on not-found ───────────────────────────────
+
+  test("def not-found shows suggestions") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("def", List("UserServic"), CommandContext(idx = idx, workspace = workspace))
+    }
+    val output = out.toString
+    assert(output.contains("Did you mean"), s"Should show suggestions: $output")
+    assert(output.contains("UserService"), s"Should suggest UserService: $output")
+  }
+
+  test("def not-found batch mode shows condensed suggestions") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("def", List("UserServic"), CommandContext(idx = idx, workspace = workspace, batchMode = true))
+    }
+    val output = out.toString
+    assert(output.contains("Did you mean"), s"Should show suggestions in batch: $output")
+  }
+
+  // ── #95: package command ──────────────────────────────────────────────
+
+  test("package command lists symbols grouped by kind") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("package", List("com.example"), CommandContext(idx = idx, workspace = workspace, limit = 50))
+    }
+    val output = out.toString
+    assert(output.contains("com.example"), s"Should show package name: $output")
+    assert(output.contains("UserService"), s"Should list UserService: $output")
+    assert(output.contains("User"), s"Should list User: $output")
+  }
+
+  test("package command fuzzy matches suffix") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("package", List("example"), CommandContext(idx = idx, workspace = workspace, limit = 50))
+    }
+    val output = out.toString
+    assert(output.contains("com.example"), s"Should resolve to com.example: $output")
+  }
+
+  test("package command JSON output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("package", List("com.example"), CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true))
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("{"), s"Should be JSON object: $output")
+    assert(output.contains("\"package\":\"com.example\""), s"Should contain package: $output")
+    assert(output.contains("\"symbolCount\":"), s"Should contain symbolCount: $output")
+  }
+
+  test("package command with --no-tests") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("package", List("com.example"), CommandContext(idx = idx, workspace = workspace, limit = 50, noTests = true))
+    }
+    val output = out.toString
+    assert(!output.contains("UserServiceSpec"), s"Should exclude test symbols: $output")
+    assert(!output.contains("UserServiceTest"), s"Should exclude test symbols: $output")
+  }
+
+  test("package command not found suggests packages") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("package", List("nonexistent"), CommandContext(idx = idx, workspace = workspace))
+    }
+    val output = out.toString
+    assert(output.contains("not found"), s"Should say not found: $output")
+  }
+
+  // ── #96: overview --focus-package ─────────────────────────────────────
+
+  test("overview --focus-package scopes dependency graph") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10, focusPackage = Some("com.example")))
+    }
+    val output = out.toString
+    assert(output.contains("Package focus: com.example"), s"Should show focus header: $output")
+    assert(output.contains("Depends on:"), s"Should show depends on: $output")
+    assert(output.contains("Depended on by:"), s"Should show depended on by: $output")
+  }
+
+  test("overview --focus-package JSON includes focusPackage") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10, jsonOutput = true, focusPackage = Some("com.example")))
+    }
+    val output = out.toString.trim
+    assert(output.contains("\"focusPackage\":\"com.example\""), s"Should contain focusPackage in JSON: $output")
+  }
+
   // ── tests --json ────────────────────────────────────────────────────────
 
   test("tests command --json output") {

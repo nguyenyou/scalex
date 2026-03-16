@@ -148,6 +148,7 @@ scalex search Service --kind trait         # Find traits by name
 scalex search hms                          # Fuzzy camelCase: finds HttpMessageService
 scalex file PaymentService                 # Find files by name (like IntelliJ)
 scalex packages                            # List all packages
+scalex package com.example                 # Explore a specific package
 
 # Understand
 scalex def UserService --verbose           # Definition with signature
@@ -204,6 +205,7 @@ scalex file <query>             Search files by name            (aka: find file)
 scalex annotated <annotation>   Find symbols with annotation    (aka: find annotated)
 scalex grep <pattern>           Regex search in file contents   (aka: content search)
 scalex packages                 What packages exist?            (aka: list packages)
+scalex package <pkg>            Symbols in a package            (aka: explore package)
 scalex index                    Rebuild the index               (aka: reindex)
 scalex batch                    Run multiple queries at once    (aka: batch mode)
 scalex body <symbol>            Extract method/val/class body   (aka: show source)
@@ -242,6 +244,7 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 | `--up` / `--down` | Hierarchy: limit direction |
 | `--inherited` | Members: include inherited members |
 | `--architecture` | Overview: package deps + hub types |
+| `--focus-package PKG` | Overview: scope dependency graph to one package |
 | `--has-method NAME` | AST pattern: types with method NAME |
 | `--extends TRAIT` | AST pattern: types extending TRAIT |
 | `--body-contains PAT` | AST pattern: types whose body contains PAT |

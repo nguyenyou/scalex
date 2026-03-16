@@ -77,11 +77,14 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val bodyContainsFilter: Option[String] = argList.indexOf("--body-contains") match
     case -1 => None
     case i => argList.lift(i + 1)
+  val focusPackage: Option[String] = argList.indexOf("--focus-package") match
+    case -1 => None
+    case i => argList.lift(i + 1)
   val timingsEnabled = argList.contains("--timings")
   Timings.enabled = timingsEnabled
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
-                           "--in", "--of", "--impl-limit", "--has-method", "--extends", "--body-contains")
+                           "--in", "--of", "--impl-limit", "--has-method", "--extends", "--body-contains", "--focus-package")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || a == "--flat" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -105,6 +108,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  scalex annotated <annotation>   Find symbols with annotation    (aka: find annotated)
         |  scalex grep <pattern>           Regex search in file contents   (aka: content search)
         |  scalex packages                 What packages exist?            (aka: list packages)
+        |  scalex package <pkg>            Symbols in a package            (aka: explore package)
         |  scalex index                    Rebuild the index               (aka: reindex)
         |  scalex batch                    Run multiple queries at once    (aka: batch mode)
         |  scalex body <symbol>            Extract method/val/class body   (aka: show source)
@@ -143,6 +147,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --down                Hierarchy: show only children (default: both)
         |  --inherited           Members: include inherited members from parent types
         |  --architecture        Overview: show package dependency graph and hub types
+        |  --focus-package PKG   Overview: scope dependency graph to a single package
         |  --has-method NAME     AST pattern: match types that have a method with NAME
         |  --extends TRAIT       AST pattern: match types that extend TRAIT
         |  --body-contains PAT   AST pattern: match types whose body contains PAT
@@ -163,7 +168,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         categoryFilter = categoryFilter, grepPatterns = grepPatterns, countOnly = countOnly,
         searchMode = searchMode, definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait,
         implLimit = implLimit, goUp = goUp, goDown = goDown, inherited = inherited,
-        architecture = architecture, hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
+        architecture = architecture, focusPackage = focusPackage,
+        hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
@@ -202,6 +208,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         grepPatterns = grepPatterns, countOnly = countOnly, searchMode = searchMode,
         definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit,
         goUp = goUp, goDown = goDown, inherited = inherited, architecture = architecture,
+        focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter)
       runCommand(cmd, cmdRest, ctx)

@@ -125,6 +125,7 @@ case class CommandContext(
   inOwner: Option[String] = None, ofTrait: Option[String] = None,
   implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true,
   inherited: Boolean = false, architecture: Boolean = false,
+  focusPackage: Option[String] = None,
   hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
   bodyContainsFilter: Option[String] = None,
 ):
@@ -138,7 +139,7 @@ case class CommandContext(
 
 // ── CmdResult types ────────────────────────────────────────────────────────
 
-case class NotFoundHint(symbol: String, fileCount: Int, parseFailures: Int, cmd: String, batchMode: Boolean, looksLikePath: Boolean)
+case class NotFoundHint(symbol: String, fileCount: Int, parseFailures: Int, cmd: String, batchMode: Boolean, looksLikePath: Boolean, suggestions: List[String] = Nil)
 
 case class MemberSectionData(
   file: Path, ownerKind: SymbolKind, packageName: String, line: Int,
@@ -155,7 +156,8 @@ case class OverviewData(
   mostExtended: List[(name: String, count: Int)],
   pkgDeps: Map[String, Set[String]],
   hubTypes: List[(name: String, score: Int)],
-  hasArchitecture: Boolean
+  hasArchitecture: Boolean,
+  focusPackage: Option[String] = None
 )
 
 case class TestCaseResult(name: String, line: Int, body: Option[BodyInfo])
@@ -183,5 +185,6 @@ enum CmdResult:
   case AstMatches(filters: String, results: List[AstPatternMatch])
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
   case Packages(packages: List[String])
+  case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
   case NotFound(message: String, hint: NotFoundHint)
   case UsageError(message: String)
