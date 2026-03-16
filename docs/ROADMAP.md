@@ -257,7 +257,7 @@ Feedback from real-world usage exploring the Airstream library (~240 files).
 - [x] Microbenchmark harness (`src/bench.scala`) — isolated per-function benchmarks with warmup, mean/median/p99/stddev; covers extractSymbols, bloom filter, persistence, search, refs
 - [x] Enhanced `bench.sh` — index size reporting, diverse query benchmarks (miss, heavy refs, fuzzy, grep, hierarchy), `--timings` integration, `bench-compare.sh` for regression detection
 
-### Warm-load optimization
+### Warm-load optimization — DONE
 
 Benchmark data shows every query pays ~770ms baseline just to load+build the index. Actual query logic adds only 28–470ms. The warm-load path (`cache-load` 38% + `index-build` 48%) is the dominant bottleneck.
 
@@ -271,6 +271,29 @@ Benchmark data shows every query pays ~770ms baseline just to load+build the ind
 
 **Lower priority:**
 - [ ] Memory-mapped I/O — replace `DataInputStream(BufferedInputStream(...))` with `MappedByteBuffer` for cache-load; eliminates kernel→user copy, lets OS page in only needed data
+
+### Warm-load optimization round 2 — TRIED, NO GAIN
+
+Post lazy-maps benchmarks (scala3, 17.7k files, 203K symbols) show two remaining bottlenecks:
+
+| Bottleneck | Time | % of total | Affects |
+|---|---|---|---|
+| `cache-load` | ~290ms | 45–79% | Every command |
+| `build-symbolsByName` | ~230ms | 40% | `def`, `refs`, `imports` |
+
+Cheapest commands (`grep`, `file`) are ~361ms. Most expensive (`def`, `refs`) are ~591–666ms.
+
+**Attempted (v7 format, reverted — no measurable improvement):**
+- ~~Blooms at end~~ — moved bloom filters to contiguous section at end of `index.bin`. Non-bloom commands skip ~12MB of blooms (saves ~67ms on cache-load), but adding lowerName strings grew the index from 22MB→24MB, offsetting the savings. Net: +10ms on `file`, -11ms on `def` — within noise
+- ~~2-byte indices~~ — plan assumed ~60K string table entries fitting in unsigned short. Actual table has **269K entries** (signatures, imports, parents, annotations all interned). `indexWidth=4` always, dead code on real codebases
+- ~~Pre-interned lowercase names~~ — stored `name.toLowerCase` per symbol. Added ~80K extra strings (+2MB index). `build-symbolsByName` unchanged at ~230ms because **`toLowerCase` is not the bottleneck — `groupBy` hash map building is**
+
+Hyperfine v6 vs v7 (7 runs each, warmup 2): `file` 361→371ms, `def` 591→580ms, `impl` 387→395ms, `refs` 666→646ms. All within σ.
+
+**Remaining ideas:**
+- [ ] Lazy symbol deserialization — deserialize `IndexedFile.symbols` on demand; `grep`/`file` never access symbols, skip deserialization entirely. The 269K-string readUTF loop is the true cache-load bottleneck
+- [ ] Pre-grouped symbol storage — store symbols pre-grouped by `name.toLowerCase` in binary index; skip the `groupBy` over 203K symbols entirely (the hash map building, not toLowerCase, is the ~230ms cost)
+- [ ] Memory-mapped I/O — `MappedByteBuffer` instead of `DataInputStream`; eliminates kernel→user copy, OS pages in only needed data
 
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
