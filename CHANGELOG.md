@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- `explain` now ranks class/trait/object/enum above val/def when selecting the primary symbol — previously took the first unranked result, so `explain Observer` could resolve to a `val observer` instead of `trait Observer` (#80)
+- `hierarchy --up` and `--down` now correctly walk the inheritance tree — cycle-detection was pre-seeded with the root symbol, causing both directions to always return `(none)` (#80)
+
 ## [1.14.0] — 2026-03-16
 
 ### Fixed

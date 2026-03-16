@@ -29,6 +29,30 @@ class AnalysisSuite extends ScalexTestBase:
     assertEquals(tree.root.name, "UserService")
   }
 
+  test("buildHierarchy --down finds children (regression #80)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val result = buildHierarchy(idx, "UserService", goUp = false, goDown = true, workspace)
+    assert(result.isDefined, "Should find hierarchy for UserService")
+    val tree = result.get
+    val childNames = tree.children.map(_.root.name).toSet
+    assert(childNames.contains("UserServiceLive"),
+      s"Should find UserServiceLive as child: $childNames")
+    assert(childNames.contains("OldService"),
+      s"Should find OldService as child: $childNames")
+  }
+
+  test("buildHierarchy --up finds parents (regression #80)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val result = buildHierarchy(idx, "UserServiceLive", goUp = true, goDown = false, workspace)
+    assert(result.isDefined, "Should find hierarchy for UserServiceLive")
+    val tree = result.get
+    val parentNames = tree.parents.map(_.root.name).toSet
+    assert(parentNames.contains("UserService"),
+      s"Should find UserService as parent: $parentNames")
+  }
+
   test("buildHierarchy goUp=false produces empty parents") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
@@ -86,6 +110,19 @@ class AnalysisSuite extends ScalexTestBase:
   }
 
   // ── explain command — constituent calls ───────────────────────────────
+
+  test("explain ranks class/trait above val/object (regression #80)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserService has trait + object + val references — explain should pick the trait
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace))
+    }
+    val output = out.toString
+    assert(output.contains("trait UserService"),
+      s"explain should pick trait UserService, not val/object: $output")
+  }
 
   test("explain: constituent calls work together for PaymentService") {
     val idx = WorkspaceIndex(workspace)

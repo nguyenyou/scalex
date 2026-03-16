@@ -242,6 +242,16 @@ Feedback from dogfooding scalex on itself — test cases (`test("name") { ... }`
 ### ~~Multi-workspace / cross-project awareness (#64)~~
 - ~~Support indexing additional source roots beyond the current workspace~~ — unnecessary complexity; users can simply instruct the agent to run scalex with `-w` on the target workspace instead
 
+### Symbol disambiguation (#80) — DONE
+
+Feedback from real-world usage exploring the Airstream library (~240 files).
+
+**`explain` should use `def` ranking:**
+- [x] Apply the same `sortBy` ranking (class/trait/object/enum > type/given > def/val) in `explain` before selecting the primary symbol — was taking `defs.head` unranked, so `explain Observer` resolved to a `val observer` instead of `trait Observer`
+
+**`hierarchy` cycle-detection fix:**
+- [x] Fix `hierarchy --up` and `--down` returning `(none)` — `buildHierarchy` initialized `visited = Set(sym.name)` before calling `walkUp`/`walkDown`, causing them to exit immediately; fixed by passing `Set.empty`
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)

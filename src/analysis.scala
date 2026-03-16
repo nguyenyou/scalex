@@ -46,8 +46,8 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
     }
   }
 
-  val parents = if goUp then walkUp(sym.name, Set(sym.name.toLowerCase)) else Nil
-  val children = if goDown then walkDown(sym.name, Set(sym.name.toLowerCase)) else Nil
+  val parents = if goUp then walkUp(sym.name, Set.empty) else Nil
+  val children = if goDown then walkDown(sym.name, Set.empty) else Nil
   Some(HierarchyTree(rootNode, parents, children))
 }
 
