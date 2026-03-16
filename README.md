@@ -486,7 +486,6 @@ Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (
 - **From Scalameta**: the parser that makes source-level symbol extraction possible
 - **From Guava**: bloom filter implementation
 
-See [INSPIRATION.md](docs/INSPIRATION.md) for the full story of what we learned.
 
 Metals is [Apache 2.0](https://github.com/scalameta/metals/blob/main/LICENSE). Scalex does not contain code copied from Metals — we reimplemented the ideas independently.
 
