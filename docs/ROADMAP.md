@@ -202,6 +202,27 @@ Feedback from AI agent usage focused on *understanding unfamiliar codebases* —
 **Lower priority — composite:** — DONE
 - [x] `scalex overview` — one-shot architectural summary: top packages by symbol count, most-extended traits/classes; computed from existing in-memory data
 
+### Codebase comprehension (#53, #54)
+
+Feedback from real-world AI-assisted exploration of the Scala 3 compiler (17.7k files) and Airstream library (~240 files). Focus: eliminate round-trips and manual file reads during codebase exploration.
+
+**High priority — biggest round-trip eliminators:**
+- [ ] `scalex body <symbol> [--in <class>]` — extract method/val body from source using Scalameta spans; eliminates ~50% of follow-up Read calls (#54)
+- [ ] `scalex explain <symbol>` — composite one-shot summary: def + doc + members + top-N impl + deps; eliminates 4–5 round-trips per type (#53, #54)
+- [ ] `scalex hierarchy <symbol>` — full inheritance tree (parents up + children down) from extends clauses; `--up`/`--down` to limit direction; single biggest time sink in exploration (#53, #54, extends #48)
+- [ ] `scalex overrides <method> --of <trait>` — find all override implementations; compose impl lookup with member-level filtering (#54, extends #29)
+
+**Medium priority — richer exploration:**
+- [ ] `scalex members --inherited` — walk extends chain, collect members from each mixed-in trait; show full API surface, not just directly-defined members (#53)
+- [ ] `scalex overview --architecture` — package dependency flow (from imports), hub types (most-referenced + most-extended), key type relationships (#53)
+- [ ] `scalex deps <symbol>` — reverse of refs: what does this type *use*? Parse file imports + body refs to other indexed symbols (#53)
+- [ ] `scalex context <file:line>` — enclosing scope info: walk up Scalameta tree from position → enclosing class, method, package, imports (#54)
+
+**Lower priority — advanced:**
+- [ ] `scalex ast-pattern <pattern>` — structural AST search with predicates (e.g. `--body-contains`); biggest differentiator vs grep, unique to Scalameta (#54)
+- [ ] `scalex diff [git-ref]` — changed symbols since a git ref; cheap via OID diffing of two indices (#54)
+- [ ] `scalex pattern <name>` — detect common Scala design patterns (F-bounded, typeclass, strategy via implicits) via heuristic AST matching (#53)
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
