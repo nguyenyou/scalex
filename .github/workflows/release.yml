@@ -19,8 +19,8 @@ jobs:
         include:
           - os: macos-15
             artifact: scalex-macos-arm64
-          - os: macos-15-intel
-            artifact: scalex-macos-x64
+          # - os: macos-15-intel
+          #   artifact: scalex-macos-x64
           - os: ubuntu-24.04
             artifact: scalex-linux-x64
 
