@@ -153,6 +153,10 @@ The fastest way — installs the binary + skill (teaches Claude when and how to 
 /plugin install scalex@scalex-marketplace
 ```
 
+Try this sample prompt:
+
+> *"use scalex skill to explore and explain how \<abcxyz\> works"*
+
 ### Other AI agents / manual install
 
 **1. Install the binary** to `~/.local/bin`:
