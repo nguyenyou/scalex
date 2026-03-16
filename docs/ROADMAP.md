@@ -182,6 +182,11 @@ Feedback from heavy AI agent usage — three targeted improvements for large-cod
 **Condensed "not found" in batch mode:** — DONE
 - [x] In batch mode, condense not-found output to a single line instead of multi-line hints; reduce noise when running 5+ queries
 
+### Default categorized refs (#46) — DONE
+- [x] `--categorize` is now the default for `refs` — AI agents always used it anyway
+- [x] `--flat` flag to opt into the old flat-list behavior
+- [x] `--categorize`/`-c` kept as accepted no-ops for backwards compatibility
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)

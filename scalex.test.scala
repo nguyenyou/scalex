@@ -1397,12 +1397,26 @@ class ScalexSuite extends FunSuite:
     assert(output.contains("User"), s"Should find 'User': $output")
   }
 
-  // ── refs -c alias ──────────────────────────────────────────────────────
+  // ── refs categorize default + --flat ────────────────────────────────────
 
-  test("-c is parsed as alias for --categorize") {
-    val args = List("refs", "UserService", "-c")
-    val categorize = args.contains("--categorize") || args.contains("-c")
-    assert(categorize, "-c should enable categorize")
+  test("categorize is default (no flags needed)") {
+    val args = List("refs", "UserService")
+    val categorize = !args.contains("--flat")
+    assert(categorize, "categorize should be true by default")
+  }
+
+  test("--flat disables categorize") {
+    val args = List("refs", "UserService", "--flat")
+    val categorize = !args.contains("--flat")
+    assert(!categorize, "--flat should disable categorize")
+  }
+
+  test("-c and --categorize are accepted as no-ops") {
+    val args1 = List("refs", "UserService", "-c")
+    val args2 = List("refs", "UserService", "--categorize")
+    // Both should still result in categorize=true (default)
+    assert(!args1.contains("--flat"), "-c should not break default")
+    assert(!args2.contains("--flat"), "--categorize should not break default")
   }
 
   // ── condensed not-found in batch mode ──────────────────────────────────

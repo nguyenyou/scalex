@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- `refs` now categorizes output by default — `--categorize`/`-c` are kept as no-ops for backwards compatibility (#46)
+- Added `--flat` flag to `refs` — opt into the old flat-list output (#46)
+
 ## [1.9.0] — 2026-03-16
 
 ### Added

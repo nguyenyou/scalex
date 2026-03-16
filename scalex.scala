@@ -1196,7 +1196,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     case -1 => None
     case i => argList.lift(i + 1)
   val verbose = argList.contains("--verbose")
-  val categorize = argList.contains("--categorize") || argList.contains("-c")
+  val categorize = !argList.contains("--flat")
   val noTests = argList.contains("--no-tests")
   val pathFilter: Option[String] = argList.indexOf("--path") match
     case -1 => None
@@ -1220,7 +1220,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     if idx >= 0 then argList.lift(idx + 1) else None
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e")
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
+  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || a == "--flat" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
   })
@@ -1248,7 +1248,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  --limit N             Max results (default: 20)
         |  --kind K              Filter by kind: class, trait, object, def, val, type, enum, given, extension
         |  --verbose             Show signatures and extends clauses
-        |  --categorize, -c      Group refs by: definition, extends, import, type usage, comment
+        |  --categorize, -c      Group refs by category (default; kept for backwards compatibility)
+        |  --flat                Refs: flat list instead of categorized (overrides default)
         |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
         |  -C N                  Show N context lines around each reference (refs, grep)

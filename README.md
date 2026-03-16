@@ -189,7 +189,8 @@ scalex search hms                       # Fuzzy camelCase: finds HttpMessageServ
 scalex search Auth --prefix             # Only exact + prefix matches, no noise
 scalex def UserService --verbose        # Where is it defined? (with signature)
 scalex impl UserService                 # Who extends this trait?
-scalex refs UserService -c              # Who uses it? (grouped by how)
+scalex refs UserService                 # Who uses it? (categorized by default)
+scalex refs UserService --flat          # Flat list (old default)
 scalex imports UserService              # Who imports it?
 scalex file PaymentService              # Find files by name (fuzzy camelCase)
 scalex annotated deprecated             # Find all @deprecated symbols
@@ -245,7 +246,8 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 | Flag | Effect |
 |---|---|
 | `--verbose` | Show signatures, extends clauses, param types |
-| `--categorize`, `-c` | Group refs into Definition / ExtendedBy / ImportedBy / UsedAsType / Comment / Usage |
+| `--categorize`, `-c` | Group refs by category (default; kept for backwards compatibility) |
+| `--flat` | Refs: flat list instead of categorized (overrides default) |
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter search: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
@@ -261,7 +263,7 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 ### AI-Friendly Features
 
 - **`--verbose`** on `def` returns the full signature — saves the agent a follow-up Read call
-- **`--categorize` / `-c`** on `refs` groups results by relationship — the agent sees who defines it, extends it, imports it, and uses it in one call
+- **Categorized refs by default** — `refs` groups results by relationship (Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage) without any flags; use `--flat` for the old flat list
 - **`impl`** finds concrete implementations of a trait — much more targeted than `refs`
 - **`imports`** shows dependency relationships — which files depend on this symbol
 - **Fuzzy camelCase search** — `search "hms"` finds `HttpMessageService`, `file "psl"` finds `PaymentServiceLive.scala`
@@ -365,7 +367,7 @@ Grep pattern="^\s*trait " path="compiler/src/dotty/tools/dotc/transform/"
 **With Scalex** (1 tool call):
 
 ```bash
-scalex refs Compiler --categorize --limit 5
+scalex refs Compiler --limit 5
   Definition:
     .../Compiler.scala:16 — class Compiler {
   ExtendedBy:

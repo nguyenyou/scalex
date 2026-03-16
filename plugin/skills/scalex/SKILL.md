@@ -66,16 +66,17 @@ scalex impl PaymentService --no-tests --path core/src/
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--categorize|-c] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
+### `scalex refs <symbol> [--flat] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
-Use `--categorize` before refactoring — it groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls.
+Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead.
 
 ```bash
-scalex refs PaymentService --categorize
+scalex refs PaymentService                        # categorized by default
 scalex refs PaymentService --no-tests --path core/src/
-scalex refs PaymentService -C 3          # show 3 lines of context around each ref
+scalex refs PaymentService -C 3                   # show 3 lines of context
+scalex refs PaymentService --flat                 # flat list (old default)
 ```
 ```
   Definition:
@@ -89,8 +90,6 @@ scalex refs PaymentService -C 3          # show 3 lines of context around each r
   Comment:
     .../PaymentServiceLive.scala:38 — /** Live implementation of PaymentService ...
 ```
-
-Without `--categorize`, returns a flat list (faster for simple lookups).
 
 ### `scalex imports <symbol> [--no-tests] [--path PREFIX] [--limit N]` — import graph
 
@@ -193,7 +192,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 |---|---|
 | `-w`, `--workspace PATH` | Set workspace path (default: current directory) |
 | `--verbose` | Show signatures, extends clauses, param types |
-| `--categorize`, `-c` | Group refs into Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage |
+| `--categorize`, `-c` | Group refs by category (default; kept for backwards compatibility) |
+| `--flat` | Refs: flat list instead of categorized (overrides default) |
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
@@ -211,7 +211,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 
 **"Who implements trait X?"** → `scalex impl X` (index-based, fast)
 
-**"What's the impact of renaming X?"** → `scalex refs X -c` (shows all usages grouped by kind)
+**"What's the impact of renaming X?"** → `scalex refs X` (categorized by default — shows all usages grouped by kind)
 
 **"Which files import X?"** → `scalex imports X` (just import lines, clean for dependency analysis)
 
