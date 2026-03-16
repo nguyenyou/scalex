@@ -751,19 +751,25 @@ private def renderPackages(r: CmdResult.Packages, ctx: CommandContext): Unit = {
   }
 }
 
+private def pluralKind(kind: SymbolKind): String = kind match
+  case SymbolKind.Class => "Classes"
+  case _ => s"${kind.toString}s"
+
 private def renderPackageSymbols(r: CmdResult.PackageSymbols, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
-    val arr = r.symbols.take(ctx.limit).map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
-    println(s"""{"package":"${jsonEscape(r.pkg)}","symbolCount":${r.symbols.size},"symbols":$arr}""")
+    val items = r.symbols.take(ctx.limit)
+    val arr = items.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
+    val truncated = if r.symbols.size > ctx.limit then ",\"truncated\":true" else ""
+    println(s"""{"package":"${jsonEscape(r.pkg)}","symbolCount":${r.symbols.size},"symbols":$arr$truncated}""")
   } else {
     if r.symbols.isEmpty then {
       println(s"""Package ${r.pkg}: (no symbols)""")
     } else {
       println(s"Package ${r.pkg} (${r.symbols.size} symbols):\n")
-      val byKind = r.symbols.groupBy(_.kind).toList.sortBy(-_._2.size)
+      val byKind: List[(kind: SymbolKind, syms: List[SymbolInfo])] =
+        r.symbols.groupBy(_.kind).toList.sortBy(-_._2.size).map((k, s) => (kind = k, syms = s))
       byKind.foreach { (kind, syms) =>
-        val kindName = kind.toString
-        println(s"  ${kindName}s (${syms.size}):")
+        println(s"  ${pluralKind(kind)} (${syms.size}):")
         val items = syms.sortBy(_.name).take(ctx.limit)
         items.foreach { s =>
           if ctx.verbose then
@@ -789,7 +795,7 @@ private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
       case "imports" => println(s"""{"results":[],"timedOut":${ctx.idx.timedOut},"suggestions":$suggestionsJson}""")
       case "deps" => println(s"""{"imports":[],"bodyReferences":[],"suggestions":$suggestionsJson}""")
       case "package" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
-      case _ => println(s"""{"results":[],"suggestions":$suggestionsJson}""")
+      case _ => println("[]") // preserve backwards-compatible bare array for def/impl/search/etc.
     }
   } else {
     println(r.message)

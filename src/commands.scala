@@ -13,14 +13,12 @@ def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
 
 // ── Suggestions for not-found ────────────────────────────────────────────────
 
-def suggestMatches(query: String, idx: WorkspaceIndex, limit: Int = 5): List[String] =
-  val results = idx.search(query)
-  results.take(limit).map { s =>
+def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
+  var results = ctx.idx.search(symbol)
+  if ctx.noTests then results = results.filter(s => !isTestFile(s.file, ctx.workspace))
+  val suggestions = results.take(5).map { s =>
     s"${s.kind.toString.toLowerCase} ${s.name} (${s.packageName})"
   }
-
-def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
-  val suggestions = suggestMatches(symbol, ctx.idx)
   NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode,
     symbol.contains("/") || symbol.startsWith("."), suggestions)
 
@@ -300,8 +298,9 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
   val allSymbols = if ctx.noTests then ctx.idx.symbols.filter(s => !isTestFile(s.file, ctx.workspace))
                    else ctx.idx.symbols
   val symbolsByKind = allSymbols.groupBy(_.kind).toList.sortBy(-_._2.size)
-  val topPackages = allSymbols.groupBy(_.packageName).filter(_._1.nonEmpty)
-    .map((pkg, syms) => (pkg, syms)).toList.sortBy(-_._2.size).take(ctx.limit)
+  val topPackages: List[(pkg: String, syms: List[SymbolInfo])] = allSymbols.groupBy(_.packageName)
+    .filter(_._1.nonEmpty).toList.sortBy(-_._2.size).take(ctx.limit)
+    .map((p, s) => (pkg = p, syms = s))
   val mostExtended = ctx.idx.parentIndex.toList
     .filter((name, _) => ctx.idx.symbolsByName.contains(name))
     .map { (name, impls) =>
