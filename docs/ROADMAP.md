@@ -131,9 +131,9 @@ Feedback from real agent usage on large codebases (scala3 compiler, 14k+ files).
 - [x] `refs -C N` context lines — show N lines before/after each reference (like `grep -C`); reduces follow-up Read calls
 - [x] Smarter `def` ranking — rank class/trait/object above val/def, main source above test files, shorter package paths first
 
-**Lower priority — new capabilities:**
-- [ ] Override search — `scalex overrides Phase.isRunnable` finds methods overriding a specific def; combines impl lookup with method-level filtering
-- [ ] `scalex hierarchy <class>` — show full inheritance chain (parents + children); `--up` for syntactic extends clause, `--down` for name-based impl tree (#48)
+**Lower priority — new capabilities:** — DONE
+- [x] Override search — `scalex overrides Phase.isRunnable` finds methods overriding a specific def; combines impl lookup with method-level filtering (completed in #53/#54)
+- [x] `scalex hierarchy <class>` — show full inheritance chain (parents + children); `--up` for syntactic extends clause, `--down` for name-based impl tree (#48, completed in #53/#54)
 
 ### JSON output (#32) — DONE
 - [x] `--json` flag on all commands — structured output for programmatic consumption; eliminates fragile text parsing by agent consumers
@@ -233,6 +233,17 @@ Feedback from dogfooding scalex on itself — test cases (`test("name") { ... }`
 
 **Medium priority:** — DONE
 - [x] `scalex coverage <symbol>` — "is this function tested?" shorthand: refs filtered to test files only, with count and file list. Faster than `refs X` followed by manual test-file filtering. Shows test file names + line numbers where the symbol appears.
+
+### Overview hub type filtering (#64) — DONE
+- [x] Filter standard library / framework types from `overview --architecture` hub type rankings — `None`, `AnyVal`, `Object` etc. are noise
+- [x] Heuristic: exclude types not defined in the indexed codebase from "Most extended" and "Hub types" sections
+- [x] Surface the project's own architectural hub types instead
+
+### Multi-workspace / cross-project awareness (#64)
+- [ ] Support indexing additional source roots beyond the current workspace — enables `def`, `explain`, `hierarchy` etc. across project boundaries
+- [ ] `--include <path>` flag to specify additional source directories to index
+- [ ] Optional `.scalex/config` file for persistent per-project source root configuration
+- [ ] Stays within Scalameta parsing model — just indexes more files from multiple git roots
 
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
