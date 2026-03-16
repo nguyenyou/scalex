@@ -120,7 +120,7 @@ Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`)
 
 When adding or changing commands/flags in `src/cli.scala`:
 - Update help text in the `main` function
-- Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter)
+- Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility)
 - Update `docs/ROADMAP.md`
 - Update `CHANGELOG.md`
 - Update `README.md` (commands block, options table, AI-Friendly Features, "Use it" examples)
