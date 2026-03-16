@@ -54,7 +54,7 @@ Build the fastest possible Scala code navigation tool, designed from the ground 
 
 ## How It Works
 
-The tool is ~2,700 lines of Scala 3 across 8 source files. Here's the architecture:
+The tool is ~3,100 lines of Scala 3 across 8 source files. Here's the architecture:
 
 ```
                          ┌─────────────────┐
@@ -69,11 +69,11 @@ The tool is ~2,700 lines of Scala 3 across 8 source files. Here's the architectu
                          ┌────────▼────────┐
                          │  WorkspaceIndex │
                          │                 │
-                         │  symbolsByName  │  ← HashMap for O(1) def lookup
-                         │  parentIndex    │  ← trait → [implementing classes]
-                         │  annotationIdx  │  ← annotation → [symbols]
-                         │  filesByPath    │  ← file → [symbols in that file]
-                         │  packages       │  ← all package names
+                         │  symbolsByName  │  ← lazy: O(1) def lookup
+                         │  parentIndex    │  ← lazy: trait → [implementors]
+                         │  annotationIdx  │  ← lazy: annotation → [symbols]
+                         │  filesByPath    │  ← lazy: file → [symbols]
+                         │  packages       │  ← lazy: all package names
                          │  indexedFiles   │  ← per-file bloom filters
                          └────────┬────────┘
                                   │
@@ -98,7 +98,7 @@ The tool is ~2,700 lines of Scala 3 across 8 source files. Here's the architectu
      │
      │  Lists every .scala file tracked by git
      │  with its SHA-1 content hash (OID).
-     │  ~200ms for 14k files.
+     │  ~40ms for 18k files.
      │
   2. Compare OIDs against cached index
      │
@@ -117,20 +117,17 @@ The tool is ~2,700 lines of Scala 3 across 8 source files. Here's the architectu
      │  - Build bloom filter of all identifiers
      │  Runs on all CPU cores via Java parallel streams.
      │
-  4. Build in-memory index
-     │
-     │  symbolsByName:  Map[name → List[SymbolInfo]]
-     │  parentIndex:    Map[trait → List[implementors]]
-     │  filesByPath:    Map[path → List[SymbolInfo]]
-     │  packages:       Set[packageName]
-     │
-  5. Save to .scalex/index.bin
+  4. Save to .scalex/index.bin
      │
      │  Binary format with string interning.
      │  Bloom filters serialized per file.
-     │  Loads in ~300ms for 215k symbols.
+     │  Loads in ~275ms for 200k+ symbols.
      │
-  6. Answer the query
+  5. Answer the query
+     │
+     │  Derived maps (symbolsByName, parentIndex, etc.)
+     │  are lazy vals — built on first access, not upfront.
+     │  Commands that need 1–2 maps skip building the rest.
 ```
 
 ### Performance
@@ -472,7 +469,7 @@ The name also nods to "Scala" itself — Italian for "staircase" or "scale" — 
 
 The Scalex mascot is a **kestrel** — the smallest falcon. It was chosen because it mirrors the tool's core qualities:
 
-- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~2,700 lines across 8 source files, single 28MB binary)
+- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~3,100 lines across 8 source files, single 28MB binary)
 - **Incredible eyesight** — spots symbols across 14k files, like a kestrel spots prey from 50 meters
 - **Hovers before diving** — systematically scans an area before striking, like indexing before querying
 - **Lives alongside people** — kestrels thrive near humans, like Scalex works alongside AI agents
@@ -483,7 +480,7 @@ See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
 Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team.
 
-Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~2,700 lines of Scala 3.
+Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~3,100 lines of Scala 3.
 
 - **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
 - **From Scalameta**: the parser that makes source-level symbol extraction possible
