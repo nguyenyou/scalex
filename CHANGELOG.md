@@ -10,6 +10,9 @@
 - Enhanced `bench.sh` — index size reporting, diverse query benchmarks, `--timings` integration
 - `bench-compare.sh` — compare two hyperfine JSON exports, flag >5% regressions
 
+### Changed
+- Lazy map building in `WorkspaceIndex` — derived indexes (`symbolsByName`, `parentIndex`, `filesByPath`, etc.) are now `lazy val` fields computed on first access instead of eagerly built in a monolithic `index-build` phase. Commands that use only 1–2 maps skip building the rest. Benchmarked on scala3 compiler (17.7k files): `file` 2.16x faster (951→441ms), `impl` 2.00x (928→465ms), `packages` 1.86x (904→486ms), `def` 1.31x (905→693ms), `grep` 1.59x (1442→904ms)
+
 ### Fixed
 - `explain` now ranks class/trait/object/enum above val/def when selecting the primary symbol — previously took the first unranked result, so `explain Observer` could resolve to a `val observer` instead of `trait Observer` (#80)
 - `hierarchy --up` and `--down` now correctly walk the inheritance tree — cycle-detection was pre-seeded with the root symbol, causing both directions to always return `(none)` (#80)

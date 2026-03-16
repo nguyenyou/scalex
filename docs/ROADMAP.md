@@ -264,7 +264,7 @@ Feedback from real-world usage exploring the Airstream library (~240 files).
 Benchmark data shows every query pays ~770ms baseline just to load+build the index. Actual query logic adds only 28–470ms. The warm-load path (`cache-load` 38% + `index-build` 48%) is the dominant bottleneck.
 
 **High priority:**
-- [ ] Lazy map building — build `symbolsByName`, `parentIndex`, `filesByPath`, `annotationIndex`, `packageToSymbols`, `aliasIndex` etc. on first access instead of eagerly; most commands use only 1–2 maps. Expected: ~150–200ms savings on typical queries
+- [x] Lazy map building — `lazy val` fields in `WorkspaceIndex` compute derived maps on first access; most commands use only 1–2 maps. Measured: `file` 2.16x, `impl` 2.00x, `packages` 1.86x, `def` 1.31x faster on scala3 (17.7k files)
 - [ ] Separate bloom storage — store bloom filters in `blooms.bin` separate from `index.bin`; non-bloom commands (`def`, `search`, `impl`, `packages`, `hierarchy`) load ~7MB instead of 22MB. Expected: ~100–150ms savings on non-bloom commands
 
 **Medium priority:**

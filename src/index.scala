@@ -184,19 +184,83 @@ object IndexPersistence:
 // ── Workspace index ─────────────────────────────────────────────────────────
 
 class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
-  var symbols: List[SymbolInfo] = Nil
-  var filesByPath: Map[Path, List[SymbolInfo]] = Map.empty
-  var symbolsByName: Map[String, List[SymbolInfo]] = Map.empty
-  var packages: Set[String] = Set.empty
   var gitFiles: List[GitFile] = Nil
   private var indexedFiles: List[IndexedFile] = Nil
-  var parentIndex: Map[String, List[SymbolInfo]] = Map.empty
 
-  private var distinctSymbols: List[SymbolInfo] = Nil
-  var packageToSymbols: Map[String, Set[String]] = Map.empty
-  private var indexedByPath: Map[String, IndexedFile] = Map.empty
-  private var aliasIndex: Map[String, List[(file: IndexedFile, alias: String)]] = Map.empty
-  private var annotationIndex: Map[String, List[SymbolInfo]] = Map.empty
+  private lazy val allSymbols: List[SymbolInfo] =
+    Timings.phase("build-allSymbols") {
+      indexedFiles.flatMap(_.symbols)
+    }
+
+  lazy val symbols: List[SymbolInfo] = allSymbols
+
+  lazy val filesByPath: Map[Path, List[SymbolInfo]] =
+    Timings.phase("build-filesByPath") {
+      allSymbols.groupBy(_.file)
+    }
+
+  lazy val symbolsByName: Map[String, List[SymbolInfo]] =
+    Timings.phase("build-symbolsByName") {
+      allSymbols.groupBy(_.name.toLowerCase)
+    }
+
+  lazy val packages: Set[String] =
+    Timings.phase("build-packages") {
+      allSymbols.iterator.map(_.packageName).filter(_.nonEmpty).toSet
+    }
+
+  lazy val parentIndex: Map[String, List[SymbolInfo]] =
+    Timings.phase("build-parentIndex") {
+      val pIdx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
+      allSymbols.foreach { s =>
+        s.parents.foreach { p =>
+          pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
+        }
+      }
+      pIdx.map((k, v) => k -> v.toList).toMap
+    }
+
+  private lazy val distinctSymbols: List[SymbolInfo] =
+    Timings.phase("build-distinctSymbols") {
+      val seen = mutable.HashSet.empty[(String, Path, Int)]
+      allSymbols.filter(s => seen.add((s.name, s.file, s.line)))
+    }
+
+  lazy val packageToSymbols: Map[String, Set[String]] =
+    Timings.phase("build-packageToSymbols") {
+      val pkgToSyms = mutable.HashMap.empty[String, mutable.HashSet[String]]
+      allSymbols.foreach { s =>
+        pkgToSyms.getOrElseUpdate(s.packageName, mutable.HashSet.empty) += s.name
+      }
+      pkgToSyms.map((k, v) => k -> v.toSet).toMap
+    }
+
+  private lazy val indexedByPath: Map[String, IndexedFile] =
+    Timings.phase("build-indexedByPath") {
+      indexedFiles.map(f => f.relativePath -> f).toMap
+    }
+
+  private lazy val aliasIndex: Map[String, List[(file: IndexedFile, alias: String)]] =
+    Timings.phase("build-aliasIndex") {
+      val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(file: IndexedFile, alias: String)]]
+      indexedFiles.foreach { f =>
+        f.aliases.foreach { (orig, alias) =>
+          aIdx.getOrElseUpdate(orig, mutable.ListBuffer.empty) += ((f, alias))
+        }
+      }
+      aIdx.map((k, v) => k -> v.toList).toMap
+    }
+
+  private lazy val annotationIndex: Map[String, List[SymbolInfo]] =
+    Timings.phase("build-annotationIndex") {
+      val aByAnnot = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
+      allSymbols.foreach { s =>
+        s.annotations.foreach { a =>
+          aByAnnot.getOrElseUpdate(a.toLowerCase, mutable.ListBuffer.empty) += s
+        }
+      }
+      aByAnnot.map((k, v) => k -> v.toList).toMap
+    }
 
   var fileCount: Int = 0
   var indexTimeMs: Long = 0
@@ -259,55 +323,6 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       case f if f.parseFailed => f.relativePath
     }
     parseFailures = parseFailedFiles.size
-    Timings.phase("index-build") {
-      // Single-pass over symbols: build all symbol-level indexes
-      val allSyms = mutable.ListBuffer.empty[SymbolInfo]
-      val byPath = mutable.HashMap.empty[Path, mutable.ListBuffer[SymbolInfo]]
-      val byName = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-      val pkgs = mutable.HashSet.empty[String]
-      val pIdx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-      val pkgToSyms = mutable.HashMap.empty[String, mutable.HashSet[String]]
-      val distinctSeen = mutable.HashSet.empty[(String, Path, Int)]
-      val distinctBuf = mutable.ListBuffer.empty[SymbolInfo]
-      val aByAnnot = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-      indexedFiles.foreach { f =>
-        f.symbols.foreach { s =>
-          allSyms += s
-          byPath.getOrElseUpdate(s.file, mutable.ListBuffer.empty) += s
-          byName.getOrElseUpdate(s.name.toLowerCase, mutable.ListBuffer.empty) += s
-          if s.packageName.nonEmpty then pkgs += s.packageName
-          s.parents.foreach { p =>
-            pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
-          }
-          s.annotations.foreach { a =>
-            aByAnnot.getOrElseUpdate(a.toLowerCase, mutable.ListBuffer.empty) += s
-          }
-          pkgToSyms.getOrElseUpdate(s.packageName, mutable.HashSet.empty) += s.name
-          val key = (s.name, s.file, s.line)
-          if distinctSeen.add(key) then distinctBuf += s
-        }
-      }
-      symbols = allSyms.toList
-      distinctSymbols = distinctBuf.toList
-      filesByPath = byPath.map((k, v) => k -> v.toList).toMap
-      symbolsByName = byName.map((k, v) => k -> v.toList).toMap
-      packages = pkgs.toSet
-      parentIndex = pIdx.map((k, v) => k -> v.toList).toMap
-      annotationIndex = aByAnnot.map((k, v) => k -> v.toList).toMap
-      packageToSymbols = pkgToSyms.map((k, v) => k -> v.toSet).toMap
-
-      // Single-pass over indexedFiles: build file-level indexes
-      val iByPath = mutable.HashMap.empty[String, IndexedFile]
-      val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(file: IndexedFile, alias: String)]]
-      indexedFiles.foreach { f =>
-        iByPath(f.relativePath) = f
-        f.aliases.foreach { (orig, alias) =>
-          aIdx.getOrElseUpdate(orig, mutable.ListBuffer.empty) += ((f, alias))
-        }
-      }
-      indexedByPath = iByPath.toMap
-      aliasIndex = aIdx.map((k, v) => k -> v.toList).toMap
-    }
     indexTimeMs = (System.nanoTime() - t0) / 1_000_000
 
     if parsedCount > 0 then
