@@ -2266,15 +2266,15 @@ class ScalexSuite extends FunSuite:
     if otherWorkspace != null then return
     otherWorkspace = Files.createTempDirectory("scalex-test-other")
 
-    val otherFile = otherWorkspace.resolve("src/main/scala/com/lib/ViewerL.scala")
+    val otherFile = otherWorkspace.resolve("src/main/scala/com/lib/Renderer.scala")
     Files.createDirectories(otherFile.getParent)
     Files.writeString(otherFile, """package com.lib
       |
-      |trait ViewerL {
+      |trait Renderer {
       |  def render(data: String): String
       |}
       |
-      |class ViewerLLive extends ViewerL {
+      |class RendererLive extends Renderer {
       |  def render(data: String): String = s"<div>$data</div>"
       |}
       |
@@ -2282,8 +2282,8 @@ class ScalexSuite extends FunSuite:
       |  def doStuff(): Unit = ()
       |}
       |
-      |object ViewerL {
-      |  val default: ViewerL = ViewerLLive()
+      |object Renderer {
+      |  val default: Renderer = RendererLive()
       |}
       |""".stripMargin)
 
@@ -2348,19 +2348,19 @@ class ScalexSuite extends FunSuite:
 
     val filtered = gitLsFiles(otherWorkspace, List("**/scalablytyped/**"))
     assert(!filtered.exists(_.path.toString.contains("scalablytyped")), "Should exclude scalablytyped files")
-    assert(filtered.exists(_.path.toString.contains("ViewerL")), "Should keep non-excluded files")
+    assert(filtered.exists(_.path.toString.contains("Renderer")), "Should keep non-excluded files")
   }
 
   test("publicOnly filters private/protected symbols") {
     setupOtherWorkspace()
-    val file = otherWorkspace.resolve("src/main/scala/com/lib/ViewerL.scala")
+    val file = otherWorkspace.resolve("src/main/scala/com/lib/Renderer.scala")
     val (allSyms, _, _, _, _) = extractSymbols(file, publicOnly = false)
     val (pubSyms, _, _, _, _) = extractSymbols(file, publicOnly = true)
 
     assert(allSyms.exists(_.name == "InternalHelper"), "All should include private class")
     assert(!pubSyms.exists(_.name == "InternalHelper"), "Public-only should exclude private class")
-    assert(pubSyms.exists(_.name == "ViewerL"), "Public-only should include public trait")
-    assert(pubSyms.exists(_.name == "ViewerLLive"), "Public-only should include public class")
+    assert(pubSyms.exists(_.name == "Renderer"), "Public-only should include public trait")
+    assert(pubSyms.exists(_.name == "RendererLive"), "Public-only should include public class")
   }
 
   test("mergeSymbolsFrom adds symbols from other workspace") {
@@ -2368,16 +2368,16 @@ class ScalexSuite extends FunSuite:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    val before = idx.findDefinition("ViewerL")
-    assert(before.isEmpty, "Should not find ViewerL before merge")
+    val before = idx.findDefinition("Renderer")
+    assert(before.isEmpty, "Should not find Renderer before merge")
 
     val otherIdx = WorkspaceIndex(otherWorkspace, needBlooms = false, publicOnly = true)
     otherIdx.index()
     idx.mergeSymbolsFrom(otherIdx)
 
-    val after = idx.findDefinition("ViewerL")
-    assert(after.nonEmpty, "Should find ViewerL after merge")
-    assert(after.exists(_.kind == SymbolKind.Trait), "Should find ViewerL trait")
+    val after = idx.findDefinition("Renderer")
+    assert(after.nonEmpty, "Should find Renderer after merge")
+    assert(after.exists(_.kind == SymbolKind.Trait), "Should find Renderer trait")
   }
 
   test("mergeSymbolsFrom does not include private symbols") {
@@ -2402,8 +2402,8 @@ class ScalexSuite extends FunSuite:
     otherIdx.index()
     idx.mergeSymbolsFrom(otherIdx)
 
-    val impls = idx.findImplementations("ViewerL")
-    assert(impls.exists(_.name == "ViewerLLive"), "Should find ViewerLLive as impl of ViewerL")
+    val impls = idx.findImplementations("Renderer")
+    assert(impls.exists(_.name == "RendererLive"), "Should find RendererLive as impl of Renderer")
   }
 
   test("cross-workspace exclude patterns prevent indexing") {
@@ -2415,8 +2415,8 @@ class ScalexSuite extends FunSuite:
     val gen = otherIdx.findDefinition("GeneratedFoo")
     assert(gen.isEmpty, "Should not find GeneratedFoo with exclude pattern")
 
-    val viewer = otherIdx.findDefinition("ViewerL")
-    assert(viewer.nonEmpty, "Should find ViewerL even with exclude pattern")
+    val viewer = otherIdx.findDefinition("Renderer")
+    assert(viewer.nonEmpty, "Should find Renderer even with exclude pattern")
   }
 
   test("relativizeSafe handles cross-workspace paths") {
@@ -2435,8 +2435,8 @@ class ScalexSuite extends FunSuite:
 
   test("formatSymbol uses relativizeSafe for cross-workspace symbols") {
     setupOtherWorkspace()
-    val sym = SymbolInfo("ViewerL", SymbolKind.Trait,
-      otherWorkspace.resolve("src/ViewerL.scala"), 3, "com.lib")
+    val sym = SymbolInfo("Renderer", SymbolKind.Trait,
+      otherWorkspace.resolve("src/Renderer.scala"), 3, "com.lib")
     val includes = List(otherWorkspace)
     val output = formatSymbol(sym, workspace, includes)
     assert(output.contains(s"[${otherWorkspace.getFileName}]"), s"Should show bracketed workspace name: $output")
@@ -2453,10 +2453,10 @@ class ScalexSuite extends FunSuite:
 
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("def", List("ViewerL"), idx, workspace, 20, None, false, false, false, None, 0, false, includes = List(otherWorkspace))
+      runCommand("def", List("Renderer"), idx, workspace, 20, None, false, false, false, None, 0, false, includes = List(otherWorkspace))
     }
     val output = out.toString
-    assert(output.contains("ViewerL"), s"Should find ViewerL: $output")
+    assert(output.contains("Renderer"), s"Should find Renderer: $output")
     assert(output.contains(s"[${otherWorkspace.getFileName}]"), s"Should show bracketed path: $output")
   }
 
@@ -2477,8 +2477,8 @@ class ScalexSuite extends FunSuite:
       }
 
       // def should find cross-workspace symbols
-      val viewerDefs = idx.findDefinition("ViewerL")
-      assert(viewerDefs.nonEmpty, "Should find ViewerL via config")
+      val viewerDefs = idx.findDefinition("Renderer")
+      assert(viewerDefs.nonEmpty, "Should find Renderer via config")
 
       // excluded files should not be indexed
       val genDefs = idx.findDefinition("GeneratedFoo")
