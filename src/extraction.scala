@@ -44,7 +44,7 @@ private def extractAnnotations(mods: List[Mod]): List[String] =
       case _ => init.tpe.toString()
   }
 
-private def extractImports(tree: Tree): (imports: List[String], aliases: Map[String, String]) =
+def extractImports(tree: Tree): (imports: List[String], aliases: Map[String, String]) =
   val buf = mutable.ListBuffer.empty[String]
   val aliases = mutable.Map.empty[String, String]
   def visit(t: Tree): Unit =
