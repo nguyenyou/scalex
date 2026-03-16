@@ -795,7 +795,7 @@ private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
       case "imports" => println(s"""{"results":[],"timedOut":${ctx.idx.timedOut},"suggestions":$suggestionsJson}""")
       case "deps" => println(s"""{"imports":[],"bodyReferences":[],"suggestions":$suggestionsJson}""")
       case "package" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
-      case _ => println("[]") // preserve backwards-compatible bare array for def/impl/search/etc.
+      case _ => println(s"""{"results":[],"suggestions":$suggestionsJson}""")
     }
   } else {
     println(r.message)
