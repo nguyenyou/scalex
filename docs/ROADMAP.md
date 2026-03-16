@@ -239,11 +239,41 @@ Feedback from dogfooding scalex on itself — test cases (`test("name") { ... }`
 - [x] Heuristic: exclude types not defined in the indexed codebase from "Most extended" and "Hub types" sections
 - [x] Surface the project's own architectural hub types instead
 
-### Multi-workspace / cross-project awareness (#64)
-- [ ] Support indexing additional source roots beyond the current workspace — enables `def`, `explain`, `hierarchy` etc. across project boundaries
-- [ ] `--include <path>` flag to specify additional source directories to index
-- [ ] Optional `.scalex/config` file for persistent per-project source root configuration
-- [ ] Stays within Scalameta parsing model — just indexes more files from multiple git roots
+### Multi-workspace / cross-project awareness (#64) — DONE
+
+Config format (`.scalex/config.json` in primary workspace):
+```json
+{"include":[{"path":"/abs/or/relative/path","exclude":["**/scalablytyped/**"]}]}
+```
+
+**Implemented:**
+- [x] `.scalex/config.json` parsed at startup — `path` (absolute or relative to workspace root) + optional `exclude` glob patterns
+- [x] Symbol-level lookup across projects — `def`, `impl`, `hierarchy`, `explain`, `search`, `members`, `overrides`, `annotated`, `overview` all see included symbols
+- [x] Public-only filtering — `private`/`protected` declarations skipped via Scalameta `Mod.Private`/`Mod.Protected` check during extraction
+- [x] Exclude patterns — `java.nio.file.PathMatcher` glob matching applied in `gitLsFiles` before parsing
+- [x] Index-once caching — included workspace index stored in primary workspace at `.scalex/include-<dirname>.bin`; subsequent runs load from cache without running `git ls-files` or re-parsing
+- [x] `--reindex-includes` flag — always does a clean full re-index from scratch (no incremental OID diffing — full re-parse is fast enough at ~4s for 2.4k files)
+- [x] Slim index format for includes — same v6 binary format but writes empty blooms, imports, and aliases (not needed for symbol-level lookup); cuts cache size ~60% vs full index
+- [x] Cross-workspace path display — `relativizeSafe` renders included paths as `[workspace-name]/relative/path` in all output (text and JSON)
+- [x] No pollution of included repo — cache lives entirely in primary workspace's `.scalex/` dir
+
+**Not affected (by design):**
+- Text search (`refs`, `imports`, `grep`, `coverage`) — only searches primary workspace's `gitFiles`/bloom filters
+- `diff` command — only diffs primary workspace's git history
+- `IndexPersistence` format — no schema change, slim index is a valid v6 file with zeroed optional fields
+- No new CLI flags except `--reindex-includes` — cross-project is config-driven, not flag-driven
+
+**Benchmarks** (stargazer 14k files + design 2.4k files after excluding 11.9k scalablytyped):
+
+| Scenario | Time |
+|---|---|
+| Baseline (no config) | 1.20s |
+| With config (cached include) | 1.43s (+220ms) |
+| Cold include (first run, one-time) | ~4s |
+| `--reindex-includes` (clean re-parse) | ~4s |
+| Per-query cost | <1ms (unchanged) |
+| Include cache size | 1.4MB slim (`include-design.bin`) |
+| Primary index size | 30MB (unchanged) |
 
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")

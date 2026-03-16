@@ -182,9 +182,6 @@ class ScalexSuite extends FunSuite:
     run("git", "add", ".")
     run("git", "commit", "-m", "init")
 
-  override def afterAll(): Unit =
-    deleteRecursive(workspace)
-
   private def writeFile(relativePath: String, content: String): Unit =
     val file = workspace.resolve(relativePath)
     Files.createDirectories(file.getParent)
@@ -2259,4 +2256,242 @@ class ScalexSuite extends FunSuite:
     assert(output.contains("\"symbol\":\"UserService\""), s"Should contain symbol: $output")
     assert(output.contains("\"testFileCount\""), s"Should contain testFileCount: $output")
     assert(output.contains("\"referenceCount\""), s"Should contain referenceCount: $output")
+  }
+
+  // ── Cross-workspace / multi-project ─────────────────────────────────
+
+  var otherWorkspace: Path = scala.compiletime.uninitialized
+
+  private def setupOtherWorkspace(): Unit =
+    if otherWorkspace != null then return
+    otherWorkspace = Files.createTempDirectory("scalex-test-other")
+
+    val otherFile = otherWorkspace.resolve("src/main/scala/com/lib/ViewerL.scala")
+    Files.createDirectories(otherFile.getParent)
+    Files.writeString(otherFile, """package com.lib
+      |
+      |trait ViewerL {
+      |  def render(data: String): String
+      |}
+      |
+      |class ViewerLLive extends ViewerL {
+      |  def render(data: String): String = s"<div>$data</div>"
+      |}
+      |
+      |private class InternalHelper {
+      |  def doStuff(): Unit = ()
+      |}
+      |
+      |object ViewerL {
+      |  val default: ViewerL = ViewerLLive()
+      |}
+      |""".stripMargin)
+
+    val excludedFile = otherWorkspace.resolve("src/main/scala/generated/scalablytyped/Foo.scala")
+    Files.createDirectories(excludedFile.getParent)
+    Files.writeString(excludedFile, """package generated.scalablytyped
+      |
+      |class GeneratedFoo {
+      |  def bar(): Unit = ()
+      |}
+      |""".stripMargin)
+
+    val pb1 = ProcessBuilder("git", "init")
+    pb1.directory(otherWorkspace.toFile)
+    pb1.redirectErrorStream(true)
+    pb1.start().waitFor()
+
+    val pb2 = ProcessBuilder("git", "add", ".")
+    pb2.directory(otherWorkspace.toFile)
+    pb2.redirectErrorStream(true)
+    pb2.start().waitFor()
+
+    val pb3 = ProcessBuilder("git", "commit", "-m", "init")
+    pb3.directory(otherWorkspace.toFile)
+    pb3.redirectErrorStream(true)
+    pb3.start().waitFor()
+
+  override def afterAll(): Unit =
+    deleteRecursive(workspace)
+    if otherWorkspace != null then deleteRecursive(otherWorkspace)
+
+  test("loadConfig parses .scalex/config.json") {
+    setupOtherWorkspace()
+    val configDir = workspace.resolve(".scalex")
+    Files.createDirectories(configDir)
+    Files.writeString(configDir.resolve("config.json"),
+      s"""{"include":[{"path":"${otherWorkspace.toString.replace("\\", "\\\\")}","exclude":["**/scalablytyped/**"]}]}""")
+    try {
+      val config = loadConfig(workspace)
+      assertEquals(config.size, 1)
+      assertEquals(config.head.path, otherWorkspace)
+      assertEquals(config.head.exclude, List("**/scalablytyped/**"))
+    } finally {
+      Files.delete(configDir.resolve("config.json"))
+    }
+  }
+
+  test("loadConfig returns empty for missing config") {
+    val tmpDir = Files.createTempDirectory("scalex-noconfig")
+    try {
+      val config = loadConfig(tmpDir)
+      assert(config.isEmpty)
+    } finally {
+      deleteRecursive(tmpDir)
+    }
+  }
+
+  test("gitLsFiles with exclude patterns filters files") {
+    setupOtherWorkspace()
+    val all = gitLsFiles(otherWorkspace)
+    assert(all.exists(_.path.toString.contains("scalablytyped")), "Should have scalablytyped without exclude")
+
+    val filtered = gitLsFiles(otherWorkspace, List("**/scalablytyped/**"))
+    assert(!filtered.exists(_.path.toString.contains("scalablytyped")), "Should exclude scalablytyped files")
+    assert(filtered.exists(_.path.toString.contains("ViewerL")), "Should keep non-excluded files")
+  }
+
+  test("publicOnly filters private/protected symbols") {
+    setupOtherWorkspace()
+    val file = otherWorkspace.resolve("src/main/scala/com/lib/ViewerL.scala")
+    val (allSyms, _, _, _, _) = extractSymbols(file, publicOnly = false)
+    val (pubSyms, _, _, _, _) = extractSymbols(file, publicOnly = true)
+
+    assert(allSyms.exists(_.name == "InternalHelper"), "All should include private class")
+    assert(!pubSyms.exists(_.name == "InternalHelper"), "Public-only should exclude private class")
+    assert(pubSyms.exists(_.name == "ViewerL"), "Public-only should include public trait")
+    assert(pubSyms.exists(_.name == "ViewerLLive"), "Public-only should include public class")
+  }
+
+  test("mergeSymbolsFrom adds symbols from other workspace") {
+    setupOtherWorkspace()
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+
+    val before = idx.findDefinition("ViewerL")
+    assert(before.isEmpty, "Should not find ViewerL before merge")
+
+    val otherIdx = WorkspaceIndex(otherWorkspace, needBlooms = false, publicOnly = true)
+    otherIdx.index()
+    idx.mergeSymbolsFrom(otherIdx)
+
+    val after = idx.findDefinition("ViewerL")
+    assert(after.nonEmpty, "Should find ViewerL after merge")
+    assert(after.exists(_.kind == SymbolKind.Trait), "Should find ViewerL trait")
+  }
+
+  test("mergeSymbolsFrom does not include private symbols") {
+    setupOtherWorkspace()
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+
+    val otherIdx = WorkspaceIndex(otherWorkspace, needBlooms = false, publicOnly = true)
+    otherIdx.index()
+    idx.mergeSymbolsFrom(otherIdx)
+
+    val internal = idx.findDefinition("InternalHelper")
+    assert(internal.isEmpty, "Should not find private InternalHelper after merge")
+  }
+
+  test("cross-workspace impl finds implementations across projects") {
+    setupOtherWorkspace()
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+
+    val otherIdx = WorkspaceIndex(otherWorkspace, needBlooms = false, publicOnly = true)
+    otherIdx.index()
+    idx.mergeSymbolsFrom(otherIdx)
+
+    val impls = idx.findImplementations("ViewerL")
+    assert(impls.exists(_.name == "ViewerLLive"), "Should find ViewerLLive as impl of ViewerL")
+  }
+
+  test("cross-workspace exclude patterns prevent indexing") {
+    setupOtherWorkspace()
+    val otherIdx = WorkspaceIndex(otherWorkspace, needBlooms = false,
+      excludePatterns = List("**/scalablytyped/**"), publicOnly = true)
+    otherIdx.index()
+
+    val gen = otherIdx.findDefinition("GeneratedFoo")
+    assert(gen.isEmpty, "Should not find GeneratedFoo with exclude pattern")
+
+    val viewer = otherIdx.findDefinition("ViewerL")
+    assert(viewer.nonEmpty, "Should find ViewerL even with exclude pattern")
+  }
+
+  test("relativizeSafe handles cross-workspace paths") {
+    setupOtherWorkspace()
+    val localFile = workspace.resolve("src/Foo.scala")
+    val otherFile = otherWorkspace.resolve("src/Bar.scala")
+    val includes = List(otherWorkspace)
+
+    val localRel = relativizeSafe(localFile, workspace, includes)
+    assertEquals(localRel.toString, "src/Foo.scala")
+
+    val otherRel = relativizeSafe(otherFile, workspace, includes)
+    val expected = s"[${otherWorkspace.getFileName}]/src/Bar.scala"
+    assertEquals(otherRel.toString, expected)
+  }
+
+  test("formatSymbol uses relativizeSafe for cross-workspace symbols") {
+    setupOtherWorkspace()
+    val sym = SymbolInfo("ViewerL", SymbolKind.Trait,
+      otherWorkspace.resolve("src/ViewerL.scala"), 3, "com.lib")
+    val includes = List(otherWorkspace)
+    val output = formatSymbol(sym, workspace, includes)
+    assert(output.contains(s"[${otherWorkspace.getFileName}]"), s"Should show bracketed workspace name: $output")
+    assert(!output.contains(otherWorkspace.toString), s"Should not show absolute path: $output")
+  }
+
+  test("cross-workspace def command output shows bracketed paths") {
+    setupOtherWorkspace()
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val otherIdx = WorkspaceIndex(otherWorkspace, needBlooms = false, publicOnly = true)
+    otherIdx.index()
+    idx.mergeSymbolsFrom(otherIdx)
+
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("def", List("ViewerL"), idx, workspace, 20, None, false, false, false, None, 0, false, includes = List(otherWorkspace))
+    }
+    val output = out.toString
+    assert(output.contains("ViewerL"), s"Should find ViewerL: $output")
+    assert(output.contains(s"[${otherWorkspace.getFileName}]"), s"Should show bracketed path: $output")
+  }
+
+  test("config-driven cross-workspace integration") {
+    setupOtherWorkspace()
+    val configDir = workspace.resolve(".scalex")
+    Files.createDirectories(configDir)
+    Files.writeString(configDir.resolve("config.json"),
+      s"""{"include":[{"path":"${otherWorkspace.toString.replace("\\", "\\\\")}","exclude":["**/scalablytyped/**"]}]}""")
+    try {
+      val config = loadConfig(workspace)
+      val idx = WorkspaceIndex(workspace)
+      idx.index()
+      config.foreach { entry =>
+        val incIdx = WorkspaceIndex(entry.path, needBlooms = false, excludePatterns = entry.exclude, publicOnly = true)
+        incIdx.index()
+        idx.mergeSymbolsFrom(incIdx)
+      }
+
+      // def should find cross-workspace symbols
+      val viewerDefs = idx.findDefinition("ViewerL")
+      assert(viewerDefs.nonEmpty, "Should find ViewerL via config")
+
+      // excluded files should not be indexed
+      val genDefs = idx.findDefinition("GeneratedFoo")
+      assert(genDefs.isEmpty, "Should not find excluded GeneratedFoo")
+
+      // private symbols should not be indexed
+      val privateDefs = idx.findDefinition("InternalHelper")
+      assert(privateDefs.isEmpty, "Should not find private InternalHelper")
+
+      // original workspace symbols still work
+      val userDefs = idx.findDefinition("UserService")
+      assert(userDefs.nonEmpty, "Should still find local UserService")
+    } finally {
+      Files.delete(configDir.resolve("config.json"))
+    }
   }

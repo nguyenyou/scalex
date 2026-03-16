@@ -330,6 +330,7 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 - **`ast-pattern`** does structural AST search — find types by what they extend, what methods they have, or what their body contains
 - **`members --inherited`** shows the full API surface — own members plus inherited from parent types
 - **`overview --architecture`** shows package dependency graph and hub types — architectural understanding in one call
+- **Cross-project awareness** via `.scalex/config.json` — index symbols from other local projects for `def`, `impl`, `hierarchy` etc. across project boundaries; only public symbols, with glob-based exclude patterns
 
 ## Scalex vs Grep/Glob/Read — Honest Comparison
 

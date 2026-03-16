@@ -33,6 +33,16 @@ Scalex extracts **top-level declarations** from every git-tracked `.scala` file:
 
 The `refs`, `imports`, `grep`, and `categorize` features work differently — they do text search across files, so they find ALL textual occurrences regardless of whether the symbol is in the index.
 
+### Cross-project awareness
+
+Scalex can index symbols from other local projects via `.scalex/config.json`:
+
+```json
+{"include":[{"path":"/abs/path/to/other-project","exclude":["**/generated/**"]}]}
+```
+
+Included workspaces are indexed for symbol-level lookup (`def`, `impl`, `hierarchy`, `explain`, etc.) but NOT for text search (`refs`, `imports`, `grep`). Only public symbols are indexed — `private`/`protected` declarations are filtered out. Cross-workspace paths display as `[workspace-name]/relative/path`.
+
 ## Commands
 
 All commands default to current directory. You can set the workspace with `-w` / `--workspace` (e.g., `scalex def -w /path/to/project MyTrait`) or as a positional argument (e.g., `scalex def /path/to/project MyTrait`). The `-w` flag is preferred — it avoids ambiguity between workspace and symbol. Every command auto-indexes on first run.

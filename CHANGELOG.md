@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-03-16
+
+### Added
+- Multi-workspace / cross-project awareness via `.scalex/config.json` — index additional local git repos for symbol-level lookup (`def`, `impl`, `hierarchy`, etc.) without affecting text search (`refs`, `imports`, `grep`) (#64)
+- Only public symbols from included workspaces are indexed — `private`/`protected` declarations are filtered out
+- Exclude patterns in config — glob patterns like `"**/scalablytyped/**"` skip matching files in included workspaces
+- `--reindex-includes` flag — clean re-index of included workspaces from scratch
+- Slim index format for includes — same v6 format with empty blooms/imports/aliases, ~60% smaller cache
+- Cross-workspace paths display as `[workspace-name]/relative/path` in output
+
 ### Fixed
 - `overview --architecture` "Most extended" and "Hub types" no longer dominated by stdlib/framework types (`None`, `AnyVal`, `Object`, etc.) — both lists now filter to types defined in the indexed codebase (#64)
 

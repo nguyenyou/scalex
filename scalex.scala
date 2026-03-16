@@ -4,14 +4,14 @@
 
 import scala.meta.*
 import scala.collection.mutable
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, FileSystems, Path}
 import java.io.{BufferedReader, BufferedInputStream, BufferedOutputStream,
   DataInputStream, DataOutputStream, InputStreamReader}
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.13.0"
+val ScalexVersion = "1.14.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -64,14 +64,84 @@ case class CategorizedRef(ref: Reference, category: RefCategory)
 enum Confidence:
   case High, Medium, Low
 
+// ── Config ──────────────────────────────────────────────────────────────────
+
+case class IncludeEntry(path: Path, exclude: List[String])
+
+def loadConfig(workspace: Path): List[IncludeEntry] =
+  val configFile = workspace.resolve(".scalex").resolve("config.json")
+  if !Files.exists(configFile) then return Nil
+  try
+    val content = Files.readString(configFile)
+    // Bracket-aware extraction: find matched [] for "include" array
+    val includeIdx = content.indexOf("\"include\"")
+    if includeIdx < 0 then return Nil
+    val bracketStart = content.indexOf('[', includeIdx)
+    if bracketStart < 0 then return Nil
+    var depth = 0
+    var bracketEnd = -1
+    var i = bracketStart
+    while i < content.length && bracketEnd < 0 do
+      content(i) match
+        case '[' => depth += 1
+        case ']' => depth -= 1; if depth == 0 then bracketEnd = i
+        case '"' => i += 1; while i < content.length && content(i) != '"' do { if content(i) == '\\' then i += 1; i += 1 }
+        case _ =>
+      i += 1
+    if bracketEnd < 0 then return Nil
+    val includeContent = content.substring(bracketStart + 1, bracketEnd)
+
+    // Extract each {...} entry with bracket awareness
+    def extractObjects(s: String): List[String] = {
+      val result = mutable.ListBuffer.empty[String]
+      var j = 0
+      while j < s.length do
+        if s(j) == '{' then
+          val start = j
+          var d = 0
+          var end = -1
+          while j < s.length && end < 0 do
+            s(j) match
+              case '{' => d += 1
+              case '}' => d -= 1; if d == 0 then end = j
+              case '"' => j += 1; while j < s.length && s(j) != '"' do { if s(j) == '\\' then j += 1; j += 1 }
+              case _ =>
+            j += 1
+          if end >= 0 then result += s.substring(start + 1, end)
+        else j += 1
+      result.toList
+    }
+
+    val pathPattern = """"path"\s*:\s*"([^"]*)"""".r
+    val excludePattern = """"exclude"\s*:\s*\[([^\]]*)\]""".r
+    val stringPattern = """"([^"]*)"""".r
+
+    extractObjects(includeContent).flatMap { entry =>
+      pathPattern.findFirstMatchIn(entry).map { pathMatch =>
+        val rawPath = pathMatch.group(1)
+        val resolvedPath = if Path.of(rawPath).isAbsolute then Path.of(rawPath).normalize
+                           else workspace.resolve(rawPath).normalize
+        val excludes = excludePattern.findFirstMatchIn(entry) match
+          case None => Nil
+          case Some(exMatch) =>
+            stringPattern.findAllMatchIn(exMatch.group(1)).map(_.group(1)).toList
+        IncludeEntry(resolvedPath, excludes)
+      }
+    }
+  catch
+    case _: Exception => Nil
+
 // ── Git ─────────────────────────────────────────────────────────────────────
 
-def gitLsFiles(workspace: Path): List[GitFile] =
+def gitLsFiles(workspace: Path, exclude: List[String] = Nil): List[GitFile] =
   val pb = ProcessBuilder("git", "ls-files", "--stage")
   pb.directory(workspace.toFile)
   pb.redirectErrorStream(true)
   val proc = pb.start()
   val reader = BufferedReader(InputStreamReader(proc.getInputStream))
+  val matchers = exclude.map { pattern =>
+    FileSystems.getDefault.getPathMatcher(s"glob:$pattern")
+  }
   val files = reader.lines().iterator().asScala.flatMap { line =>
     val tabIdx = line.indexOf('\t')
     if tabIdx < 0 then None
@@ -79,7 +149,8 @@ def gitLsFiles(workspace: Path): List[GitFile] =
       val parts = line.substring(0, tabIdx).split("\\s+")
       val path = line.substring(tabIdx + 1)
       if parts.length >= 2 && path.endsWith(".scala") then
-        Some(GitFile(workspace.resolve(path), parts(1)))
+        if matchers.nonEmpty && matchers.exists(_.matches(Path.of(path))) then None
+        else Some(GitFile(workspace.resolve(path), parts(1)))
       else None
   }.toList
   proc.waitFor()
@@ -117,6 +188,13 @@ private def buildSignature(name: String, kind: String, parents: List[String], tp
   val ext = if parents.nonEmpty then s" extends ${parents.mkString(" with ")}" else ""
   s"$kind $name$tps$ext"
 
+private def isNonPublic(mods: List[Mod]): Boolean =
+  mods.exists {
+    case _: Mod.Private => true
+    case _: Mod.Protected => true
+    case _ => false
+  }
+
 private def extractAnnotations(mods: List[Mod]): List[String] =
   mods.collect { case Mod.Annot(init) =>
     init.tpe match
@@ -143,7 +221,7 @@ private def extractImports(tree: Tree): (imports: List[String], aliases: Map[Str
   visit(tree)
   (buf.toList, aliases.toMap)
 
-def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[CharSequence], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
+def extractSymbols(file: Path, publicOnly: Boolean = false): (symbols: List[SymbolInfo], bloom: BloomFilter[CharSequence], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
   val source = try Files.readString(file) catch
     case _: Exception =>
       val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
@@ -169,64 +247,72 @@ def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[C
 
   def visit(t: Tree): Unit = t match
     case d: Defn.Class =>
-      val parents = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "class", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      if !publicOnly || !isNonPublic(d.mods) then
+        val parents = extractParents(d.templ)
+        val tparams = d.tparamClause.values.map(_.name.value)
+        val sig = buildSignature(d.name.value, "class", parents, tparams)
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Defn.Trait =>
-      val parents = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "trait", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      if !publicOnly || !isNonPublic(d.mods) then
+        val parents = extractParents(d.templ)
+        val tparams = d.tparamClause.values.map(_.name.value)
+        val sig = buildSignature(d.name.value, "trait", parents, tparams)
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Defn.Object =>
-      val parents = extractParents(d.templ)
-      val sig = buildSignature(d.name.value, "object", parents)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      if !publicOnly || !isNonPublic(d.mods) then
+        val parents = extractParents(d.templ)
+        val sig = buildSignature(d.name.value, "object", parents)
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Pkg.Object =>
       val parents = extractParents(d.templ)
       val sig = buildSignature(d.name.value, "object", parents)
       buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig)
     case d: Defn.Enum =>
-      val parents = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "enum", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      if !publicOnly || !isNonPublic(d.mods) then
+        val parents = extractParents(d.templ)
+        val tparams = d.tparamClause.values.map(_.name.value)
+        val sig = buildSignature(d.name.value, "enum", parents, tparams)
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, sig, annots)
     case d: Defn.Given =>
-      if d.name.value.nonEmpty then
+      if d.name.value.nonEmpty && (!publicOnly || !isNonPublic(d.mods)) then
         val annots = extractAnnotations(d.mods)
         buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, s"given ${d.name.value}", annots)
     case d: Defn.GivenAlias =>
-      if d.name.value.nonEmpty then
+      if d.name.value.nonEmpty && (!publicOnly || !isNonPublic(d.mods)) then
         val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
         val annots = extractAnnotations(d.mods)
         buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
     case d: Defn.Type =>
-      val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
+      if !publicOnly || !isNonPublic(d.mods) then
+        val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
     case d: Defn.Def =>
-      val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
-      val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-      val sig = s"def ${d.name.value}$params$ret"
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
+      if !publicOnly || !isNonPublic(d.mods) then
+        val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+        val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+        val sig = s"def ${d.name.value}$params$ret"
+        val annots = extractAnnotations(d.mods)
+        buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
     case d: Defn.Val =>
-      val annots = extractAnnotations(d.mods)
-      d.pats.foreach {
-        case Pat.Var(name) =>
-          val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-          buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, s"val ${name.value}$tpe", annots)
-        case _ =>
-      }
+      if !publicOnly || !isNonPublic(d.mods) then
+        val annots = extractAnnotations(d.mods)
+        d.pats.foreach {
+          case Pat.Var(name) =>
+            val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+            buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, s"val ${name.value}$tpe", annots)
+          case _ =>
+        }
     case d: Defn.ExtensionGroup =>
-      val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
-        s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})"
-      ).getOrElse("")
-      buf += SymbolInfo("<extension>", SymbolKind.Extension, file, d.pos.startLine + 1, pkg, Nil, s"extension $recv")
+      if !publicOnly then
+        val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
+          s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})"
+        ).getOrElse("")
+        buf += SymbolInfo("<extension>", SymbolKind.Extension, file, d.pos.startLine + 1, pkg, Nil, s"extension $recv")
     case _ =>
 
   def traverse(t: Tree): Unit =
@@ -873,8 +959,9 @@ object IndexPersistence:
 
   def indexPath(workspace: Path): Path = workspace.resolve(".scalex").resolve("index.bin")
 
-  def save(workspace: Path, files: List[IndexedFile]): Unit =
-    val dir = workspace.resolve(".scalex")
+  def save(workspace: Path, files: List[IndexedFile], cachePath: Option[Path] = None, slim: Boolean = false): Unit =
+    val target = cachePath.getOrElse(indexPath(workspace))
+    val dir = target.getParent
     if !Files.exists(dir) then Files.createDirectories(dir)
 
     val stringTable = mutable.LinkedHashMap.empty[String, Int]
@@ -891,11 +978,12 @@ object IndexPersistence:
         s.parents.foreach(intern)
         s.annotations.foreach(intern)
       }
-      f.imports.foreach(intern)
-      f.aliases.foreach { (k, v) => intern(k); intern(v) }
+      if !slim then
+        f.imports.foreach(intern)
+        f.aliases.foreach { (k, v) => intern(k); intern(v) }
     }
 
-    val out = DataOutputStream(BufferedOutputStream(Files.newOutputStream(indexPath(workspace)), 1 << 16))
+    val out = DataOutputStream(BufferedOutputStream(Files.newOutputStream(target), 1 << 16))
     try
       out.writeInt(MAGIC)
       out.writeByte(VERSION)
@@ -923,30 +1011,36 @@ object IndexPersistence:
         }
 
         // Imports
-        out.writeShort(f.imports.size)
-        f.imports.foreach(i => out.writeInt(intern(i)))
+        if slim then out.writeShort(0)
+        else
+          out.writeShort(f.imports.size)
+          f.imports.foreach(i => out.writeInt(intern(i)))
 
         // Aliases
-        out.writeShort(f.aliases.size)
-        f.aliases.foreach { (k, v) =>
-          out.writeInt(intern(k))
-          out.writeInt(intern(v))
-        }
+        if slim then out.writeShort(0)
+        else
+          out.writeShort(f.aliases.size)
+          f.aliases.foreach { (k, v) =>
+            out.writeInt(intern(k))
+            out.writeInt(intern(v))
+          }
 
         // Bloom filter
-        val bloomBytes = java.io.ByteArrayOutputStream()
-        f.identifierBloom.writeTo(bloomBytes)
-        val ba = bloomBytes.toByteArray
-        out.writeInt(ba.length)
-        out.write(ba)
+        if slim then out.writeInt(0)
+        else
+          val bloomBytes = java.io.ByteArrayOutputStream()
+          f.identifierBloom.writeTo(bloomBytes)
+          val ba = bloomBytes.toByteArray
+          out.writeInt(ba.length)
+          out.write(ba)
 
         // Parse failed flag
         out.writeBoolean(f.parseFailed)
       }
     finally out.close()
 
-  def load(workspace: Path, loadBlooms: Boolean = true): Option[Map[String, IndexedFile]] =
-    val p = indexPath(workspace)
+  def load(workspace: Path, loadBlooms: Boolean = true, cachePath: Option[Path] = None): Option[Map[String, IndexedFile]] =
+    val p = cachePath.getOrElse(indexPath(workspace))
     if !Files.exists(p) then return None
 
     try
@@ -1022,7 +1116,9 @@ object IndexPersistence:
 
 // ── Workspace index ─────────────────────────────────────────────────────────
 
-class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
+class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true,
+                     val excludePatterns: List[String] = Nil, val publicOnly: Boolean = false,
+                     val cachePath: Option[Path] = None):
   var symbols: List[SymbolInfo] = Nil
   var filesByPath: Map[Path, List[SymbolInfo]] = Map.empty
   var symbolsByName: Map[String, List[SymbolInfo]] = Map.empty
@@ -1047,10 +1143,25 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
   def index(): Unit =
     val t0 = System.nanoTime()
-    gitFiles = gitLsFiles(workspace)
+    gitFiles = gitLsFiles(workspace, excludePatterns)
     fileCount = gitFiles.size
 
-    val cached = IndexPersistence.load(workspace, needBlooms)
+    if publicOnly then
+      // Included workspace: always fresh parse, save slim (no blooms/imports/aliases)
+      val queue = ConcurrentLinkedQueue[IndexedFile]()
+      gitFiles.asJava.parallelStream().forEach { gf =>
+        val rel = workspace.relativize(gf.path).toString
+        val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path, publicOnly)
+        queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
+      }
+      indexedFiles = queue.asScala.toList
+      parsedCount = gitFiles.size
+      buildInMemoryIndexes()
+      indexTimeMs = (System.nanoTime() - t0) / 1_000_000
+      IndexPersistence.save(workspace, indexedFiles, cachePath, slim = true)
+      return
+
+    val cached = IndexPersistence.load(workspace, needBlooms, cachePath)
     val result = mutable.ListBuffer.empty[IndexedFile]
 
     cached match
@@ -1071,7 +1182,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
         toParse.asJava.parallelStream().forEach { gf =>
           val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path, publicOnly)
           toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
         }
         result ++= toParseQueue.asScala
@@ -1081,13 +1192,43 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         val queue = ConcurrentLinkedQueue[IndexedFile]()
         gitFiles.asJava.parallelStream().forEach { gf =>
           val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path, publicOnly)
           queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
         }
         result ++= queue.asScala
         parsedCount = gitFiles.size
 
     indexedFiles = result.toList
+    buildInMemoryIndexes()
+    indexTimeMs = (System.nanoTime() - t0) / 1_000_000
+
+    if parsedCount > 0 then
+      if !needBlooms then
+        // Reload with blooms for newly parsed files that have null blooms
+        indexedFiles = indexedFiles.map { f =>
+          if f.identifierBloom == null then
+            val source = try Files.readString(workspace.resolve(f.relativePath)) catch
+              case _: Exception => ""
+            f.copy(identifierBloom = buildBloomFilterFromSource(source))
+          else f
+        }
+      IndexPersistence.save(workspace, indexedFiles, cachePath)
+
+  /** Load from cache only — no git ls-files, no parsing. Returns true if loaded. */
+  def loadCached(): Boolean =
+    val t0 = System.nanoTime()
+    val loaded = IndexPersistence.load(workspace, needBlooms, cachePath)
+    loaded match
+      case Some(cachedMap) =>
+        indexedFiles = cachedMap.values.toList
+        fileCount = indexedFiles.size
+        buildInMemoryIndexes()
+        cachedLoad = true
+        indexTimeMs = (System.nanoTime() - t0) / 1_000_000
+        true
+      case None => false
+
+  private def buildInMemoryIndexes(): Unit =
     parseFailedFiles = indexedFiles.collect {
       case f if f.parseFailed => f.relativePath
     }
@@ -1139,19 +1280,53 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     }
     indexedByPath = iByPath.toMap
     aliasIndex = aIdx.map((k, v) => k -> v.toList).toMap
-    indexTimeMs = (System.nanoTime() - t0) / 1_000_000
 
-    if parsedCount > 0 then
-      if !needBlooms then
-        // Reload with blooms for newly parsed files that have null blooms
-        indexedFiles = indexedFiles.map { f =>
-          if f.identifierBloom == null then
-            val source = try Files.readString(workspace.resolve(f.relativePath)) catch
-              case _: Exception => ""
-            f.copy(identifierBloom = buildBloomFilterFromSource(source))
-          else f
-        }
-      IndexPersistence.save(workspace, indexedFiles)
+  def mergeSymbolsFrom(other: WorkspaceIndex): Unit =
+    symbols = symbols ++ other.symbols
+    fileCount = fileCount + other.fileCount
+    filesByPath = filesByPath ++ other.filesByPath
+    packages = packages ++ other.packages
+
+    // Merge symbolsByName
+    val byName = mutable.HashMap.empty[String, List[SymbolInfo]]
+    symbolsByName.foreach { (k, v) => byName(k) = v }
+    other.symbolsByName.foreach { (k, v) =>
+      byName(k) = byName.getOrElse(k, Nil) ++ v
+    }
+    symbolsByName = byName.toMap
+
+    // Merge parentIndex
+    val pIdx = mutable.HashMap.empty[String, List[SymbolInfo]]
+    parentIndex.foreach { (k, v) => pIdx(k) = v }
+    other.parentIndex.foreach { (k, v) =>
+      pIdx(k) = pIdx.getOrElse(k, Nil) ++ v
+    }
+    parentIndex = pIdx.toMap
+
+    // Merge annotationIndex
+    val aIdx = mutable.HashMap.empty[String, List[SymbolInfo]]
+    annotationIndex.foreach { (k, v) => aIdx(k) = v }
+    other.annotationIndex.foreach { (k, v) =>
+      aIdx(k) = aIdx.getOrElse(k, Nil) ++ v
+    }
+    annotationIndex = aIdx.toMap
+
+    // Merge packageToSymbols
+    val pkgToSyms = mutable.HashMap.empty[String, Set[String]]
+    packageToSymbols.foreach { (k, v) => pkgToSyms(k) = v }
+    other.packageToSymbols.foreach { (k, v) =>
+      pkgToSyms(k) = pkgToSyms.getOrElse(k, Set.empty) ++ v
+    }
+    packageToSymbols = pkgToSyms.toMap
+
+    // Rebuild distinctSymbols
+    val distinctSeen = mutable.HashSet.empty[(String, Path, Int)]
+    val distinctBuf = mutable.ListBuffer.empty[SymbolInfo]
+    symbols.foreach { s =>
+      val key = (s.name, s.file, s.line)
+      if distinctSeen.add(key) then distinctBuf += s
+    }
+    distinctSymbols = distinctBuf.toList
 
   def findDefinition(name: String): List[SymbolInfo] =
     symbolsByName.getOrElse(name.toLowerCase, Nil)
@@ -1390,15 +1565,21 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
 // ── Filtering helpers ────────────────────────────────────────────────────────
 
-def isTestFile(path: Path, workspace: Path): Boolean =
-  val rel = workspace.relativize(path).toString
+def relativizeSafe(path: Path, workspace: Path, includes: List[Path] = Nil): Path =
+  if path.startsWith(workspace) then workspace.relativize(path)
+  else includes.find(w => path.startsWith(w)) match
+    case Some(w) => Path.of(s"[${w.getFileName}]").resolve(w.relativize(path))
+    case None => path
+
+def isTestFile(path: Path, workspace: Path, includes: List[Path] = Nil): Boolean =
+  val rel = relativizeSafe(path, workspace, includes).toString
   rel.contains("/test/") || rel.contains("/tests/") || rel.contains("/testing/") ||
   rel.startsWith("bench-") || rel.contains("/bench-") ||
   rel.endsWith("Test.scala") || rel.endsWith("Spec.scala") || rel.endsWith("Suite.scala") ||
   rel.endsWith(".test.scala")
 
-def matchesPath(file: Path, prefix: String, workspace: Path): Boolean =
-  val rel = workspace.relativize(file).toString
+def matchesPath(file: Path, prefix: String, workspace: Path, includes: List[Path] = Nil): Boolean =
+  val rel = relativizeSafe(file, workspace, includes).toString
   rel.startsWith(prefix)
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
@@ -1418,19 +1599,19 @@ def jsonEscape(s: String): String =
     i += 1
   sb.toString
 
-def jsonSymbol(s: SymbolInfo, workspace: Path): String =
-  val rel = jsonEscape(workspace.relativize(s.file).toString)
+def jsonSymbol(s: SymbolInfo, workspace: Path, includes: List[Path] = Nil): String =
+  val rel = jsonEscape(relativizeSafe(s.file, workspace, includes).toString)
   val parents = s.parents.map(p => s""""${jsonEscape(p)}"""").mkString("[", ",", "]")
   val annots = s.annotations.map(a => s""""${jsonEscape(a)}"""").mkString("[", ",", "]")
   s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"$rel","line":${s.line},"package":"${jsonEscape(s.packageName)}","parents":$parents,"signature":"${jsonEscape(s.signature)}","annotations":$annots}"""
 
-def jsonRef(r: Reference, workspace: Path): String =
-  val rel = jsonEscape(workspace.relativize(r.file).toString)
+def jsonRef(r: Reference, workspace: Path, includes: List[Path] = Nil): String =
+  val rel = jsonEscape(relativizeSafe(r.file, workspace, includes).toString)
   val alias = r.aliasInfo.map(a => s""""${jsonEscape(a)}"""").getOrElse("null")
   s"""{"file":"$rel","line":${r.line},"context":"${jsonEscape(r.contextLine)}","alias":$alias}"""
 
-def jsonRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
-  val rel = jsonEscape(workspace.relativize(r.file).toString)
+def jsonRefWithContext(r: Reference, workspace: Path, contextN: Int, includes: List[Path] = Nil): String =
+  val rel = jsonEscape(relativizeSafe(r.file, workspace, includes).toString)
   val alias = r.aliasInfo.map(a => s""""${jsonEscape(a)}"""").getOrElse("null")
   val lines = try java.nio.file.Files.readAllLines(r.file).asScala catch
     case _: Exception => Seq.empty
@@ -1442,24 +1623,24 @@ def jsonRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
   }.mkString("[", ",", "]")
   s"""{"file":"$rel","line":${r.line},"context":"${jsonEscape(r.contextLine)}","alias":$alias,"contextLines":$ctxLines}"""
 
-def formatSymbol(s: SymbolInfo, workspace: Path): String =
-  val rel = workspace.relativize(s.file)
+def formatSymbol(s: SymbolInfo, workspace: Path, includes: List[Path] = Nil): String =
+  val rel = relativizeSafe(s.file, workspace, includes)
   val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
   s"  ${s.kind.toString.toLowerCase.padTo(9, ' ')} ${s.name}$pkg — $rel:${s.line}"
 
-def formatSymbolVerbose(s: SymbolInfo, workspace: Path): String =
-  val rel = workspace.relativize(s.file)
+def formatSymbolVerbose(s: SymbolInfo, workspace: Path, includes: List[Path] = Nil): String =
+  val rel = relativizeSafe(s.file, workspace, includes)
   val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
   val sig = if s.signature.nonEmpty then s"\n             ${s.signature}" else ""
   s"  ${s.kind.toString.toLowerCase.padTo(9, ' ')} ${s.name}$pkg — $rel:${s.line}$sig"
 
-def formatRef(r: Reference, workspace: Path): String =
-  val rel = workspace.relativize(r.file)
+def formatRef(r: Reference, workspace: Path, includes: List[Path] = Nil): String =
+  val rel = relativizeSafe(r.file, workspace, includes)
   val alias = r.aliasInfo.map(a => s" [$a]").getOrElse("")
   s"  $rel:${r.line} — ${r.contextLine}$alias"
 
-def formatRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
-  val rel = workspace.relativize(r.file)
+def formatRefWithContext(r: Reference, workspace: Path, contextN: Int, includes: List[Path] = Nil): String =
+  val rel = relativizeSafe(r.file, workspace, includes)
   val alias = r.aliasInfo.map(a => s" [$a]").getOrElse("")
   val header = s"  $rel:${r.line}$alias"
   val lines = try java.nio.file.Files.readAllLines(r.file).asScala catch
@@ -1516,11 +1697,14 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true,
                inherited: Boolean = false, architecture: Boolean = false,
                hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
-               bodyContainsFilter: Option[String] = None): Unit =
-  val fmt = if verbose then formatSymbolVerbose else formatSymbol
+               bodyContainsFilter: Option[String] = None,
+               includes: List[Path] = Nil): Unit =
+  val fmt: (SymbolInfo, Path) => String =
+    if verbose then (s, w) => formatSymbolVerbose(s, w, includes)
+    else (s, w) => formatSymbol(s, w, includes)
   val jRef: Reference => String =
-    if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines)
-    else r => jsonRef(r, workspace)
+    if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines, includes)
+    else r => jsonRef(r, workspace, includes)
   cmd match
     case "index" =>
       if jsonOutput then
@@ -1569,7 +1753,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
           pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
           if jsonOutput then
-            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace, includes)).mkString("[", ",", "]")
             println(arr)
           else
             if results.isEmpty then
@@ -1598,11 +1782,11 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               case SymbolKind.Type | SymbolKind.Given => 1
               case _ => 2
             val testRank = if isTestFile(s.file, workspace) then 1 else 0
-            val pathLen = workspace.relativize(s.file).toString.length
+            val pathLen = relativizeSafe(s.file, workspace, includes).toString.length
             (kindRank, testRank, pathLen)
           }
           if jsonOutput then
-            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace, includes)).mkString("[", ",", "]")
             println(arr)
           else
             if results.isEmpty then
@@ -1625,7 +1809,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
           pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
           if jsonOutput then
-            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace, includes)).mkString("[", ",", "]")
             println(arr)
           else
             if results.isEmpty then
@@ -1748,7 +1932,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         case Some(file) =>
           val results = idx.fileSymbols(file)
           if jsonOutput then
-            val arr = results.map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            val arr = results.map(s => jsonSymbol(s, workspace, includes)).mkString("[", ",", "]")
             println(arr)
           else
             if results.isEmpty then println(s"No symbols found in $file")
@@ -1794,7 +1978,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           if noTests then results = results.filter(s => !isTestFile(s.file, workspace))
           pathFilter.foreach { p => results = results.filter(s => matchesPath(s.file, p, workspace)) }
           if jsonOutput then
-            val arr = results.take(limit).map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+            val arr = results.take(limit).map(s => jsonSymbol(s, workspace, includes)).mkString("[", ",", "]")
             println(arr)
           else
             if results.isEmpty then
@@ -1880,13 +2064,13 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           if jsonOutput then
             val allMembers = defs.flatMap { s =>
               val ownMembers = extractMembers(s.file, symbol).map { m =>
-                val rel = jsonEscape(workspace.relativize(s.file).toString)
+                val rel = jsonEscape(relativizeSafe(s.file, workspace, includes).toString)
                 s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(symbol)}","ownerKind":"${s.kind.toString.toLowerCase}","package":"${jsonEscape(s.packageName)}","inherited":false}"""
               }
               val inheritedMembers = collectInherited(s).flatMap { case (parentName, members) =>
                 val parentDef = idx.findDefinition(parentName).headOption
                 members.map { m =>
-                  val rel = parentDef.map(pd => jsonEscape(workspace.relativize(pd.file).toString)).getOrElse("")
+                  val rel = parentDef.map(pd => jsonEscape(relativizeSafe(pd.file, workspace, includes).toString)).getOrElse("")
                   s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(parentName)}","ownerKind":"inherited","package":"${parentDef.map(_.packageName).getOrElse("")}","inherited":true}"""
                 }
               }
@@ -1899,7 +2083,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               printNotFoundHint(symbol, idx, "members", batchMode)
             else
               defs.foreach { s =>
-                val rel = workspace.relativize(s.file)
+                val rel = relativizeSafe(s.file, workspace, includes)
                 val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
                 val members = extractMembers(s.file, symbol)
                 println(s"Members of ${s.kind.toString.toLowerCase} $symbol$pkg — $rel:${s.line}:")
@@ -1939,7 +2123,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           }
           if jsonOutput then
             val entries = defs.take(limit).map { s =>
-              val rel = jsonEscape(workspace.relativize(s.file).toString)
+              val rel = jsonEscape(relativizeSafe(s.file, workspace, includes).toString)
               val doc = extractScaladoc(s.file, s.line).map(d => s""""${jsonEscape(d)}"""").getOrElse("null")
               s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"$rel","line":${s.line},"package":"${jsonEscape(s.packageName)}","doc":$doc}"""
             }
@@ -1950,7 +2134,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               printNotFoundHint(symbol, idx, "doc", batchMode)
             else
               defs.take(limit).foreach { s =>
-                val rel = workspace.relativize(s.file)
+                val rel = relativizeSafe(s.file, workspace, includes)
                 val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
                 println(s"${s.kind.toString.toLowerCase} $symbol$pkg — $rel:${s.line}:")
                 extractScaladoc(s.file, s.line) match
@@ -2067,7 +2251,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           }
           if jsonOutput then
             val arr = resultsWithFiles.take(limit).map { case (file, b) =>
-              val rel = jsonEscape(workspace.relativize(file).toString)
+              val rel = jsonEscape(relativizeSafe(file, workspace, includes).toString)
               s"""{"name":"${jsonEscape(b.symbolName)}","owner":"${jsonEscape(b.ownerName)}","file":"$rel","startLine":${b.startLine},"endLine":${b.endLine},"body":"${jsonEscape(b.sourceText)}"}"""
             }.mkString("[", ",", "]")
             println(arr)
@@ -2078,7 +2262,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             else
               resultsWithFiles.take(limit).foreach { case (file, b) =>
                 val ownerStr = if b.ownerName.nonEmpty then s" — ${b.ownerName}" else ""
-                val rel = workspace.relativize(file)
+                val rel = relativizeSafe(file, workspace, includes)
                 println(s"Body of ${b.symbolName}$ownerStr — $rel:${b.startLine}:")
                 val bodyLines = b.sourceText.split("\n")
                 bodyLines.zipWithIndex.foreach { case (line, i) =>
@@ -2102,7 +2286,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val showBody = nameFilter.isDefined
       if jsonOutput then
         val arr = allSuites.take(limit).map { suite =>
-          val rel = jsonEscape(workspace.relativize(suite.file).toString)
+          val rel = jsonEscape(relativizeSafe(suite.file, workspace, includes).toString)
           val fileLines = if showBody then
             try Files.readAllLines(suite.file).asScala.toArray catch case _: Exception => Array.empty[String]
           else Array.empty[String]
@@ -2122,7 +2306,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           else println("No test suites found")
         else
           allSuites.take(limit).foreach { suite =>
-            val rel = workspace.relativize(suite.file)
+            val rel = relativizeSafe(suite.file, workspace, includes)
             println(s"${suite.name} — $rel:${suite.line}:")
             suite.tests.foreach { tc =>
               println(s"  test  \"${tc.name}\"  :${tc.line}")
@@ -2145,7 +2329,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         case Some(symbol) =>
           val refs = idx.findReferences(symbol)
           val testRefs = refs.filter(r => isTestFile(r.file, workspace))
-          val testFiles = testRefs.map(r => workspace.relativize(r.file).toString).distinct
+          val testFiles = testRefs.map(r => relativizeSafe(r.file, workspace, includes).toString).distinct
           if jsonOutput then
             val refsJson = testRefs.take(limit).map(r => jRef(r)).mkString("[", ",", "]")
             println(s"""{"symbol":"${jsonEscape(symbol)}","testFileCount":${testFiles.size},"referenceCount":${testRefs.size},"references":$refsJson}""")
@@ -2159,7 +2343,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             else
               println(s"""Coverage of "$symbol" — ${testRefs.size} refs in ${testFiles.size} test files:""")
               testFiles.sorted.foreach { f =>
-                val fileRefs = testRefs.filter(r => workspace.relativize(r.file).toString == f)
+                val fileRefs = testRefs.filter(r => relativizeSafe(r.file, workspace, includes).toString == f)
                 println(s"  $f")
                 fileRefs.take(limit).foreach { r =>
                   println(s"    :${r.line}  ${r.contextLine}")
@@ -2176,7 +2360,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               printNotFoundHint(symbol, idx, "hierarchy", batchMode)
             case Some(tree) =>
               def nodeJson(n: HierarchyNode): String = {
-                val file = n.file.map(f => s""""${jsonEscape(workspace.relativize(f).toString)}"""").getOrElse("null")
+                val file = n.file.map(f => s""""${jsonEscape(relativizeSafe(f, workspace, includes).toString)}"""").getOrElse("null")
                 val kind = n.kind.map(k => s""""${k.toString.toLowerCase}"""").getOrElse("null")
                 val line = n.line.map(_.toString).getOrElse("null")
                 s"""{"name":"${jsonEscape(n.name)}","kind":$kind,"file":$file,"line":$line,"package":"${jsonEscape(n.packageName)}","isExternal":${n.isExternal}}"""
@@ -2192,7 +2376,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                 val rootNode = tree.root
                 val pkg = if rootNode.packageName.nonEmpty then s" (${rootNode.packageName})" else ""
                 val kind = rootNode.kind.map(_.toString.toLowerCase).getOrElse("unknown")
-                val loc = rootNode.file.map(f => s" — ${workspace.relativize(f)}:${rootNode.line.getOrElse(0)}").getOrElse("")
+                val loc = rootNode.file.map(f => s" — ${relativizeSafe(f, workspace, includes)}:${rootNode.line.getOrElse(0)}").getOrElse("")
                 println(s"Hierarchy of $kind ${rootNode.name}$pkg$loc:")
                 if goUp then
                   println("  Parents:")
@@ -2205,7 +2389,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                       val npkg = if n.packageName.nonEmpty then s" (${n.packageName})" else ""
                       val nkind = n.kind.map(_.toString.toLowerCase + " ").getOrElse("")
                       val nloc = if n.isExternal then " [external]"
-                                 else n.file.map(f => s" — ${workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
+                                 else n.file.map(f => s" — ${relativizeSafe(f, workspace, includes)}:${n.line.getOrElse(0)}").getOrElse("")
                       println(s"$prefix$nkind${n.name}$npkg$nloc")
                       printParents(pt.parents, nextIndent)
                     }
@@ -2222,7 +2406,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                       val n = ct.root
                       val npkg = if n.packageName.nonEmpty then s" (${n.packageName})" else ""
                       val nkind = n.kind.map(_.toString.toLowerCase + " ").getOrElse("")
-                      val nloc = n.file.map(f => s" — ${workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
+                      val nloc = n.file.map(f => s" — ${relativizeSafe(f, workspace, includes)}:${n.line.getOrElse(0)}").getOrElse("")
                       println(s"$prefix$nkind${n.name}$npkg$nloc")
                       printChildren(ct.children, nextIndent)
                     }
@@ -2237,7 +2421,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val results = findOverrides(idx, methodName, ofTrait, limit)
           if jsonOutput then
             val arr = results.map { o =>
-              val rel = jsonEscape(workspace.relativize(o.file).toString)
+              val rel = jsonEscape(relativizeSafe(o.file, workspace, includes).toString)
               s"""{"enclosingClass":"${jsonEscape(o.enclosingClass)}","enclosingKind":"${o.enclosingKind.toString.toLowerCase}","file":"$rel","line":${o.line},"signature":"${jsonEscape(o.signature)}","package":"${jsonEscape(o.packageName)}"}"""
             }.mkString("[", ",", "]")
             println(arr)
@@ -2250,7 +2434,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               val ofStr = ofTrait.map(t => s" (in implementations of $t)").getOrElse("")
               println(s"Overrides of $methodName$ofStr — ${results.size} found:")
               results.foreach { o =>
-                val rel = workspace.relativize(o.file)
+                val rel = relativizeSafe(o.file, workspace, includes)
                 val pkg = if o.packageName.nonEmpty then s" (${o.packageName})" else ""
                 println(s"  ${o.enclosingClass}$pkg — $rel:${o.line}")
                 println(s"    ${o.signature}")
@@ -2270,7 +2454,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               printNotFoundHint(symbol, idx, "explain", batchMode)
           else
             val sym = defs.head
-            val rel = workspace.relativize(sym.file)
+            val rel = relativizeSafe(sym.file, workspace, includes)
             val pkg = if sym.packageName.nonEmpty then s" (${sym.packageName})" else ""
 
             // Scaladoc
@@ -2291,7 +2475,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               val membersJson = members.map { m =>
                 s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
               }.mkString("[", ",", "]")
-              val implsJson = impls.map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+              val implsJson = impls.map(s => jsonSymbol(s, workspace, includes)).mkString("[", ",", "]")
               println(s"""{"definition":${jsonSymbol(sym, workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount}""")
             else
               println(s"Explanation of ${sym.kind.toString.toLowerCase} $symbol$pkg:\n")
@@ -2323,12 +2507,12 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val (importDeps, bodyDeps) = extractDeps(idx, symbol, workspace)
           if jsonOutput then
             val iArr = importDeps.map { d =>
-              val file = d.file.map(f => s""""${jsonEscape(workspace.relativize(f).toString)}"""").getOrElse("null")
+              val file = d.file.map(f => s""""${jsonEscape(relativizeSafe(f, workspace, includes).toString)}"""").getOrElse("null")
               val line = d.line.map(_.toString).getOrElse("null")
               s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
             }.mkString("[", ",", "]")
             val bArr = bodyDeps.map { d =>
-              val file = d.file.map(f => s""""${jsonEscape(workspace.relativize(f).toString)}"""").getOrElse("null")
+              val file = d.file.map(f => s""""${jsonEscape(relativizeSafe(f, workspace, includes).toString)}"""").getOrElse("null")
               val line = d.line.map(_.toString).getOrElse("null")
               s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
             }.mkString("[", ",", "]")
@@ -2342,14 +2526,14 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               if importDeps.nonEmpty then
                 println(s"\n  Imports:")
                 importDeps.take(limit).foreach { d =>
-                  val loc = d.file.map(f => s" — ${workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
+                  val loc = d.file.map(f => s" — ${relativizeSafe(f, workspace, includes)}:${d.line.getOrElse(0)}").getOrElse("")
                   println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
                 }
                 if importDeps.size > limit then println(s"    ... and ${importDeps.size - limit} more")
               if bodyDeps.nonEmpty then
                 println(s"\n  Body references:")
                 bodyDeps.take(limit).foreach { d =>
-                  val loc = d.file.map(f => s" — ${workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
+                  val loc = d.file.map(f => s" — ${relativizeSafe(f, workspace, includes)}:${d.line.getOrElse(0)}").getOrElse("")
                   println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
                 }
                 if bodyDeps.size > limit then println(s"    ... and ${bodyDeps.size - limit} more")
@@ -2373,10 +2557,10 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                   val arr = scopes.map { s =>
                     s"""{"name":"${jsonEscape(s.name)}","kind":"${jsonEscape(s.kind)}","line":${s.line}}"""
                   }.mkString("[", ",", "]")
-                  val rel = jsonEscape(workspace.relativize(resolved).toString)
+                  val rel = jsonEscape(relativizeSafe(resolved, workspace, includes).toString)
                   println(s"""{"file":"$rel","line":$line,"scopes":$arr}""")
                 else
-                  val rel = workspace.relativize(resolved)
+                  val rel = relativizeSafe(resolved, workspace, includes)
                   println(s"Context at $rel:$line:")
                   if scopes.isEmpty then println("  (no enclosing scopes found)")
                   else
@@ -2461,7 +2645,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val results = astPatternSearch(idx, workspace, hasMethodFilter, extendsFilter, bodyContainsFilter, noTests, pathFilter, limit)
       if jsonOutput then
         val arr = results.map { m =>
-          val rel = jsonEscape(workspace.relativize(m.file).toString)
+          val rel = jsonEscape(relativizeSafe(m.file, workspace, includes).toString)
           s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","file":"$rel","line":${m.line},"package":"${jsonEscape(m.packageName)}","signature":"${jsonEscape(m.signature)}"}"""
         }.mkString("[", ",", "]")
         println(arr)
@@ -2476,7 +2660,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         else
           println(s"Types matching AST pattern ($filters) — ${results.size} found:")
           results.foreach { m =>
-            val rel = workspace.relativize(m.file)
+            val rel = relativizeSafe(m.file, workspace, includes)
             val pkg = if m.packageName.nonEmpty then s" (${m.packageName})" else ""
             println(s"  ${m.kind.toString.toLowerCase.padTo(9, ' ')} ${m.name}$pkg — $rel:${m.line}")
           }
@@ -2539,6 +2723,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
   val goDown = !argList.contains("--up") || argList.contains("--down")
   val inherited = argList.contains("--inherited")
   val architecture = argList.contains("--architecture")
+  val reindexIncludes = argList.contains("--reindex-includes")
   val hasMethodFilter: Option[String] = argList.indexOf("--has-method") match
     case -1 => None
     case i => argList.lift(i + 1)
@@ -2618,12 +2803,28 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
         |First run indexes the project (~3s for 14k files). Subsequent runs use cache (~300ms).
+        |
+        |  --reindex-includes    Re-index included workspaces (from .scalex/config.json)
+        |
+        |Cross-project:
+        |  Create .scalex/config.json to include symbols from other local projects:
+        |  {"include":[{"path":"/abs/path/to/other","exclude":["**/generated/**"]}]}
+        |  Included sources are indexed once and cached. Use --reindex-includes to update.
+        |  Only public symbols are indexed. Text search (refs, imports, grep) is not affected.
         |""".stripMargin)
 
     case "batch" :: rest =>
       val workspace = resolveWorkspace(explicitWorkspace.orElse(rest.headOption).getOrElse("."))
       val idx = WorkspaceIndex(workspace, needBlooms = true)
       idx.index()
+      val config = loadConfig(workspace)
+      val includePaths = config.map(_.path)
+      config.foreach { entry =>
+        val incCache = workspace.resolve(".scalex").resolve(s"include-${entry.path.getFileName}.bin")
+        val incIdx = WorkspaceIndex(entry.path, needBlooms = false, excludePatterns = entry.exclude, publicOnly = true, cachePath = Some(incCache))
+        if reindexIncludes || !incIdx.loadCached() then incIdx.index()
+        idx.mergeSymbolsFrom(incIdx)
+      }
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
       while line != null do
@@ -2634,7 +2835,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           println(s">>> $line")
           runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, batchMode = true, searchMode, definitionsOnly, categoryFilter,
                      inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit, goUp = goUp, goDown = goDown, inherited = inherited, architecture = architecture,
-                     hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter, bodyContainsFilter = bodyContainsFilter)
+                     hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter, bodyContainsFilter = bodyContainsFilter,
+                     includes = includePaths)
           println()
         line = reader.readLine()
 
@@ -2655,6 +2857,15 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val bloomCmds = Set("refs", "imports", "coverage")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
+      val config = loadConfig(workspace)
+      val includePaths = config.map(_.path)
+      config.foreach { entry =>
+        val incCache = workspace.resolve(".scalex").resolve(s"include-${entry.path.getFileName}.bin")
+        val incIdx = WorkspaceIndex(entry.path, needBlooms = false, excludePatterns = entry.exclude, publicOnly = true, cachePath = Some(incCache))
+        if reindexIncludes || !incIdx.loadCached() then incIdx.index()
+        idx.mergeSymbolsFrom(incIdx)
+      }
       runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, searchMode = searchMode, definitionsOnly = definitionsOnly, categoryFilter = categoryFilter,
                  inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit, goUp = goUp, goDown = goDown, inherited = inherited, architecture = architecture,
-                 hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter, bodyContainsFilter = bodyContainsFilter)
+                 hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter, bodyContainsFilter = bodyContainsFilter,
+                 includes = includePaths)
