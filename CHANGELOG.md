@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- `--timings` flag — prints per-phase timing breakdown to stderr (git-ls-files, cache-load, oid-compare, parse, index-build, cache-save, bloom-screen, text-search); works in both JVM and native image
+- Microbenchmark harness (`src/bench.scala`) — isolated per-function benchmarks with warmup and statistical measurement (mean/median/p99/stddev)
+- async-profiler integration (`profiling/profile.sh`) — CPU/wall/alloc/lock flame graphs
+- JFR config (`profiling/scalex.jfc`) — custom Java Flight Recorder settings for GC, allocation, I/O, and thread analysis
+- Enhanced `bench.sh` — index size reporting, diverse query benchmarks, `--timings` integration
+- `bench-compare.sh` — compare two hyperfine JSON exports, flag >5% regressions
+
 ### Fixed
 - `explain` now ranks class/trait/object/enum above val/def when selecting the primary symbol — previously took the first unranked result, so `explain Observer` could resolve to a `val observer` instead of `trait Observer` (#80)
 - `hierarchy --up` and `--down` now correctly walk the inheritance tree — cycle-detection was pre-seeded with the root symbol, causing both directions to always return `(none)` (#80)

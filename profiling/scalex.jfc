@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  JFR configuration for profiling scalex.
+
+  Usage:
+    scala-cli run src/ \
+      - -java-opt "-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
+      - - index <workspace>
+
+    jfr summary profiling/scalex.jfr
+    jfr print - -events jdk.ObjectAllocationSample profiling/scalex.jfr | head -100
+
+  For GUI analysis:
+    open profiling/scalex.jfr   (JDK Mission Control)
+-->
+<configuration version="2.0" label="Scalex Profiling" provider="scalex">
+
+  <!-- Method profiling: 10ms intervals -->
+  <event name="jdk.ExecutionSample">
+    <setting name="enabled">true</setting>
+    <setting name="period">10 ms</setting>
+  </event>
+
+  <!-- Object allocation sampling -->
+  <event name="jdk.ObjectAllocationSample">
+    <setting name="enabled">true</setting>
+    <setting name="throttle">300/s</setting>
+  </event>
+
+  <!-- GC events — track pauses during cold index -->
+  <event name="jdk.GarbageCollection">
+    <setting name="enabled">true</setting>
+  </event>
+  <event name="jdk.GCPhasePause">
+    <setting name="enabled">true</setting>
+  </event>
+  <event name="jdk.GCHeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+  <event name="jdk.YoungGarbageCollection">
+    <setting name="enabled">true</setting>
+  </event>
+  <event name="jdk.OldGarbageCollection">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- File I/O — track reads during refs/grep -->
+  <event name="jdk.FileRead">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">1 ms</setting>
+    <setting name="stackTrace">true</setting>
+  </event>
+  <event name="jdk.FileWrite">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">1 ms</setting>
+    <setting name="stackTrace">true</setting>
+  </event>
+
+  <!-- Thread parking — ForkJoinPool contention -->
+  <event name="jdk.ThreadPark">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">1 ms</setting>
+    <setting name="stackTrace">true</setting>
+  </event>
+
+  <!-- Monitor contention -->
+  <event name="jdk.JavaMonitorWait">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">1 ms</setting>
+    <setting name="stackTrace">true</setting>
+  </event>
+
+  <!-- CPU load -->
+  <event name="jdk.CPULoad">
+    <setting name="enabled">true</setting>
+    <setting name="period">1 s</setting>
+  </event>
+
+  <!-- Thread CPU load -->
+  <event name="jdk.ThreadCPULoad">
+    <setting name="enabled">true</setting>
+    <setting name="period">1 s</setting>
+  </event>
+
+</configuration>

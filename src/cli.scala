@@ -77,6 +77,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val bodyContainsFilter: Option[String] = argList.indexOf("--body-contains") match
     case -1 => None
     case i => argList.lift(i + 1)
+  val timingsEnabled = argList.contains("--timings")
+  Timings.enabled = timingsEnabled
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
                            "--in", "--of", "--impl-limit", "--has-method", "--extends", "--body-contains")
@@ -144,6 +146,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --has-method NAME     AST pattern: match types that have a method with NAME
         |  --extends TRAIT       AST pattern: match types that extend TRAIT
         |  --body-contains PAT   AST pattern: match types whose body contains PAT
+        |  --timings             Print per-phase timing breakdown to stderr
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
         |First run indexes the project (~3s for 14k files). Subsequent runs use cache (~300ms).
@@ -153,6 +156,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
       val workspace = resolveWorkspace(explicitWorkspace.orElse(rest.headOption).getOrElse("."))
       val idx = WorkspaceIndex(workspace, needBlooms = true)
       idx.index()
+      Timings.report()
       val ctx = CommandContext(idx = idx, workspace = workspace, limit = limit, verbose = verbose,
         jsonOutput = jsonOutput, batchMode = true, kindFilter = kindFilter, noTests = noTests,
         pathFilter = pathFilter, contextLines = contextLines, categorize = categorize,
@@ -169,7 +173,9 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
           val batchCmd = parts.head
           val batchRest = parts.tail
           println(s">>> $line")
+          Timings.reset()
           runCommand(batchCmd, batchRest, ctx)
+          Timings.report()
           println()
         line = reader.readLine()
 
@@ -199,3 +205,4 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter)
       runCommand(cmd, cmdRest, ctx)
+      Timings.report()
