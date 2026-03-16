@@ -274,23 +274,23 @@ Tested on the **Scala 3 compiler** (17.7k files, 203k symbols).
 
 **Scalex** (1 call):
 ```
-scalex def Compiler --verbose
-  class   Compiler (dotty.tools) — compiler/src/.../Compiler.scala:16
-  trait   Compiler (scala.quoted) — staging/src/.../Compiler.scala:8
-  object  Compiler (scala.quoted) — staging/src/.../Compiler.scala:12
+scalex def Compiler --verbose --kind class
+  class  Compiler (dotty.tools) — compiler/src/.../Compiler.scala:16
+  class  Compiler (dotty.tools.pc) — .../CompletionValue.scala:127
 ```
-3 definitions across 2 packages, with kind and signature. Done.
+Filtered to classes only. Without `--kind`, returns 31 results (vals, defs, test fixtures) — still structured with kind and package, but noisier. Grep has the same noise problem without the structure.
 
-**Grep** (2-3 calls): `class Compiler|trait Compiler|object Compiler` returns ~30 results including `CompilerCommand`, `CompilerTest`. Needs regex refinement, still no package info.
+**Grep** (2-3 calls): `class Compiler` returns ~30 results including `CompilerCommand`, `CompilerTest` (substring matches). Needs regex refinement, still no package info.
 
 ### "Who extends `Compiler`?"
 
 **Scalex** (1 call):
 ```
 scalex impl Compiler
-  ExpressionCompiler, TASTYCompiler, InteractiveCompiler, ReplCompiler
+  ExpressionCompiler, residentCompiler, TASTYCompiler,
+  InteractiveCompiler, ReplCompiler, QuoteCompiler
 ```
-Exact parent matching from the AST. No substring noise.
+6 results. Exact parent matching from the AST. No substring noise.
 
 **Grep**: `extends Compiler` also matches `extends CompilerCommand`, `extends CompilerPhase`. Agent must filter manually.
 
@@ -299,13 +299,16 @@ Exact parent matching from the AST. No substring noise.
 **Scalex** (1 call):
 ```
 scalex refs Compiler --limit 5
-  Definition:  class Compiler {
-  ExtendedBy:  class ExpressionCompiler extends Compiler
-  ImportedBy:  import dotty.tools.dotc.Compiler
-  UsedAsType:  val compiler: Compiler
+  Definition:  given Compiler = Compiler.make(...)       (108 total)
+  ExtendedBy:  class QuoteCompiler extends Compiler      (12 total)
+  ImportedBy:  import dotty.tools.dotc.Compiler          (16 total)
+  UsedAsType:  val compiler: Compiler                    (23 total)
+  Usage:       val compiler = new Compiler               (53 total)
+  Comment:     /** Compiler that takes...                (19 total)
 ```
+278 references, auto-categorized by relationship, with import-based confidence levels.
 
-**Grep**: Returns 278 flat lines. Agent must classify each one.
+**Grep**: Returns the same 278 lines, flat and unsorted. Agent must classify each one.
 
 ### The Honest Truth
 
