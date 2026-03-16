@@ -252,6 +252,28 @@ Feedback from real-world usage exploring the Airstream library (~240 files).
 **`hierarchy` cycle-detection fix:**
 - [x] Fix `hierarchy --up` and `--down` returning `(none)` — `buildHierarchy` initialized `visited = Set(sym.name)` before calling `walkUp`/`walkDown`, causing them to exit immediately; fixed by passing `Set.empty`
 
+### Profiling & benchmarking
+- [x] `--timings` flag — built-in per-phase timing breakdown (git-ls-files, cache-load, oid-compare, parse, index-build, cache-save, bloom-screen, text-search), prints to stderr; works in both JVM and native image
+- [x] async-profiler scripts (`profiling/profile.sh`) — CPU/wall/alloc/lock flame graphs via JVM agent, zero code changes
+- [x] JFR config (`profiling/scalex.jfc`) — custom Java Flight Recorder settings for GC, allocation, file I/O, and thread contention analysis
+- [x] Microbenchmark harness (`src/bench.scala`) — isolated per-function benchmarks with warmup, mean/median/p99/stddev; covers extractSymbols, bloom filter, persistence, search, refs
+- [x] Enhanced `bench.sh` — index size reporting, diverse query benchmarks (miss, heavy refs, fuzzy, grep, hierarchy), `--timings` integration, `bench-compare.sh` for regression detection
+
+### Warm-load optimization
+
+Benchmark data shows every query pays ~770ms baseline just to load+build the index. Actual query logic adds only 28–470ms. The warm-load path (`cache-load` 38% + `index-build` 48%) is the dominant bottleneck.
+
+**High priority:**
+- [ ] Lazy map building — build `symbolsByName`, `parentIndex`, `filesByPath`, `annotationIndex`, `packageToSymbols`, `aliasIndex` etc. on first access instead of eagerly; most commands use only 1–2 maps. Expected: ~150–200ms savings on typical queries
+- [ ] Separate bloom storage — store bloom filters in `blooms.bin` separate from `index.bin`; non-bloom commands (`def`, `search`, `impl`, `packages`, `hierarchy`) load ~7MB instead of 22MB. Expected: ~100–150ms savings on non-bloom commands
+
+**Medium priority:**
+- [ ] Varint encoding — replace fixed 4-byte `writeInt` for string table indices with variable-length encoding (1–3 bytes); most of ~180K indices fit in 2 bytes. Expected: shrink index from 22MB to ~15MB
+- [ ] Parallel index-build — partition `indexedFiles` into chunks, build sub-maps in parallel via `parallelStream`, merge. Expected: ~2x speedup on index-build phase (~130ms savings)
+
+**Lower priority:**
+- [ ] Memory-mapped I/O — replace `DataInputStream(BufferedInputStream(...))` with `MappedByteBuffer` for cache-load; eliminates kernel→user copy, lets OS page in only needed data
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)

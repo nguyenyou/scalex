@@ -45,6 +45,20 @@ if [ -n "$BENCH_EXPORT" ]; then
   EXPORT_FLAGS=(--export-json "$BENCH_EXPORT")
 fi
 
+# ── Index size ──────────────────────────────────────────────────────────────
+
+report_index_size() {
+  local idx="$SCALA3_DIR/.scalex/index.bin"
+  if [ -f "$idx" ]; then
+    local size
+    size=$(stat -f%z "$idx" 2>/dev/null || stat -c%s "$idx" 2>/dev/null || echo "?")
+    local size_mb
+    size_mb=$(echo "scale=1; $size / 1048576" | bc 2>/dev/null || echo "?")
+    echo "Index size: ${size_mb} MB ($size bytes)"
+    echo ""
+  fi
+}
+
 # ── Cold index ──────────────────────────────────────────────────────────────
 
 run_cold() {
@@ -56,7 +70,7 @@ run_cold() {
     --prepare "rm -rf $SCALA3_DIR/.scalex" \
     "$SCALEX_BIN index $SCALA3_DIR" \
     "${EXPORT_FLAGS[@]}"
-  echo ""
+  report_index_size
 }
 
 # ── Warm index ──────────────────────────────────────────────────────────────
@@ -94,19 +108,62 @@ run_query() {
   echo ""
 }
 
+# ── Diverse query benchmarks ────────────────────────────────────────────────
+
+run_query_diverse() {
+  echo "=== Diverse Queries (warm cache) ==="
+  echo ""
+  "$SCALEX_BIN" index "$SCALA3_DIR" >/dev/null 2>&1
+  hyperfine \
+    --warmup 1 \
+    --runs "$BENCH_RUNS" \
+    --command-name "def-common"      "$SCALEX_BIN def $SCALA3_DIR Phase" \
+    --command-name "def-miss"        "$SCALEX_BIN def $SCALA3_DIR NonExistentSymbolXyz123" \
+    --command-name "refs-heavy"      "$SCALEX_BIN refs $SCALA3_DIR Type" \
+    --command-name "refs-miss"       "$SCALEX_BIN refs $SCALA3_DIR NonExistentSymbolXyz123" \
+    --command-name "search-fuzzy"    "$SCALEX_BIN search $SCALA3_DIR tpd" \
+    --command-name "grep"            "$SCALEX_BIN grep $SCALA3_DIR 'override def' --count" \
+    --command-name "hierarchy"       "$SCALEX_BIN hierarchy $SCALA3_DIR Phase" \
+    --command-name "explain"         "$SCALEX_BIN explain $SCALA3_DIR Phase" \
+    "${EXPORT_FLAGS[@]}"
+  echo ""
+}
+
+# ── Timings breakdown ───────────────────────────────────────────────────────
+
+run_timings() {
+  echo "=== Phase Timings ==="
+  echo ""
+  echo "--- Cold index ---"
+  rm -rf "$SCALA3_DIR/.scalex"
+  "$SCALEX_BIN" index "$SCALA3_DIR" --timings 2>&1 | grep -E '^\s'
+  echo ""
+  echo "--- Warm index ---"
+  "$SCALEX_BIN" index "$SCALA3_DIR" --timings 2>&1 | grep -E '^\s'
+  echo ""
+  echo "--- refs Compiler ---"
+  "$SCALEX_BIN" refs "$SCALA3_DIR" Compiler --timings 2>&1 | grep -E '^\s'
+  echo ""
+}
+
 # ── Run selected benchmarks ─────────────────────────────────────────────────
 
 case "$MODE" in
-  cold)  run_cold ;;
-  warm)  run_warm ;;
-  query) run_query ;;
+  cold)    run_cold ;;
+  warm)    run_warm ;;
+  query)   run_query ;;
+  diverse) run_query_diverse ;;
+  timings) run_timings ;;
   all)
     run_cold
     run_warm
     run_query
+    run_query_diverse
+    run_timings
+    report_index_size
     ;;
   *)
-    echo "Usage: $0 [cold|warm|query|all]"
+    echo "Usage: $0 [cold|warm|query|diverse|timings|all]"
     exit 1
     ;;
 esac

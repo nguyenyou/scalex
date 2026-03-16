@@ -208,10 +208,10 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
   def index(): Unit =
     val t0 = System.nanoTime()
-    gitFiles = gitLsFiles(workspace)
+    gitFiles = Timings.phase("git-ls-files") { gitLsFiles(workspace) }
     fileCount = gitFiles.size
 
-    val cached = IndexPersistence.load(workspace, needBlooms)
+    val cached = Timings.phase("cache-load") { IndexPersistence.load(workspace, needBlooms) }
     val result = mutable.ListBuffer.empty[IndexedFile]
 
     cached match
@@ -220,30 +220,36 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         val toParseQueue = ConcurrentLinkedQueue[IndexedFile]()
         val toParse = mutable.ListBuffer.empty[GitFile]
 
-        gitFiles.foreach { gf =>
-          val rel = workspace.relativize(gf.path).toString
-          cachedMap.get(rel) match
-            case Some(cf) if cf.oid == gf.oid =>
-              result += cf
-              skippedCount += 1
-            case _ =>
-              toParse += gf
+        Timings.phase("oid-compare") {
+          gitFiles.foreach { gf =>
+            val rel = workspace.relativize(gf.path).toString
+            cachedMap.get(rel) match
+              case Some(cf) if cf.oid == gf.oid =>
+                result += cf
+                skippedCount += 1
+              case _ =>
+                toParse += gf
+          }
         }
 
-        toParse.asJava.parallelStream().forEach { gf =>
-          val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
-          toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
+        Timings.phase("parse") {
+          toParse.asJava.parallelStream().forEach { gf =>
+            val rel = workspace.relativize(gf.path).toString
+            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+            toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
+          }
         }
         result ++= toParseQueue.asScala
         parsedCount = toParse.size
 
       case None =>
         val queue = ConcurrentLinkedQueue[IndexedFile]()
-        gitFiles.asJava.parallelStream().forEach { gf =>
-          val rel = workspace.relativize(gf.path).toString
-          val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
-          queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
+        Timings.phase("parse") {
+          gitFiles.asJava.parallelStream().forEach { gf =>
+            val rel = workspace.relativize(gf.path).toString
+            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+            queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
+          }
         }
         result ++= queue.asScala
         parsedCount = gitFiles.size
@@ -253,53 +259,55 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       case f if f.parseFailed => f.relativePath
     }
     parseFailures = parseFailedFiles.size
-    // Single-pass over symbols: build all symbol-level indexes
-    val allSyms = mutable.ListBuffer.empty[SymbolInfo]
-    val byPath = mutable.HashMap.empty[Path, mutable.ListBuffer[SymbolInfo]]
-    val byName = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-    val pkgs = mutable.HashSet.empty[String]
-    val pIdx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-    val pkgToSyms = mutable.HashMap.empty[String, mutable.HashSet[String]]
-    val distinctSeen = mutable.HashSet.empty[(String, Path, Int)]
-    val distinctBuf = mutable.ListBuffer.empty[SymbolInfo]
-    val aByAnnot = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-    indexedFiles.foreach { f =>
-      f.symbols.foreach { s =>
-        allSyms += s
-        byPath.getOrElseUpdate(s.file, mutable.ListBuffer.empty) += s
-        byName.getOrElseUpdate(s.name.toLowerCase, mutable.ListBuffer.empty) += s
-        if s.packageName.nonEmpty then pkgs += s.packageName
-        s.parents.foreach { p =>
-          pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
+    Timings.phase("index-build") {
+      // Single-pass over symbols: build all symbol-level indexes
+      val allSyms = mutable.ListBuffer.empty[SymbolInfo]
+      val byPath = mutable.HashMap.empty[Path, mutable.ListBuffer[SymbolInfo]]
+      val byName = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
+      val pkgs = mutable.HashSet.empty[String]
+      val pIdx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
+      val pkgToSyms = mutable.HashMap.empty[String, mutable.HashSet[String]]
+      val distinctSeen = mutable.HashSet.empty[(String, Path, Int)]
+      val distinctBuf = mutable.ListBuffer.empty[SymbolInfo]
+      val aByAnnot = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
+      indexedFiles.foreach { f =>
+        f.symbols.foreach { s =>
+          allSyms += s
+          byPath.getOrElseUpdate(s.file, mutable.ListBuffer.empty) += s
+          byName.getOrElseUpdate(s.name.toLowerCase, mutable.ListBuffer.empty) += s
+          if s.packageName.nonEmpty then pkgs += s.packageName
+          s.parents.foreach { p =>
+            pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
+          }
+          s.annotations.foreach { a =>
+            aByAnnot.getOrElseUpdate(a.toLowerCase, mutable.ListBuffer.empty) += s
+          }
+          pkgToSyms.getOrElseUpdate(s.packageName, mutable.HashSet.empty) += s.name
+          val key = (s.name, s.file, s.line)
+          if distinctSeen.add(key) then distinctBuf += s
         }
-        s.annotations.foreach { a =>
-          aByAnnot.getOrElseUpdate(a.toLowerCase, mutable.ListBuffer.empty) += s
-        }
-        pkgToSyms.getOrElseUpdate(s.packageName, mutable.HashSet.empty) += s.name
-        val key = (s.name, s.file, s.line)
-        if distinctSeen.add(key) then distinctBuf += s
       }
-    }
-    symbols = allSyms.toList
-    distinctSymbols = distinctBuf.toList
-    filesByPath = byPath.map((k, v) => k -> v.toList).toMap
-    symbolsByName = byName.map((k, v) => k -> v.toList).toMap
-    packages = pkgs.toSet
-    parentIndex = pIdx.map((k, v) => k -> v.toList).toMap
-    annotationIndex = aByAnnot.map((k, v) => k -> v.toList).toMap
-    packageToSymbols = pkgToSyms.map((k, v) => k -> v.toSet).toMap
+      symbols = allSyms.toList
+      distinctSymbols = distinctBuf.toList
+      filesByPath = byPath.map((k, v) => k -> v.toList).toMap
+      symbolsByName = byName.map((k, v) => k -> v.toList).toMap
+      packages = pkgs.toSet
+      parentIndex = pIdx.map((k, v) => k -> v.toList).toMap
+      annotationIndex = aByAnnot.map((k, v) => k -> v.toList).toMap
+      packageToSymbols = pkgToSyms.map((k, v) => k -> v.toSet).toMap
 
-    // Single-pass over indexedFiles: build file-level indexes
-    val iByPath = mutable.HashMap.empty[String, IndexedFile]
-    val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(file: IndexedFile, alias: String)]]
-    indexedFiles.foreach { f =>
-      iByPath(f.relativePath) = f
-      f.aliases.foreach { (orig, alias) =>
-        aIdx.getOrElseUpdate(orig, mutable.ListBuffer.empty) += ((f, alias))
+      // Single-pass over indexedFiles: build file-level indexes
+      val iByPath = mutable.HashMap.empty[String, IndexedFile]
+      val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(file: IndexedFile, alias: String)]]
+      indexedFiles.foreach { f =>
+        iByPath(f.relativePath) = f
+        f.aliases.foreach { (orig, alias) =>
+          aIdx.getOrElseUpdate(orig, mutable.ListBuffer.empty) += ((f, alias))
+        }
       }
+      indexedByPath = iByPath.toMap
+      aliasIndex = aIdx.map((k, v) => k -> v.toList).toMap
     }
-    indexedByPath = iByPath.toMap
-    aliasIndex = aIdx.map((k, v) => k -> v.toList).toMap
     indexTimeMs = (System.nanoTime() - t0) / 1_000_000
 
     if parsedCount > 0 then
@@ -312,7 +320,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
             f.copy(identifierBloom = buildBloomFilterFromSource(source))
           else f
         }
-      IndexPersistence.save(workspace, indexedFiles)
+      Timings.phase("cache-save") { IndexPersistence.save(workspace, indexedFiles) }
 
   def findDefinition(name: String): List[SymbolInfo] =
     symbolsByName.getOrElse(name.toLowerCase, Nil)
@@ -393,37 +401,42 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   var timedOut: Boolean = false
 
   def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs): List[Reference] =
-    val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
-    val aliasFiles = aliasIndex.getOrElse(name, Nil)
-    val candidateSet = candidates.map(_.relativePath).toSet
-    val extraFiles = aliasFiles.collect {
-      case (f, _) if !candidateSet.contains(f.relativePath) => f
+    val (candidates, allCandidates, fileAliasMap) = Timings.phase("bloom-screen") {
+      val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
+      val aliasFiles = aliasIndex.getOrElse(name, Nil)
+      val candidateSet = candidates.map(_.relativePath).toSet
+      val extraFiles = aliasFiles.collect {
+        case (f, _) if !candidateSet.contains(f.relativePath) => f
+      }
+      val allCandidates = candidates ++ extraFiles
+      val fileAliasMap = aliasFiles.map((f, alias) => f.relativePath -> alias).toMap
+      (candidates, allCandidates, fileAliasMap)
     }
-    val allCandidates = candidates ++ extraFiles
-    val fileAliasMap = aliasFiles.map((f, alias) => f.relativePath -> alias).toMap
 
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
     val seen = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
-    allCandidates.asJava.parallelStream().forEach { idxFile =>
-      if System.nanoTime() < deadline then
-        val path = workspace.resolve(idxFile.relativePath)
-        val lines = try Files.readAllLines(path).asScala catch
-          case _: Exception => Seq.empty
-        val aliasName = fileAliasMap.get(idxFile.relativePath)
-        lines.zipWithIndex.foreach {
-          case (line, idx) if System.nanoTime() < deadline =>
-            val key = s"${idxFile.relativePath}:${idx + 1}"
-            if containsWord(line, name) && seen.add(key) then
-              results.add(Reference(path, idx + 1, line.trim))
-            else aliasName match
-              case Some(alias) if containsWord(line, alias) && seen.add(key) =>
-                results.add(Reference(path, idx + 1, line.trim, Some(s"via alias $alias")))
-              case _ =>
-          case _ =>
-        }
-      else timedOut = true
+    Timings.phase("text-search") {
+      allCandidates.asJava.parallelStream().forEach { idxFile =>
+        if System.nanoTime() < deadline then
+          val path = workspace.resolve(idxFile.relativePath)
+          val lines = try Files.readAllLines(path).asScala catch
+            case _: Exception => Seq.empty
+          val aliasName = fileAliasMap.get(idxFile.relativePath)
+          lines.zipWithIndex.foreach {
+            case (line, idx) if System.nanoTime() < deadline =>
+              val key = s"${idxFile.relativePath}:${idx + 1}"
+              if containsWord(line, name) && seen.add(key) then
+                results.add(Reference(path, idx + 1, line.trim))
+              else aliasName match
+                case Some(alias) if containsWord(line, alias) && seen.add(key) =>
+                  results.add(Reference(path, idx + 1, line.trim, Some(s"via alias $alias")))
+                case _ =>
+            case _ =>
+          }
+        else timedOut = true
+      }
     }
     results.asScala.toList
 
