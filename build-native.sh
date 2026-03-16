@@ -22,5 +22,3 @@ scala-cli package --native-image \
 echo ""
 echo "Built: $OUT"
 ls -lh "$OUT"
-echo ""
-echo "Install: cp $OUT /usr/local/bin/scalex"
