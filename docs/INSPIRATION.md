@@ -73,4 +73,4 @@ We took that insight and built the simplest possible tool around it: a single-fi
 
 ## License
 
-Metals is [Apache 2.0](https://github.com/scalameta/metals/blob/main/LICENSE). Scalex does not contain any code copied directly from Metals — we reimplemented the ideas in ~800 lines of Scala 3.
+Metals is [Apache 2.0](https://github.com/scalameta/metals/blob/main/LICENSE). Scalex does not contain any code copied directly from Metals — we reimplemented the ideas in ~1,500 lines of Scala 3.
