@@ -7,14 +7,15 @@ import scala.jdk.CollectionConverters.*
 // ── Hierarchy building ──────────────────────────────────────────────────────
 
 def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDown: Boolean, workspace: Path): Option[HierarchyTree] = {
+  val MaxDepth = 5
   val defs = idx.findDefinition(symbolName)
   if defs.isEmpty then return None
 
   val sym = defs.head
   val rootNode = HierarchyNode(sym.name, Some(sym.kind), Some(sym.file), Some(sym.line), sym.packageName, isExternal = false)
 
-  def walkUp(name: String, visited: Set[String]): List[HierarchyTree] = {
-    if visited.contains(name.toLowerCase) then return Nil
+  def walkUp(name: String, visited: Set[String], depth: Int): List[HierarchyTree] = {
+    if depth >= MaxDepth || visited.contains(name.toLowerCase) then return Nil
     val newVisited = visited + name.toLowerCase
     val defs = idx.findDefinition(name)
     if defs.isEmpty then Nil
@@ -28,26 +29,26 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
         } else {
           val pd = parentDefs.head
           val pNode = HierarchyNode(pd.name, Some(pd.kind), Some(pd.file), Some(pd.line), pd.packageName, isExternal = false)
-          val grandParents = walkUp(pd.name, newVisited)
+          val grandParents = walkUp(pd.name, newVisited, depth + 1)
           HierarchyTree(pNode, grandParents, Nil)
         }
       }
     }
   }
 
-  def walkDown(name: String, visited: Set[String]): List[HierarchyTree] = {
-    if visited.contains(name.toLowerCase) then return Nil
+  def walkDown(name: String, visited: Set[String], depth: Int): List[HierarchyTree] = {
+    if depth >= MaxDepth || visited.contains(name.toLowerCase) then return Nil
     val newVisited = visited + name.toLowerCase
     val impls = idx.findImplementations(name)
     impls.map { s =>
       val node = HierarchyNode(s.name, Some(s.kind), Some(s.file), Some(s.line), s.packageName, isExternal = false)
-      val grandChildren = walkDown(s.name, newVisited)
+      val grandChildren = walkDown(s.name, newVisited, depth + 1)
       HierarchyTree(node, Nil, grandChildren)
     }
   }
 
-  val parents = if goUp then walkUp(sym.name, Set.empty) else Nil
-  val children = if goDown then walkDown(sym.name, Set.empty) else Nil
+  val parents = if goUp then walkUp(sym.name, Set.empty, 0) else Nil
+  val children = if goDown then walkDown(sym.name, Set.empty, 0) else Nil
   Some(HierarchyTree(rootNode, parents, children))
 }
 

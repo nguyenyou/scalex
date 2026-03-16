@@ -23,10 +23,10 @@ if [ -z "$WORKSPACE" ]; then
   echo "Usage: $0 <workspace> [cpu|wall|alloc|lock]"
   echo ""
   echo "Examples:"
-  echo "  $0 ../scala3          # CPU flame graph of cold index"
-  echo "  $0 ../scala3 wall     # Wall-clock (includes I/O wait)"
-  echo "  $0 ../scala3 alloc    # Allocation hotspots"
-  echo "  $0 ../scala3 lock     # Lock contention (parallelStream)"
+  echo "  $0 benchmark/scala3          # CPU flame graph of cold index"
+  echo "  $0 benchmark/scala3 wall     # Wall-clock (includes I/O wait)"
+  echo "  $0 benchmark/scala3 alloc    # Allocation hotspots"
+  echo "  $0 benchmark/scala3 lock     # Lock contention (parallelStream)"
   exit 1
 fi
 

@@ -5,8 +5,7 @@ out
 .scala-build
 .scalex/
 scalex-workspace/
-scala3/
-benchmark-results/
+/benchmark/
 
 # Native binary
 /scalex

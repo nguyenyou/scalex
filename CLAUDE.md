@@ -10,6 +10,10 @@ Scalex is a Scala code intelligence CLI for AI agents. It provides fast symbol s
 
 NEVER mention any company names, internal project names, proprietary codebases, or organization-specific details in any output — including commit messages, PR descriptions, changelogs, roadmaps, documentation, code comments, or conversations. Always use generic examples (e.g. `HttpMessageService`, `UserServiceLive`) instead.
 
+## Search scope
+
+Source code lives in `src/` (production) and `tests/` (test suite). When searching for Scala code, scope searches to these directories. Avoid searching repo-wide — `benchmark/` contains ~17.7k Scala files from the scala3 compiler clone that will pollute results.
+
 ## Workflow
 
 - Before planning or implementing any feature, first add it to `docs/ROADMAP.md` under the appropriate section
@@ -22,7 +26,7 @@ NEVER mention any company names, internal project names, proprietary codebases, 
 scala-cli run src/ -- <command> [args...]
 
 # Run tests
-scala-cli test src/
+scala-cli test src/ tests/
 
 # Build GraalVM native image (requires GraalVM + scala-cli)
 ./build-native.sh
@@ -34,23 +38,29 @@ claude plugin validate plugin/
 
 ## Architecture
 
-Multi-file implementation under `src/` (Scala 3.8.2, JDK 21+):
+Source code is in `src/`, tests in `tests/` (Scala 3.8.2, JDK 21+). When searching the codebase, scope to these directories to avoid hitting benchmark data or build artifacts.
 
 ```
-src/
-├── project.scala          # scala-cli directives only
-├── model.scala            # Data types, enums, version constant
-├── extraction.scala       # AST parsing & single-file extraction functions
-├── index.scala            # Git integration, persistence, WorkspaceIndex, filtering
-├── analysis.scala         # Cross-index analysis (hierarchy, overrides, deps, diff, ast-pattern)
-├── format.scala           # JSON + text formatters for symbols and references
-├── commands.scala         # Command implementations, filters, dispatch map
-├── cli.scala              # Arg parsing, workspace resolution, @main entry point
-├── test-base.test.scala   # Shared test fixture (workspace setup)
-├── extraction.test.scala  # Extraction tests
-├── index.test.scala       # Index/search/persistence tests
-├── analysis.test.scala    # Analysis tests (hierarchy, overrides, deps, etc.)
-└── cli.test.scala         # CLI/formatting/command output tests
+src/                           # Production source code
+├── project.scala              # scala-cli directives only
+├── model.scala                # Data types, enums, version constant
+├── extraction.scala           # AST parsing & single-file extraction functions
+├── index.scala                # Git integration, persistence, WorkspaceIndex, filtering
+├── analysis.scala             # Cross-index analysis (hierarchy, overrides, deps, diff, ast-pattern)
+├── format.scala               # JSON + text formatters for symbols and references
+├── commands.scala             # Command implementations, filters, dispatch map
+└── cli.scala                  # Arg parsing, workspace resolution, @main entry point
+
+tests/                         # Test suite
+├── test-base.test.scala       # Shared test fixture (workspace setup)
+├── extraction.test.scala      # Extraction tests
+├── index.test.scala           # Index/search/persistence tests
+├── analysis.test.scala        # Analysis tests (hierarchy, overrides, deps, etc.)
+└── cli.test.scala             # CLI/formatting/command output tests
+
+benchmark/                     # Benchmark data (gitignored)
+├── scala3/                    # Shallow clone of scala/scala3 for benchmarks
+└── results/                   # Hyperfine JSON exports
 ```
 
 ### Pipeline

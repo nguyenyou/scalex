@@ -8,6 +8,15 @@
 - Fuzzy "did you mean?" suggestions on not-found — when `def`, `explain`, `members`, `doc`, `body`, `hierarchy`, `overrides`, `deps`, `impl` return zero results, suggests close matches from the index; shown in text, batch, and JSON output (#94)
 - `overview --no-tests` filtering — excludes test files from symbol counts, top packages, most-extended lists, and hub types (#93)
 
+### Changed
+- Move tests from `src/` to dedicated `tests/` directory — cleaner separation of production code and test suite; run with `scala-cli test src/ tests/`
+- Move benchmark scala3 clone from repo root `scala3/` to `benchmark/scala3/` — prevents 17.7k benchmark files from polluting grep/search results; `benchmark-results/` consolidated to `benchmark/results/`
+- Add search scope guidance to CLAUDE.md — directs agents to search `src/` and `tests/` instead of repo-wide
+- Update BENCHMARK.md with fresh numbers — all metrics improved significantly since last capture
+
+### Fixed
+- `hierarchy` hangs on large codebases — recursive `walkDown`/`walkUp` had no depth limit, causing exponential fan-out on types like `Phase` (40+ direct children, each with dozens more); added `MaxDepth = 5` cap
+
 ## [1.15.0] — 2026-03-16
 
 ### Added

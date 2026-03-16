@@ -18,8 +18,8 @@ Reproducible via `.claude/skills/benchmark/scripts/bench.sh` using [hyperfine](h
 
 | Metric | Mean ± σ | Range |
 |--------|----------|-------|
-| **Cold index** (no cache) | 3.433s ± 0.120s | 3.255–3.581s |
-| **Warm index** (fully cached) | 843.8ms ± 25.2ms | 817–883ms |
+| **Cold index** (no cache) | 2.950s ± 0.184s | 2.766–3.161s |
+| **Warm index** (fully cached) | 419.1ms ± 7.1ms | 410–430ms |
 
 ## Query performance (hyperfine, 5 runs, warm cache)
 
@@ -27,83 +27,84 @@ Reproducible via `.claude/skills/benchmark/scripts/bench.sh` using [hyperfine](h
 
 | Command | Mean ± σ | Range |
 |---------|----------|-------|
-| `packages` | 769.3ms ± 3.5ms | 764–773ms |
-| `hierarchy Phase` | 762.8ms ± 4.1ms | 760–769ms |
-| `def Phase` | 779.7ms ± 4.9ms | 774–787ms |
-| `search tpd` (fuzzy) | 798.9ms ± 7.8ms | 788–808ms |
-| `def Compiler` | 809.6ms ± 19.3ms | 784–828ms |
-| `impl Compiler` | 848.7ms ± 40.8ms | 793–890ms |
-| `refs-miss` | 843.9ms ± 8.9ms | 834–857ms |
-| `imports Compiler` | 883.1ms ± 10.1ms | 869–893ms |
-| `search Compiler` | 893.4ms ± 35.2ms | 847–926ms |
-| `refs Compiler` | 902.4ms ± 27.7ms | 859–928ms |
+| `impl Compiler` | 386.2ms ± 7.4ms | 381–399ms |
+| `packages` | 391.2ms ± 6.1ms | 386–399ms |
+| `search tpd` (fuzzy) | 482.6ms ± 2.6ms | 479–486ms |
+| `search Compiler` | 483.8ms ± 9.3ms | 476–500ms |
+| `def Phase` | 578.8ms ± 6.5ms | 569–586ms |
+| `def Compiler` | 572.3ms ± 4.0ms | 567–577ms |
+| `refs Compiler` | 639.2ms ± 5.0ms | 632–644ms |
+| `imports Compiler` | 640.2ms ± 9.3ms | 633–656ms |
+| `refs-miss` | 645.6ms ± 3.4ms | 640–649ms |
+| `def-miss` | 704.1ms ± 2.9ms | 700–707ms |
 
 ### Heavy queries
 
 | Command | Mean ± σ | Range |
 |---------|----------|-------|
-| `refs Type` (heavy) | 1.132s ± 0.032s | 1.097–1.176s |
-| `explain Phase` | 1.140s ± 0.074s | 1.097–1.271s |
-| `grep 'override def' --count` | 1.238s ± 0.086s | 1.170–1.339s |
+| `refs Type` (heavy) | 750.0ms ± 3.8ms | 746–755ms |
+| `grep 'override def' --count` | 851.8ms ± 100.1ms | 787–1029ms |
 
-All query times include index deserialization from disk (~770ms baseline). Actual query logic adds 0–470ms depending on command complexity.
+All query times include index deserialization from disk (~380ms baseline). Actual query logic adds 0–470ms depending on command complexity.
 
 ## Phase breakdown (`--timings`)
 
-Measured via scala-cli (JVM mode) on the same scala3 repo. JVM timings are higher than native but the proportional breakdown is representative.
+Measured via native binary on the same scala3 repo.
 
 ### Cold index
 
 | Phase | Time | % |
 |-------|------|---|
-| git-ls-files | 64ms | 1% |
-| cache-load | 1ms | 0% |
-| parse | 6,650ms | 93% |
-| index-build | 258ms | 4% |
-| cache-save | 187ms | 3% |
-| **total** | **7,161ms** | |
+| git-ls-files | 42ms | 2% |
+| cache-load | 0ms | 0% |
+| parse | 2,463ms | 89% |
+| cache-save | 241ms | 9% |
+| build-allSymbols | 9ms | 0% |
+| build-packages | 10ms | 0% |
+| **total** | **2,766ms** | |
 
-Cold indexing is dominated by Scalameta parsing (93%). Parse runs in parallel via `parallelStream`.
+Cold indexing is dominated by Scalameta parsing (89%). Parse runs in parallel via `parallelStream`.
 
 ### Warm index
 
 | Phase | Time | % |
 |-------|------|---|
-| git-ls-files | 55ms | 10% |
-| cache-load | 202ms | 38% |
-| oid-compare | 21ms | 4% |
-| parse | 2ms | 0% |
-| index-build | 257ms | 48% |
-| **total** | **537ms** | |
+| git-ls-files | 40ms | 10% |
+| cache-load | 275ms | 73% |
+| oid-compare | 30ms | 8% |
+| parse | 0ms | 0% |
+| build-allSymbols | 20ms | 5% |
+| build-packages | 15ms | 4% |
+| **total** | **379ms** | |
 
-Warm index is dominated by index-build (48%) and cache-load (38%). No parsing or saving needed.
+Warm index is dominated by cache-load (73%). No parsing or saving needed.
 
 ### Refs query (warm cache)
 
 | Phase | Time | % |
 |-------|------|---|
-| git-ls-files | 57ms | 9% |
-| cache-load | 231ms | 38% |
-| oid-compare | 20ms | 3% |
-| index-build | 251ms | 41% |
-| bloom-screen | 16ms | 3% |
-| text-search | 28ms | 5% |
-| **total** | **605ms** | |
+| git-ls-files | 40ms | 6% |
+| cache-load | 330ms | 50% |
+| oid-compare | 32ms | 5% |
+| build-symbolsByName | 214ms | 33% |
+| bloom-screen | 8ms | 1% |
+| text-search | 3ms | 1% |
+| **total** | **654ms** | |
 
-For `refs Compiler`, bloom-screen + text-search add only 44ms on top of index loading. The bloom filter screens 17.7K files down to candidates in 16ms.
+For `refs Compiler`, bloom-screen + text-search add only 11ms on top of index loading. The bloom filter screens 17.7K files down to candidates in 8ms.
 
 ## Performance history (v1.1.0 → current)
 
 | Metric | v1.1.0 | Current | Change |
 |--------|--------|---------|--------|
-| Cold index | 3.618s | 3.433s | **-5.1%** |
-| Warm index | 1.360s | 843.8ms | **-37.9%** |
-| `def` | 1.299s | 809.6ms | **-37.7%** |
-| `search` | 1.353s | 893.4ms | **-34.0%** |
-| `impl` | 1.292s | 848.7ms | **-34.3%** |
-| `refs` | 1.316s | 902.4ms | **-31.4%** |
-| `imports` | 1.341s | 883.1ms | **-34.2%** |
-| `packages` | 1.300s | 769.3ms | **-40.8%** |
+| Cold index | 3.618s | 2.950s | **-18.5%** |
+| Warm index | 1.360s | 419.1ms | **-69.2%** |
+| `def` | 1.299s | 572.3ms | **-56.0%** |
+| `search` | 1.353s | 483.8ms | **-64.2%** |
+| `impl` | 1.292s | 386.2ms | **-70.1%** |
+| `refs` | 1.316s | 639.2ms | **-51.4%** |
+| `imports` | 1.341s | 640.2ms | **-52.3%** |
+| `packages` | 1.300s | 391.2ms | **-69.9%** |
 
 Optimizations applied:
 1. **Lazy bloom filter deserialization** — non-bloom commands skip deserializing blooms, cutting ~45% off index load time

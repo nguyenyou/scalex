@@ -37,17 +37,17 @@ The fastest way to see where time goes. Works in both JVM and native image. Prin
 
 ```bash
 # Cold index phase breakdown
-rm -rf scala3/.scalex
-./scalex index scala3 --timings
+rm -rf benchmark/scala3/.scalex
+./scalex index benchmark/scala3 --timings
 
 # Warm index
-./scalex index scala3 --timings
+./scalex index benchmark/scala3 --timings
 
 # Query with bloom/text-search breakdown
-./scalex refs scala3 Compiler --timings
+./scalex refs benchmark/scala3 Compiler --timings
 
 # JVM mode
-scala-cli run src/ -- index scala3 --timings
+scala-cli run src/ -- index benchmark/scala3 --timings
 ```
 
 ### Phases reported
@@ -108,16 +108,16 @@ BENCH_RUNS=10 SCALEX_BIN=./target/scalex .claude/skills/benchmark/scripts/bench.
 
 ```bash
 # 1. Benchmark current state
-BENCH_EXPORT=benchmark-results/before.json .claude/skills/benchmark/scripts/bench.sh
+BENCH_EXPORT=benchmark/results/before.json .claude/skills/benchmark/scripts/bench.sh
 
 # 2. Make changes, rebuild
 ./build-native.sh
 
 # 3. Benchmark new state
-BENCH_EXPORT=benchmark-results/after.json .claude/skills/benchmark/scripts/bench.sh
+BENCH_EXPORT=benchmark/results/after.json .claude/skills/benchmark/scripts/bench.sh
 
 # 4. Compare (flags >5% regressions)
-.claude/skills/benchmark/scripts/bench-compare.sh benchmark-results/before.json benchmark-results/after.json
+.claude/skills/benchmark/scripts/bench-compare.sh benchmark/results/before.json benchmark/results/after.json
 ```
 
 `bench-compare.sh` exits non-zero if any benchmark regressed >5%.
@@ -148,16 +148,16 @@ brew install async-profiler
 
 ```bash
 # CPU flame graph of cold index
-./profiling/profile.sh ../scala3
+./profiling/profile.sh benchmark/scala3
 
 # Wall-clock (includes I/O wait — useful for parallelStream bottlenecks)
-./profiling/profile.sh ../scala3 wall
+./profiling/profile.sh benchmark/scala3 wall
 
 # Allocation hotspots (where objects are created)
-./profiling/profile.sh ../scala3 alloc
+./profiling/profile.sh benchmark/scala3 alloc
 
 # Lock contention (parallelStream synchronization)
-./profiling/profile.sh ../scala3 lock
+./profiling/profile.sh benchmark/scala3 lock
 ```
 
 Output: `profiling/profile-<event>.html` — open in browser for interactive flame graph.
@@ -181,7 +181,7 @@ Built into JDK 21. Near-zero overhead. Best for GC, file I/O, and thread analysi
 # Record with custom config
 scala-cli run src/ \
   --java-opt "-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
-  -- index scala3
+  -- index benchmark/scala3
 
 # Quick summary
 jfr summary profiling/scalex.jfr
@@ -210,17 +210,17 @@ Isolate per-function costs with warmup and statistical measurement.
 
 ```bash
 # Specific benchmark
-scala-cli run src/bench.scala src/*.scala -- extract-single ../scala3
-scala-cli run src/bench.scala src/*.scala -- bloom-build ../scala3
-scala-cli run src/bench.scala src/*.scala -- persistence-load ../scala3
-scala-cli run src/bench.scala src/*.scala -- search ../scala3
-scala-cli run src/bench.scala src/*.scala -- refs ../scala3
+scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3
+scala-cli run src/bench.scala src/*.scala -- bloom-build benchmark/scala3
+scala-cli run src/bench.scala src/*.scala -- persistence-load benchmark/scala3
+scala-cli run src/bench.scala src/*.scala -- search benchmark/scala3
+scala-cli run src/bench.scala src/*.scala -- refs benchmark/scala3
 
 # All benchmarks
-scala-cli run src/bench.scala src/*.scala -- all ../scala3
+scala-cli run src/bench.scala src/*.scala -- all benchmark/scala3
 
 # Custom warmup/iterations
-scala-cli run src/bench.scala src/*.scala -- extract-single ../scala3 --warmup 3 --iterations 10
+scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3 --warmup 3 --iterations 10
 ```
 
 ### Available benchmarks

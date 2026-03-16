@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 SCALEX_BIN="${SCALEX_BIN:-$PROJECT_ROOT/scalex}"
-SCALA3_DIR="$PROJECT_ROOT/scala3"
+SCALA3_DIR="$PROJECT_ROOT/benchmark/scala3"
 BENCH_RUNS="${BENCH_RUNS:-5}"
 BENCH_EXPORT="${BENCH_EXPORT:-}"
 MODE="${1:-all}"

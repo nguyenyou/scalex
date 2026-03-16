@@ -6,14 +6,14 @@ Multi-layered profiling tools for identifying performance bottlenecks.
 
 ```bash
 # Phase breakdown for cold index
-rm -rf scala3/.scalex
-scala-cli run src/ -- index scala3 --timings
+rm -rf benchmark/scala3/.scalex
+scala-cli run src/ -- index benchmark/scala3 --timings
 
 # Phase breakdown for refs query
-scala-cli run src/ -- refs scala3 Compiler --timings
+scala-cli run src/ -- refs benchmark/scala3 Compiler --timings
 
 # Native image
-./scalex index scala3 --timings
+./scalex index benchmark/scala3 --timings
 ```
 
 Output (stderr):
@@ -35,16 +35,16 @@ Timings:
 brew install async-profiler
 
 # CPU flame graph of cold index
-./profiling/profile.sh ../scala3
+./profiling/profile.sh benchmark/scala3
 
 # Wall-clock (includes I/O wait)
-./profiling/profile.sh ../scala3 wall
+./profiling/profile.sh benchmark/scala3 wall
 
 # Allocation hotspots
-./profiling/profile.sh ../scala3 alloc
+./profiling/profile.sh benchmark/scala3 alloc
 
 # Lock contention
-./profiling/profile.sh ../scala3 lock
+./profiling/profile.sh benchmark/scala3 lock
 ```
 
 ## Layer 3: JFR (GC/IO/thread analysis)
@@ -53,7 +53,7 @@ brew install async-profiler
 # Record
 scala-cli run src/ \
   --java-opt "-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
-  -- index scala3
+  -- index benchmark/scala3
 
 # Quick summary
 jfr summary profiling/scalex.jfr
@@ -75,13 +75,13 @@ open profiling/scalex.jfr
 
 ```bash
 # Run a specific benchmark
-scala-cli run src/bench.scala src/*.scala -- extract-single ../scala3
+scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3
 
 # All benchmarks
-scala-cli run src/bench.scala src/*.scala -- all ../scala3
+scala-cli run src/bench.scala src/*.scala -- all benchmark/scala3
 
 # Custom iterations
-scala-cli run src/bench.scala src/*.scala -- extract-batch ../scala3 --warmup 3 --iterations 10
+scala-cli run src/bench.scala src/*.scala -- extract-batch benchmark/scala3 --warmup 3 --iterations 10
 ```
 
 ## Native Image Profiling
@@ -90,8 +90,8 @@ async-profiler and JFR have limited native image support. Options:
 
 ```bash
 # macOS Instruments (Time Profiler)
-xcrun xctrace record --template "Time Profiler" --launch -- ./scalex index scala3
+xcrun xctrace record --template "Time Profiler" --launch -- ./scalex index benchmark/scala3
 
 # --timings works in both JVM and native
-./scalex index scala3 --timings
+./scalex index benchmark/scala3 --timings
 ```
