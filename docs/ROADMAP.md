@@ -239,11 +239,8 @@ Feedback from dogfooding scalex on itself — test cases (`test("name") { ... }`
 - [x] Heuristic: exclude types not defined in the indexed codebase from "Most extended" and "Hub types" sections
 - [x] Surface the project's own architectural hub types instead
 
-### Multi-workspace / cross-project awareness (#64)
-- [ ] Support indexing additional source roots beyond the current workspace — enables `def`, `explain`, `hierarchy` etc. across project boundaries
-- [ ] `--include <path>` flag to specify additional source directories to index
-- [ ] Optional `.scalex/config` file for persistent per-project source root configuration
-- [ ] Stays within Scalameta parsing model — just indexes more files from multiple git roots
+### ~~Multi-workspace / cross-project awareness (#64)~~
+- ~~Support indexing additional source roots beyond the current workspace~~ — unnecessary complexity; users can simply instruct the agent to run scalex with `-w` on the target workspace instead
 
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
