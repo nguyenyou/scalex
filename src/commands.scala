@@ -582,10 +582,13 @@ def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
     case None => CmdResult.UsageError("Usage: scalex package <pkg>")
     case Some(pkg) =>
       val lower = pkg.toLowerCase
-      // Match: exact → suffix (.pkg) → substring
+      // Match: exact → suffix (.pkg) → substring; prefer package with most symbols
+      def bestMatch(candidates: Iterable[String]): Option[String] =
+        if candidates.isEmpty then None
+        else Some(candidates.maxBy(p => ctx.idx.packageToSymbols.getOrElse(p, Nil).size))
       val matched = ctx.idx.packages.find(_.equalsIgnoreCase(pkg))
-        .orElse(ctx.idx.packages.find(_.toLowerCase.endsWith("." + lower)))
-        .orElse(ctx.idx.packages.find(_.toLowerCase.contains(lower)))
+        .orElse(bestMatch(ctx.idx.packages.filter(_.toLowerCase.endsWith("." + lower))))
+        .orElse(bestMatch(ctx.idx.packages.filter(_.toLowerCase.contains(lower))))
       matched match
         case None =>
           val pkgSuggestions = ctx.idx.packages.filter(_.toLowerCase.contains(lower)).toList.sorted.take(5)

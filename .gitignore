@@ -9,9 +9,9 @@ scala3/
 benchmark-results/
 
 # Native binary
-scalex
-scalex-before
-scalex-after
+/scalex
+/scalex-before
+/scalex-after
 
 # Profiling artifacts
 profiling/*.html
