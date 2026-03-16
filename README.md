@@ -280,7 +280,7 @@ scalex def Compiler --verbose --kind class
 ```
 Filtered to classes only. Without `--kind`, returns 31 results (vals, defs, test fixtures) — still structured with kind and package, but noisier. Grep has the same noise problem without the structure.
 
-**Grep** (2-3 calls): `class Compiler` returns ~30 results including `CompilerCommand`, `CompilerTest` (substring matches). Needs regex refinement, still no package info.
+**Grep** (2-3 calls): `class Compiler|trait Compiler|object Compiler` returns 24 results including `CompilerOptions`, `CompilerHang`, `CompilerTest` (substring matches). Needs regex refinement, still no package info.
 
 ### "Who extends `Compiler`?"
 
@@ -292,7 +292,7 @@ scalex impl Compiler
 ```
 6 results. Exact parent matching from the AST. No substring noise.
 
-**Grep**: `extends Compiler` also matches `extends CompilerCommand`, `extends CompilerPhase`. Agent must filter manually.
+**Grep**: `extends Compiler` returns 23 results — but 17 are false positives like `extends CompilerTest`, `extends CompilerCommand`, `extends CompilerCallback`. Agent must filter manually.
 
 ### "Find references and categorize them"
 
@@ -308,7 +308,7 @@ scalex refs Compiler --limit 5
 ```
 278 references, auto-categorized by relationship, with import-based confidence levels.
 
-**Grep**: Returns the same 278 lines, flat and unsorted. Agent must classify each one.
+**Grep**: `grep Compiler` returns 1,130 lines, flat and unsorted. Agent must classify each one.
 
 ### The Honest Truth
 
