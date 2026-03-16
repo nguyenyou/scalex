@@ -295,6 +295,18 @@ Hyperfine v6 vs v7 (7 runs each, warmup 2): `file` 361→371ms, `def` 591→580m
 - [ ] Pre-grouped symbol storage — store symbols pre-grouped by `name.toLowerCase` in binary index; skip the `groupBy` over 203K symbols entirely (the hash map building, not toLowerCase, is the ~230ms cost)
 - [ ] Memory-mapped I/O — `MappedByteBuffer` instead of `DataInputStream`; eliminates kernel→user copy, OS pages in only needed data
 
+### Exploration & UX improvements (#93, #94, #95, #96)
+
+Feedback from real-world usage on large codebases (1,000+ files) — improving codebase exploration and reducing agent round-trips.
+
+**High priority — round-trip eliminators:**
+- [ ] Fuzzy "did you mean?" on not-found (#94) — when `def`/`explain` returns zero results, auto-run fuzzy matching against the index and suggest close matches (packages, symbols); saves a round-trip for both humans and AI agents. Infrastructure already exists in `search` command
+- [ ] `scalex package <pkg>` command (#95) — list all symbols in a package grouped by kind (trait/class/object/enum/etc.); supports `--verbose`, `--kind`, `--no-tests`; fills gap between `overview` (top packages) and `symbols` (per-file); enables top-down exploration: overview → package → explain
+
+**Medium priority — noise reduction:**
+- [ ] `overview --no-tests` filtering (#93) — wire existing `--no-tests` flag into `overview` command; exclude test files from symbol counts, exclude test-only types from "Most extended" / "Hub types" lists; currently test fixtures dominate the architecture view on projects with extensive test suites
+- [ ] `overview --focus-package <pkg>` (#96) — scope `--architecture` dependency graph to a single package: show direct dependencies + direct dependents; optional `--depth N` for transitive; makes architecture output practical for targeted exploration instead of full-project dumps
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
