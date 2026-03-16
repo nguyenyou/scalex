@@ -247,16 +247,17 @@ Body of findUser returns None — UserServiceTest — src/.../UserServiceTest.sc
   7    |   }
 ```
 
-### `scalex hierarchy <symbol> [--up] [--down] [--no-tests] [--path PREFIX]` — type hierarchy
+### `scalex hierarchy <symbol> [--up] [--down] [--depth N] [--no-tests] [--path PREFIX]` — type hierarchy
 
 Full inheritance tree using extends clauses. Shows parents (walking up the extends chain) and children (walking down to implementors). External/unknown parents shown as `[external]`.
 
-Flags: `--up` (parents only), `--down` (children only). Default: both directions. Tree-formatted output with `├──`/`└──` prefixes.
+Flags: `--up` (parents only), `--down` (children only), `--depth N` (max tree depth, default 5). Default: both directions. Tree-formatted output with `├──`/`└──` prefixes.
 
 ```bash
 scalex hierarchy UserServiceLive           # both parents and children
 scalex hierarchy UserService --down        # only children (implementations)
 scalex hierarchy Compiler --up             # only parent chain
+scalex hierarchy Phase --depth 2           # limit tree to 2 levels deep
 ```
 ```
 Hierarchy of class UserServiceLive (com.example) — .../UserService.scala:8:
@@ -488,6 +489,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--impl-limit N` | Explain: max implementations to show (default: 5) |
 | `--up` | Hierarchy: show only parents (default: both) |
 | `--down` | Hierarchy: show only children (default: both) |
+| `--depth N` | Hierarchy: max tree depth (default: 5) |
 | `--inherited` | Members: include inherited members from parent types |
 | `--architecture` | Overview: show package dependency graph and hub types |
 | `--focus-package PKG` | Overview: scope dependency graph to a single package |

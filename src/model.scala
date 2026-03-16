@@ -123,7 +123,7 @@ case class CommandContext(
   grepPatterns: List[String] = Nil, countOnly: Boolean = false,
   searchMode: Option[String] = None, definitionsOnly: Boolean = false,
   inOwner: Option[String] = None, ofTrait: Option[String] = None,
-  implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true,
+  implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true, maxDepth: Int = 5,
   inherited: Boolean = false, architecture: Boolean = false,
   focusPackage: Option[String] = None,
   hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,

@@ -6,8 +6,7 @@ import scala.jdk.CollectionConverters.*
 
 // ── Hierarchy building ──────────────────────────────────────────────────────
 
-def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDown: Boolean, workspace: Path): Option[HierarchyTree] = {
-  val MaxDepth = 5
+def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDown: Boolean, maxDepth: Int, workspace: Path): Option[HierarchyTree] = {
   val defs = idx.findDefinition(symbolName)
   if defs.isEmpty then return None
 
@@ -15,7 +14,7 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
   val rootNode = HierarchyNode(sym.name, Some(sym.kind), Some(sym.file), Some(sym.line), sym.packageName, isExternal = false)
 
   def walkUp(name: String, visited: Set[String], depth: Int): List[HierarchyTree] = {
-    if depth >= MaxDepth || visited.contains(name.toLowerCase) then return Nil
+    if depth >= maxDepth || visited.contains(name.toLowerCase) then return Nil
     val newVisited = visited + name.toLowerCase
     val defs = idx.findDefinition(name)
     if defs.isEmpty then Nil
@@ -37,7 +36,7 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
   }
 
   def walkDown(name: String, visited: Set[String], depth: Int): List[HierarchyTree] = {
-    if depth >= MaxDepth || visited.contains(name.toLowerCase) then return Nil
+    if depth >= maxDepth || visited.contains(name.toLowerCase) then return Nil
     val newVisited = visited + name.toLowerCase
     val impls = idx.findImplementations(name)
     impls.map { s =>

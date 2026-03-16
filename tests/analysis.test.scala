@@ -9,7 +9,7 @@ class AnalysisSuite extends ScalexTestBase:
   test("buildHierarchy returns root node with correct name") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val result = buildHierarchy(idx, "UserServiceLive", goUp = true, goDown = true, workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserServiceLive", goUp = true, goDown = true, workspace)
     assert(result.isDefined, "Should find hierarchy for UserServiceLive")
     val tree = result.get
     assertEquals(tree.root.name, "UserServiceLive")
@@ -22,7 +22,7 @@ class AnalysisSuite extends ScalexTestBase:
   test("buildHierarchy returns root for UserService trait") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val result = buildHierarchy(idx, "UserService", goUp = true, goDown = true, workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserService", goUp = true, goDown = true, workspace)
     assert(result.isDefined, "Should find hierarchy for UserService")
     val tree = result.get
     // UserService resolves to the trait (first hit)
@@ -32,7 +32,7 @@ class AnalysisSuite extends ScalexTestBase:
   test("buildHierarchy --down finds children (regression #80)") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val result = buildHierarchy(idx, "UserService", goUp = false, goDown = true, workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserService", goUp = false, goDown = true, workspace)
     assert(result.isDefined, "Should find hierarchy for UserService")
     val tree = result.get
     val childNames = tree.children.map(_.root.name).toSet
@@ -45,7 +45,7 @@ class AnalysisSuite extends ScalexTestBase:
   test("buildHierarchy --up finds parents (regression #80)") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val result = buildHierarchy(idx, "UserServiceLive", goUp = true, goDown = false, workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserServiceLive", goUp = true, goDown = false, workspace)
     assert(result.isDefined, "Should find hierarchy for UserServiceLive")
     val tree = result.get
     val parentNames = tree.parents.map(_.root.name).toSet
@@ -56,7 +56,7 @@ class AnalysisSuite extends ScalexTestBase:
   test("buildHierarchy goUp=false produces empty parents") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val result = buildHierarchy(idx, "UserServiceLive", goUp = false, goDown = false, workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserServiceLive", goUp = false, goDown = false, workspace)
     assert(result.isDefined, "Should find hierarchy")
     val tree = result.get
     assert(tree.parents.isEmpty, "Should have no parents with goUp=false")
@@ -66,14 +66,14 @@ class AnalysisSuite extends ScalexTestBase:
   test("buildHierarchy returns None for unknown symbol") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val result = buildHierarchy(idx, "NonExistentType", goUp = true, goDown = true, workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="NonExistentType", goUp = true, goDown = true, workspace)
     assert(result.isEmpty, "Should return None for unknown symbol")
   }
 
   test("buildHierarchy root node isExternal is false for indexed symbols") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val result = buildHierarchy(idx, "PaymentServiceLive", goUp = true, goDown = false, workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="PaymentServiceLive", goUp = true, goDown = false, workspace)
     assert(result.isDefined)
     val tree = result.get
     assert(!tree.root.isExternal, "Root should not be external")

@@ -66,6 +66,9 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
   val goUp = !argList.contains("--down") || argList.contains("--up")
   val goDown = !argList.contains("--up") || argList.contains("--down")
+  val maxDepth: Int = argList.indexOf("--depth") match
+    case -1 => 5
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
   val inherited = argList.contains("--inherited")
   val architecture = argList.contains("--architecture")
   val hasMethodFilter: Option[String] = argList.indexOf("--has-method") match
@@ -84,7 +87,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   Timings.enabled = timingsEnabled
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
-                           "--in", "--of", "--impl-limit", "--has-method", "--extends", "--body-contains", "--focus-package")
+                           "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || a == "--flat" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -112,7 +115,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  scalex index                    Rebuild the index               (aka: reindex)
         |  scalex batch                    Run multiple queries at once    (aka: batch mode)
         |  scalex body <symbol>            Extract method/val/class body   (aka: show source)
-        |  scalex hierarchy <symbol>       Full inheritance tree           (aka: type hierarchy)
+        |  scalex hierarchy <symbol>       Full inheritance tree (--depth N, default 5)
         |  scalex overrides <method>       Find override implementations   (aka: find overrides)
         |  scalex explain <symbol>         Composite one-shot summary      (aka: explain symbol)
         |  scalex deps <symbol>            Show symbol dependencies        (aka: dependency graph)
@@ -145,6 +148,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --impl-limit N        Explain: max implementations to show (default: 5)
         |  --up                  Hierarchy: show only parents (default: both)
         |  --down                Hierarchy: show only children (default: both)
+        |  --depth N             Hierarchy: max tree depth (default: 5)
         |  --inherited           Members: include inherited members from parent types
         |  --architecture        Overview: show package dependency graph and hub types
         |  --focus-package PKG   Overview: scope dependency graph to a single package
@@ -167,7 +171,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         pathFilter = pathFilter, contextLines = contextLines, categorize = categorize,
         categoryFilter = categoryFilter, grepPatterns = grepPatterns, countOnly = countOnly,
         searchMode = searchMode, definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait,
-        implLimit = implLimit, goUp = goUp, goDown = goDown, inherited = inherited,
+        implLimit = implLimit, goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited,
         architecture = architecture, focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter)
@@ -207,7 +211,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         contextLines = contextLines, categorize = categorize, categoryFilter = categoryFilter,
         grepPatterns = grepPatterns, countOnly = countOnly, searchMode = searchMode,
         definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit,
-        goUp = goUp, goDown = goDown, inherited = inherited, architecture = architecture,
+        goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited, architecture = architecture,
         focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter)
