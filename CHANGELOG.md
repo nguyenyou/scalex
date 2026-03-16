@@ -2,15 +2,19 @@
 
 ## [Unreleased]
 
+## [1.14.0] — 2026-03-16
+
 ### Fixed
 - `overview --architecture` "Most extended" and "Hub types" no longer dominated by stdlib/framework types (`None`, `AnyVal`, `Object`, etc.) — both lists now filter to types defined in the indexed codebase (#64)
 
 ### Changed
+- Extract `CmdResult` enum — commands return structured data, rendering happens at the boundary in `cli.scala`
+- Make `cli.scala` a thin orchestrator — arg parsing and `@main` entry only, all command logic in `commands.scala`
+- Replace 27-param `runCommand` with `CommandContext` case class and dispatch map
+- Split single-file `scalex.scala` (2660 lines) into 6 focused source files under `src/`: `model.scala`, `extraction.scala`, `index.scala`, `analysis.scala`, `format.scala`, `commands.scala`, `cli.scala`, `project.scala`
+- Split monolithic test suite `scalex.test.scala` (2262 lines) into 4 test suites + shared base: `ExtractionSuite`, `IndexSuite`, `AnalysisSuite`, `CliSuite`
 - Refactor all tuples to named tuples for readability — `extractSymbols`, `extractImports`, `extractDeps`, `grepFiles`, `fixPosixRegex`, `parseWorkspaceAndArg`, `extractTestName`, and all inline tuple types
 - Add named tuple code style rule to `CLAUDE.md`
-- Split single-file `scalex.scala` (2660 lines) into 6 focused source files under `src/`: `model.scala`, `extraction.scala`, `index.scala`, `analysis.scala`, `cli.scala`, `project.scala`
-- Split monolithic test suite `scalex.test.scala` (2262 lines) into 4 test suites + shared base: `ExtractionSuite` (47), `IndexSuite` (53), `AnalysisSuite` (20), `CliSuite` (56)
-- Update `build-native.sh` and `CLAUDE.md` to reflect new `src/` directory structure
 
 ## [1.13.0] — 2026-03-16
 

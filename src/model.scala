@@ -1,7 +1,7 @@
 import java.nio.file.Path
 import com.google.common.hash.BloomFilter
 
-val ScalexVersion = "1.13.0"
+val ScalexVersion = "1.14.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
