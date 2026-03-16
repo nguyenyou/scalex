@@ -8,6 +8,9 @@
 ### Changed
 - Refactor all tuples to named tuples for readability — `extractSymbols`, `extractImports`, `extractDeps`, `grepFiles`, `fixPosixRegex`, `parseWorkspaceAndArg`, `extractTestName`, and all inline tuple types
 - Add named tuple code style rule to `CLAUDE.md`
+- Split single-file `scalex.scala` (2660 lines) into 6 focused source files under `src/`: `model.scala`, `extraction.scala`, `index.scala`, `analysis.scala`, `cli.scala`, `project.scala`
+- Split monolithic test suite `scalex.test.scala` (2262 lines) into 4 test suites + shared base: `ExtractionSuite` (47), `IndexSuite` (53), `AnalysisSuite` (20), `CliSuite` (56)
+- Update `build-native.sh` and `CLAUDE.md` to reflect new `src/` directory structure
 
 ## [1.13.0] — 2026-03-16
 

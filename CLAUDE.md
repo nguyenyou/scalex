@@ -19,10 +19,10 @@ NEVER mention any company names, internal project names, proprietary codebases, 
 
 ```bash
 # Run via scala-cli (development)
-scala-cli run scalex.scala -- <command> [args...]
+scala-cli run src/ -- <command> [args...]
 
 # Run tests
-scala-cli test scalex.scala scalex.test.scala
+scala-cli test src/
 
 # Build GraalVM native image (requires GraalVM + scala-cli)
 ./build-native.sh
@@ -34,7 +34,22 @@ claude plugin validate plugin/
 
 ## Architecture
 
-Single-file implementation: `scalex.scala` (Scala 3.8.2, JDK 21+), tests in `scalex.test.scala`. To understand the code, just read the whole file — no need to search across multiple files.
+Multi-file implementation under `src/` (Scala 3.8.2, JDK 21+):
+
+```
+src/
+├── project.scala          # scala-cli directives only
+├── model.scala            # Data types, enums, version constant
+├── extraction.scala       # AST parsing & single-file extraction functions
+├── index.scala            # Git integration, persistence, WorkspaceIndex, filtering
+├── analysis.scala         # Cross-index analysis (hierarchy, overrides, deps, diff, ast-pattern)
+├── cli.scala              # Formatting, runCommand, @main entry point
+├── test-base.scala        # Shared test fixture (workspace setup)
+├── extraction.test.scala  # Extraction tests
+├── index.test.scala       # Index/search/persistence tests
+├── analysis.test.scala    # Analysis tests (hierarchy, overrides, deps, etc.)
+└── cli.test.scala         # CLI/formatting/command output tests
+```
 
 ### Pipeline
 
@@ -79,13 +94,13 @@ plugin/
         └── scalex-cli            # Bootstrap: downloads + caches binary, forwards args
 ```
 
-The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumped alongside `ScalexVersion` in `scalex.scala` when releasing.
+The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumped alongside `ScalexVersion` in `src/model.scala` when releasing.
 
 ## Release workflow
 
 ### Step 1: Release PR (merge first)
 1. Move `[Unreleased]` section in `CHANGELOG.md` to the new version with date
-2. Bump `ScalexVersion` in `scalex.scala`
+2. Bump `ScalexVersion` in `src/model.scala`
 3. Create PR, get it merged to main
 
 ### Step 2: Tag + release
@@ -100,7 +115,7 @@ Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`)
 
 ## Feature checklist
 
-When adding or changing commands/flags in `scalex.scala`:
+When adding or changing commands/flags in `src/cli.scala`:
 - Update help text in the `main` function
 - Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter)
 - Update `docs/ROADMAP.md`

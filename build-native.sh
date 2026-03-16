@@ -6,7 +6,7 @@ OUT="${1:-$SCRIPT_DIR/scalex}"
 
 echo "Building Scalex native image..."
 scala-cli package --native-image \
-  "$SCRIPT_DIR/scalex.scala" \
+  "$SCRIPT_DIR/src/" \
   -o "$OUT" \
   --force \
   -- --no-fallback \
