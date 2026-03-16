@@ -423,4 +423,4 @@ The bootstrap script `scalex-cli` handles platform detection, downloading the co
 
 Dependencies: **2 libraries** (Scalameta for parsing, Guava for bloom filters).
 
-Total implementation: **~2,600 lines** of Scala 3 in a single file.
+Total implementation: **~2,700 lines** of Scala 3 across 8 source files.

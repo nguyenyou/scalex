@@ -54,7 +54,7 @@ Build the fastest possible Scala code navigation tool, designed from the ground 
 
 ## How It Works
 
-The entire tool is ~2,600 lines of Scala 3 in a single file. Here's the architecture:
+The tool is ~2,700 lines of Scala 3 across 8 source files. Here's the architecture:
 
 ```
                          ┌─────────────────┐
@@ -139,8 +139,8 @@ The entire tool is ~2,600 lines of Scala 3 in a single file. Here's the architec
 |---|---|---|---|---|
 | Small library | 92 | 259 | ~50ms | ~10ms |
 | Mill build tool | 1,415 | 12,778 | 214ms | 50ms |
-| Production monorepo | 13,970 | 214,154 | 5.2s | 1.0s |
-| Scala 3 compiler | 17,731 | 202,916 | 3.3s | 777ms |
+| Production monorepo | 13,958 | 214,803 | 3.3s | 364ms |
+| Scala 3 compiler | 17,731 | 202,916 | 3.1s | 723ms |
 
 ## Quick Start
 
@@ -222,7 +222,7 @@ If you have [scala-cli](https://scala-cli.virtuslab.org/) installed:
 
 ```bash
 git clone https://github.com/nguyenyou/scalex.git
-scala-cli run scalex/scalex.scala -- search /path/to/project MyClass
+scala-cli run scalex/src/ -- search /path/to/project MyClass
 ```
 
 No build step. Downloads dependencies on first run (~5s), then starts in ~1s.
@@ -470,7 +470,7 @@ The name also nods to "Scala" itself — Italian for "staircase" or "scale" — 
 
 The Scalex mascot is a **kestrel** — the smallest falcon. It was chosen because it mirrors the tool's core qualities:
 
-- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~2,600 lines, single 28MB binary)
+- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~2,700 lines across 8 source files, single 28MB binary)
 - **Incredible eyesight** — spots symbols across 14k files, like a kestrel spots prey from 50 meters
 - **Hovers before diving** — systematically scans an area before striking, like indexing before querying
 - **Lives alongside people** — kestrels thrive near humans, like Scalex works alongside AI agents
@@ -481,7 +481,7 @@ See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
 Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team.
 
-Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~2,600 lines of Scala 3.
+Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~2,700 lines of Scala 3.
 
 - **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
 - **From Scalameta**: the parser that makes source-level symbol extraction possible

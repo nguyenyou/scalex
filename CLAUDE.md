@@ -46,7 +46,7 @@ src/
 ├── format.scala           # JSON + text formatters for symbols and references
 ├── commands.scala         # Command implementations, filters, dispatch map
 ├── cli.scala              # Arg parsing, workspace resolution, @main entry point
-├── test-base.scala        # Shared test fixture (workspace setup)
+├── test-base.test.scala   # Shared test fixture (workspace setup)
 ├── extraction.test.scala  # Extraction tests
 ├── index.test.scala       # Index/search/persistence tests
 ├── analysis.test.scala    # Analysis tests (hierarchy, overrides, deps, etc.)
