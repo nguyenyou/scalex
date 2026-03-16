@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.15.0] — 2026-03-16
 
 ### Added
 - `--timings` flag — prints per-phase timing breakdown to stderr (git-ls-files, cache-load, oid-compare, parse, index-build, cache-save, bloom-screen, text-search); works in both JVM and native image
