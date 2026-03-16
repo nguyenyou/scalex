@@ -79,3 +79,26 @@ case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[
 // ── AST pattern matching types ──────────────────────────────────────────────
 
 case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int, packageName: String, signature: String)
+
+// ── Command context ────────────────────────────────────────────────────────
+
+case class CommandContext(
+  idx: WorkspaceIndex, workspace: Path,
+  limit: Int = 20, verbose: Boolean = false, jsonOutput: Boolean = false, batchMode: Boolean = false,
+  kindFilter: Option[String] = None, noTests: Boolean = false, pathFilter: Option[String] = None,
+  contextLines: Int = 0, categorize: Boolean = true, categoryFilter: Option[String] = None,
+  grepPatterns: List[String] = Nil, countOnly: Boolean = false,
+  searchMode: Option[String] = None, definitionsOnly: Boolean = false,
+  inOwner: Option[String] = None, ofTrait: Option[String] = None,
+  implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true,
+  inherited: Boolean = false, architecture: Boolean = false,
+  hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
+  bodyContainsFilter: Option[String] = None,
+):
+  val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
+  val jRef: Reference => String =
+    if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines)
+    else r => jsonRef(r, workspace)
+  val fmtRef: Reference => String =
+    if contextLines > 0 then r => formatRefWithContext(r, workspace, contextLines)
+    else r => formatRef(r, workspace)

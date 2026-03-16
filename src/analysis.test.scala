@@ -229,7 +229,7 @@ class AnalysisSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("coverage", List("UserService"), idx, workspace, 20, None, false, false, false, None, 0, false)
+      runCommand("coverage", List("UserService"), CommandContext(idx = idx, workspace = workspace))
     }
     val output = out.toString
     assert(output.contains("Coverage of"), s"Should show coverage header: $output")
@@ -251,7 +251,7 @@ class AnalysisSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("coverage", List("UserService"), idx, workspace, 20, None, false, false, false, None, 0, true)
+      runCommand("coverage", List("UserService"), CommandContext(idx = idx, workspace = workspace, jsonOutput = true))
     }
     val output = out.toString.trim
     assert(output.startsWith("{"), s"JSON should start with brace: $output")

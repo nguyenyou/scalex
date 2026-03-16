@@ -393,8 +393,7 @@ class ExtractionSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("PaymentServiceLive"), idx, workspace, 50, None, false, true, false, None, 0, false,
-        inherited = true)
+      runCommand("members", List("PaymentServiceLive"), CommandContext(idx = idx, workspace = workspace, limit = 50, inherited = true))
     }
     val output = out.toString
     // PaymentServiceLive should show its own members + inherited from PaymentService
@@ -411,8 +410,7 @@ class ExtractionSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("UserServiceLive"), idx, workspace, 50, None, false, true, false, None, 0, true,
-        inherited = true)
+      runCommand("members", List("UserServiceLive"), CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true, inherited = true))
     }
     val output = out.toString
     // JSON output — parse to verify dedup

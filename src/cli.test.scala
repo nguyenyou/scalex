@@ -323,7 +323,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("search", List("User"), idx, workspace, 20, None, false, false, false, None, 0, false, searchMode = Some("exact"))
+      runCommand("search", List("User"), CommandContext(idx = idx, workspace = workspace, searchMode = Some("exact")))
     }
     val output = out.toString
     assert(output.contains("User"), s"Should find exact match 'User': $output")
@@ -335,7 +335,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("search", List("User"), idx, workspace, 20, None, false, false, false, None, 0, false, searchMode = Some("prefix"))
+      runCommand("search", List("User"), CommandContext(idx = idx, workspace = workspace, searchMode = Some("prefix")))
     }
     val output = out.toString
     assert(output.contains("User"), s"Should find 'User': $output")
@@ -347,7 +347,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("search", List("User"), idx, workspace, 20, None, false, false, false, None, 0, false, searchMode = None)
+      runCommand("search", List("User"), CommandContext(idx = idx, workspace = workspace))
     }
     val output = out.toString
     // Should include substring matches too (e.g. userOrdering contains "user" as substring)
@@ -383,7 +383,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("search", List("User"), idx, workspace, 50, None, false, true, false, None, 0, false, definitionsOnly = true)
+      runCommand("search", List("User"), CommandContext(idx = idx, workspace = workspace, limit = 50, definitionsOnly = true))
     }
     val output = out.toString
     // Should contain class User, trait UserService, class UserServiceLive, object UserService, etc.
@@ -399,7 +399,7 @@ class CliSuite extends ScalexTestBase:
     // Search for "findUser" which is a def — should return empty with --definitions-only
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("search", List("findUser"), idx, workspace, 50, None, false, true, false, None, 0, false, definitionsOnly = true)
+      runCommand("search", List("findUser"), CommandContext(idx = idx, workspace = workspace, limit = 50, definitionsOnly = true))
     }
     val output = out.toString
     assert(output.contains("Found 0"), s"Should find 0 definitions for 'findUser': $output")
@@ -412,7 +412,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("refs", List("UserService"), idx, workspace, 50, None, false, true, false, None, 0, false, categoryFilter = Some("ExtendedBy"))
+      runCommand("refs", List("UserService"), CommandContext(idx = idx, workspace = workspace, limit = 50, categoryFilter = Some("ExtendedBy")))
     }
     val output = out.toString
     assert(output.contains("ExtendedBy"), s"Should contain ExtendedBy section: $output")
@@ -430,7 +430,7 @@ class CliSuite extends ScalexTestBase:
     System.setErr(new java.io.PrintStream(errStream))
     try {
       Console.withOut(out) {
-        runCommand("refs", List("UserService"), idx, workspace, 50, None, false, true, false, None, 0, false, categoryFilter = Some("InvalidCat"))
+        runCommand("refs", List("UserService"), CommandContext(idx = idx, workspace = workspace, limit = 50, categoryFilter = Some("InvalidCat")))
       }
     } finally {
       System.setErr(oldErr)
@@ -462,7 +462,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10))
     }
     val output = out.toString
     assert(output.contains("Project overview"), s"Should have header: $output")
@@ -475,7 +475,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10))
     }
     val output = out.toString
     assert(output.contains("Symbols by kind"), s"Should show kind breakdown: $output")
@@ -488,7 +488,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10))
     }
     val output = out.toString
     assert(output.contains("Top packages"), s"Should show top packages: $output")
@@ -500,7 +500,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10))
     }
     val output = out.toString
     assert(output.contains("Most extended"), s"Should show most extended: $output")
@@ -512,7 +512,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, true)
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10, jsonOutput = true))
     }
     val output = out.toString.trim
     assert(output.startsWith("{"), s"JSON should start with brace: $output")
@@ -528,8 +528,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false,
-        architecture = true)
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10, architecture = true))
     }
     val output = out.toString
     assert(output.contains("Package dependencies"), s"Should show package dependencies section: $output")
@@ -541,8 +540,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, true,
-        architecture = true)
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10, jsonOutput = true, architecture = true))
     }
     val output = out.toString.trim
     assert(output.startsWith("{"), s"JSON should start with brace: $output")
@@ -557,7 +555,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("PaymentServiceLive"), idx, workspace, 50, None, false, true, false, None, 0, true)
+      runCommand("members", List("PaymentServiceLive"), CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true))
     }
     val output = out.toString.trim
     assert(output.startsWith("["), s"JSON should start with bracket: $output")
@@ -572,7 +570,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("doc", List("PaymentService"), idx, workspace, 50, None, false, true, false, None, 0, true)
+      runCommand("doc", List("PaymentService"), CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true))
     }
     val output = out.toString.trim
     assert(output.startsWith("["), s"JSON should start with bracket: $output")
@@ -587,7 +585,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("PaymentService"), idx, workspace, 50, None, false, true, false, None, 0, false)
+      runCommand("members", List("PaymentService"), CommandContext(idx = idx, workspace = workspace, limit = 50))
     }
     val output = out.toString
     assert(output.contains("Members of trait PaymentService"), s"Should have header: $output")
@@ -599,7 +597,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("PaymentServiceLive"), idx, workspace, 50, None, true, true, false, None, 0, false)
+      runCommand("members", List("PaymentServiceLive"), CommandContext(idx = idx, workspace = workspace, limit = 50, verbose = true))
     }
     val output = out.toString
     assert(output.contains("def processPayment"), s"Verbose should show signature: $output")
@@ -611,7 +609,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("findUser"), idx, workspace, 50, None, false, true, false, None, 0, false)
+      runCommand("members", List("findUser"), CommandContext(idx = idx, workspace = workspace, limit = 50))
     }
     val output = out.toString
     assert(output.contains("No class/trait/object/enum"), s"Should report no type found: $output")
@@ -624,7 +622,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("doc", List("PaymentService"), idx, workspace, 50, None, false, true, false, None, 0, false)
+      runCommand("doc", List("PaymentService"), CommandContext(idx = idx, workspace = workspace, limit = 50))
     }
     val output = out.toString
     assert(output.contains("processing payments"), s"Should show scaladoc: $output")
@@ -635,7 +633,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("doc", List("User"), idx, workspace, 50, None, false, true, false, None, 0, false)
+      runCommand("doc", List("User"), CommandContext(idx = idx, workspace = workspace, limit = 50))
     }
     val output = out.toString
     assert(output.contains("(no scaladoc)"), s"Should report no scaladoc: $output")
@@ -648,7 +646,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("tests", Nil, idx, workspace, 20, None, false, false, false, None, 0, true)
+      runCommand("tests", Nil, CommandContext(idx = idx, workspace = workspace, jsonOutput = true))
     }
     val output = out.toString.trim
     assert(output.startsWith("["), s"JSON should start with [: $output")
