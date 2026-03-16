@@ -137,10 +137,8 @@ The tool is ~2,700 lines of Scala 3 across 8 source files. Here's the architectu
 
 | Project | Files | Symbols | Cold Index | Warm Index |
 |---|---|---|---|---|
-| Small library | 92 | 259 | ~50ms | ~10ms |
-| Mill build tool | 1,415 | 12,778 | 214ms | 50ms |
-| Production monorepo | 13,958 | 214,803 | 3.3s | 364ms |
-| Scala 3 compiler | 17,731 | 202,916 | 3.1s | 723ms |
+| Production monorepo | 13,979 | 214,301 | 4.6s | 540ms |
+| Scala 3 compiler | 17,733 | 203,077 | 2.9s | 412ms |
 
 ## Quick Start
 
