@@ -58,7 +58,7 @@
 
 ## Phase 8: Testing — DONE
 
-- [x] 57 MUnit tests covering all features
+- [x] 176 MUnit tests covering all features (ExtractionSuite: 47, IndexSuite: 53, AnalysisSuite: 20, CliSuite: 56)
 - [x] Scala 3 symbol extraction (class, trait, object, def, val, type, enum, given, extension)
 - [x] Scala 2 fallback (procedure syntax, implicit class, mixed projects)
 - [x] Binary persistence roundtrip (parents, signatures survive save/load)
