@@ -54,7 +54,7 @@ Build the fastest possible Scala code navigation tool, designed from the ground 
 
 ## How It Works
 
-The entire tool is ~2,500 lines of Scala 3 in a single file. Here's the architecture:
+The entire tool is ~2,600 lines of Scala 3 in a single file. Here's the architecture:
 
 ```
                          ┌─────────────────┐
@@ -470,7 +470,7 @@ The name also nods to "Scala" itself — Italian for "staircase" or "scale" — 
 
 The Scalex mascot is a **kestrel** — the smallest falcon. It was chosen because it mirrors the tool's core qualities:
 
-- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~2,500 lines, single 28MB binary)
+- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~2,600 lines, single 28MB binary)
 - **Incredible eyesight** — spots symbols across 14k files, like a kestrel spots prey from 50 meters
 - **Hovers before diving** — systematically scans an area before striking, like indexing before querying
 - **Lives alongside people** — kestrels thrive near humans, like Scalex works alongside AI agents
@@ -481,7 +481,7 @@ See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
 Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team.
 
-Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~2,500 lines of Scala 3.
+Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~2,600 lines of Scala 3.
 
 - **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
 - **From Scalameta**: the parser that makes source-level symbol extraction possible
@@ -493,7 +493,7 @@ Metals is [Apache 2.0](https://github.com/scalameta/metals/blob/main/LICENSE). S
 
 ## Built With Claude
 
-This entire project — research, design, implementation, testing, documentation — was built in a **single session** with [Claude Code](https://claude.ai/code) powered by the **Claude Opus 4.6 model with 1M context window**.
+This project was built with [Claude Code](https://claude.ai/code) powered by the **Claude Opus 4.6 model with 1M context window**.
 
 ## License
 
