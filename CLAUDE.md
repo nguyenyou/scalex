@@ -43,7 +43,9 @@ src/
 ├── extraction.scala       # AST parsing & single-file extraction functions
 ├── index.scala            # Git integration, persistence, WorkspaceIndex, filtering
 ├── analysis.scala         # Cross-index analysis (hierarchy, overrides, deps, diff, ast-pattern)
-├── cli.scala              # Formatting, runCommand, @main entry point
+├── format.scala           # JSON + text formatters for symbols and references
+├── commands.scala         # Command implementations, filters, dispatch map
+├── cli.scala              # Arg parsing, workspace resolution, @main entry point
 ├── test-base.scala        # Shared test fixture (workspace setup)
 ├── extraction.test.scala  # Extraction tests
 ├── index.test.scala       # Index/search/persistence tests
