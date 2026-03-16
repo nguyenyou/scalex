@@ -1962,7 +1962,9 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     case "overview" =>
       val symbolsByKind = idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size)
       val topPackages = idx.packageToSymbols.toList.sortBy(-_._2.size).take(limit)
-      val mostExtended = idx.parentIndex.toList.sortBy(-_._2.size).take(limit)
+      val mostExtended = idx.parentIndex.toList
+        .filter((name, _) => idx.symbolsByName.contains(name))
+        .sortBy(-_._2.size).take(limit)
 
       // Architecture: compute package dependency graph from imports
       val archPkgDeps: Map[String, Set[String]] = if architecture then {
@@ -1994,7 +1996,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val hubTypes: List[(String, Int)] = if architecture then {
         val refCounts = mutable.HashMap.empty[String, Int]
         idx.parentIndex.foreach { (name, impls) =>
-          refCounts(name) = refCounts.getOrElse(name, 0) + impls.size
+          if idx.symbolsByName.contains(name) then
+            refCounts(name) = refCounts.getOrElse(name, 0) + impls.size
         }
         refCounts.toList.sortBy(-_._2).take(limit)
       } else Nil
