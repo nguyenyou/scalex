@@ -380,19 +380,9 @@ Types matching AST pattern (extends=UserService, has-method=findUser) — 2 foun
   class     OldService (com.example) — .../Annotated.scala:4
 ```
 
-### `scalex symbols <file> [--verbose]` — file symbols
+### `scalex symbols <file> [--verbose]` / `scalex packages` — file symbols / list packages
 
-Lists everything defined in a file. Use `--verbose` to see signatures.
-
-```bash
-scalex symbols src/main/scala/com/example/Service.scala --verbose
-```
-
-### `scalex packages` — list packages
-
-```bash
-scalex packages
-```
+`symbols` lists everything defined in a file (`--verbose` for signatures). `packages` lists all packages in the index.
 
 ### `scalex batch [-w workspace]` — multiple queries, one index load
 
@@ -477,75 +467,25 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 
 ## Common workflows
 
-**"Where is X defined?"** → `scalex def X --verbose`
+Most commands are self-explanatory from their name — `scalex def X`, `scalex members X`, `scalex doc X`. These workflows cover the non-obvious choices:
 
-**"Who implements trait X?"** → `scalex impl X` (index-based, fast)
+**"What's the impact of renaming X?"** → `scalex refs X` (categorized by default — groups by Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment)
 
-**"What's the impact of renaming X?"** → `scalex refs X` (categorized by default — shows all usages grouped by kind)
+**"Too many results / noisy output"** → combine `--no-tests`, `--path compiler/src/`, `--kind class`, or `search --prefix`/`--exact`
 
-**"Which files import X?"** → `scalex imports X` (just import lines, clean for dependency analysis)
+**"I need to look up 3+ symbols"** → use `batch` to load the index once: `echo -e "def Foo\nimpl Foo\nrefs Foo" | scalex batch -w /project`
 
-**"What traits/classes exist named like X?"** → `scalex search X --kind trait`
+**"Search for a pattern in Scala files"** → `scalex grep "pattern"` — prefer this over the Grep tool for `.scala` files because it integrates with `--path` and `--no-tests`
 
-**"Find a file named like X"** → `scalex file X` (fuzzy camelCase search on filenames)
+**"Show me the source code of method X"** → `scalex body X --in MyClass` — use `--in` when the name exists in multiple classes
 
-**"What's in this file?"** → `scalex symbols path/to/File.scala --verbose`
+**"Give me everything about this type"** → `scalex explain MyTrait` — one-shot composite: def + doc + members + impls + import count (saves 4-5 round-trips)
 
-**"What methods does this trait have?"** → `scalex members MyTrait --verbose` (lists all defs/vals/types without reading the file)
+**"Find tests for X / show me tests about X"** → `scalex tests extractBody` — filter by name + show bodies inline in one command
 
-**"Show me the docs for X"** → `scalex doc X` (extracts scaladoc comment)
+**"Is this function tested?"** → `scalex coverage extractBody` — refs in test files only, with count + locations
 
-**"Give me an overview of this codebase"** → `scalex overview` (symbols by kind, top packages, most-extended traits)
-
-**"Only show who extends this symbol"** → `scalex refs X --category ExtendedBy` (filter to one category)
-
-**"Search for types only, not defs/vals"** → `scalex search Signal --definitions-only` (class/trait/object/enum only)
-
-**"I need to look up 3+ symbols"** → use `batch` to avoid repeated index loads
-
-**"Too many results / noisy output"** → `--no-tests`, `--path compiler/src/`, or `search --prefix`/`--exact` to filter
-
-**"I want to see the code around each reference"** → `scalex refs X -C 3` shows 3 lines of context
-
-**"Find all deprecated APIs"** → `scalex annotated deprecated` (or any annotation: `@main`, `@tailrec`, etc.)
-
-**"Search for a pattern in Scala files"** → `scalex grep "pattern"` — prefer this over the Grep tool for `.scala` files since it integrates with `--path` and `--no-tests`
-
-**"Search for multiple patterns at once"** → `scalex grep -e "pattern1" -e "pattern2"` — combined with `|`, one process invocation
-
-**"How many files match this pattern?"** → `scalex grep "pattern" --count` — quick triage before reading all results
-
-**"I need grep + def + refs in one shot"** → use `batch`: `echo -e "grep processPayment\ndef PaymentService\nrefs PaymentService" | scalex batch -w /project`
-
-**"I need structured output for scripting"** → append `--json` to any command (e.g. `scalex def X --json`)
-
-**"Show me the source code of method X"** → `scalex body X --in MyClass` (extracts body without reading the whole file)
-
-**"What's the inheritance tree?"** → `scalex hierarchy MyClass` (parents + children tree)
-
-**"Who overrides method X?"** → `scalex overrides X --of MyTrait` (method-level impl search)
-
-**"Give me everything about this type"** → `scalex explain MyTrait` (def + doc + members + impls + import count)
-
-**"What does this class depend on?"** → `scalex deps MyClass` (imports + body refs)
-
-**"What's the context at this line?"** → `scalex context file.scala:42` (enclosing scopes)
-
-**"What symbols changed?"** → `scalex diff HEAD~1` (added/removed/modified symbols)
-
-**"Find types by structure"** → `scalex ast-pattern --extends Trait --has-method process` (structural search)
-
-**"Show me inherited members too"** → `scalex members MyClass --inherited` (own + parent members)
-
-**"Show architecture"** → `scalex overview --architecture` (package deps + hub types)
-
-**"What tests exist?"** → `scalex tests` (lists all test cases with suite + line)
-
-**"Find tests for X / show me tests about X"** → `scalex tests extractBody` (filter by name + show bodies inline — one command, no follow-up)
-
-**"Is this function tested?"** → `scalex coverage extractBody` (refs in test files only, with count + locations)
-
-**"Show me a specific test"** → `scalex body "exact test name" --in MySuite` (when you know the exact name)
+**"I need structured output"** → append `--json` to any command
 
 ## Fallback
 
