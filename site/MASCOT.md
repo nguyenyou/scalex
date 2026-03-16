@@ -10,7 +10,7 @@ A small, fast, sharp tool that scans an entire Scala codebase in seconds and tel
 
 | Quality | What it means | Visual metaphor |
 |---|---|---|
-| **Speed** | Indexes 14k files in 3s, queries in <1s | Swift motion, streamlined form |
+| **Speed** | Indexes 18k files in 3s, queries in <1s | Swift motion, streamlined form |
 | **Sharp vision** | Finds symbols, definitions, references with precision | Keen eyes, focused gaze |
 | **Lightweight** | Single 26MB binary, no dependencies | Small body, minimal form |
 | **Scala-native** | Understands Scala 3 syntax (enums, givens, extensions) | Scales, red Scala color palette |
@@ -25,7 +25,7 @@ A **small kestrel** (the smallest falcon) — fast, sharp-eyed, lightweight, hov
 ### Why a kestrel?
 
 - **Smallest falcon** — reflects our lightweight, minimal design (~3,100 lines of code across 8 source files)
-- **Incredible eyesight** — spots symbols from across 14k files, like a kestrel spots prey from 50 meters
+- **Incredible eyesight** — spots symbols from across 18k files, like a kestrel spots prey from 50 meters
 - **Hovers in place** — systematically scans an area before diving, like indexing before querying
 - **Fast dive** — instant results once it finds the target
 - **Works near humans** — kestrels live alongside people, like Scalex works alongside AI agents

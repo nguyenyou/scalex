@@ -10,51 +10,27 @@
 
 ---
 
-## Table of Contents
-
-- [The Problem](#the-problem)
-- [The Idea](#the-idea)
-- [The Goal](#the-goal)
-- [How It Works](#how-it-works)
-- [Quick Start](#quick-start)
-- [Run Without Installing](#run-without-installing)
-- [Build From Source](#build-from-source)
-- [Commands](#commands)
-- [Scalex vs Grep/Glob/Read — Honest Comparison](#scalex-vs-grepglobread--honest-comparison)
-- [Name](#name)
-- [Mascot](#mascot)
-- [Credits](#credits)
-- [License](#license)
-
 ## The Problem
 
 AI coding agents (Claude Code, Cursor, Codex) are powerful, but they're blind in large Scala codebases. When an agent needs to find where `PaymentService` is defined, it has two options:
 
-1. **Grep** — fast, but dumb. Returns raw text. Misses `given` definitions, can't filter by kind, doesn't know what a trait is vs a usage. The agent has to construct regex patterns and parse raw output.
+1. **Grep** — fast, but dumb. Returns raw text. Can't filter by symbol kind, doesn't know a trait from a usage. The agent has to construct regex patterns and parse raw output.
 
-2. **Metals LSP** — smart, but heavy. Requires a running build server (Bloop/sbt/Mill), full compilation, minutes of startup time. Designed for humans in IDEs, not agents making quick tool calls.
+2. **Metals LSP** — smart, but heavy. Requires a build server, full compilation, minutes of startup. Designed for humans in IDEs, not agents making quick tool calls.
 
-Neither works well for an AI agent that just needs to ask: *"Where is this defined? Who uses it? Who extends it?"*
+What if we took the fast parts of a language server — source-level indexing — and threw away everything that requires compilation? An AI agent doesn't need type inference or completions. It needs **navigation**: definitions, references, implementations. All of this can be done by parsing source directly, without ever running a compiler.
 
-## The Idea
-
-What if we took the fast parts of a language server — the source-level indexing — and threw away everything that requires compilation?
-
-An AI agent doesn't need type inference, completions, or hover info. It needs **navigation**: search, definitions, references, implementations. All of this can be done by parsing source code directly, without ever running a compiler.
-
-## The Goal
-
-Build the fastest possible Scala code navigation tool, designed from the ground up for AI agents:
+## Design Principles
 
 - **One command = one answer.** No multi-step reasoning, no regex construction.
-- **Structured output.** Symbol kind, package name, file path, line number. Not raw text.
-- **Understands Scala 2 and 3.** Enums, givens, extensions, type aliases, implicit classes, procedure syntax — all parsed. Auto-detects dialect per file, zero config.
+- **Structured output.** Symbol kind, package, file path, line number. Not raw text.
+- **Scala 2 and 3.** Enums, givens, extensions, implicit classes, procedure syntax — auto-detected per file.
 - **Zero setup.** Point it at a git repo. No build files, no config, no compilation.
-- **Fallback guidance.** When it can't find something, it tells the agent what to try next.
+- **Honest about limits.** When it can't find something, it tells the agent what to try next.
 
 ## How It Works
 
-The tool is ~3,100 lines of Scala 3 across 8 source files. Here's the architecture:
+~3,100 lines of Scala 3 across 8 source files. Here's the architecture:
 
 ```
                          ┌─────────────────┐
@@ -91,43 +67,27 @@ The tool is ~3,100 lines of Scala 3 across 8 source files. Here's the architectu
      └────────────────┘ └────────────────┘ └────────────────┘
 ```
 
-### The pipeline
+### Pipeline
 
 ```
   1. git ls-files --stage
-     │
-     │  Lists every .scala file tracked by git
-     │  with its SHA-1 content hash (OID).
+     │  Every tracked .scala file with its content hash (OID).
      │  ~40ms for 18k files.
      │
   2. Compare OIDs against cached index
-     │
-     │  If a file's OID matches the cache → skip it.
-     │  Only re-parse files that actually changed.
-     │  0 files changed = 0 files parsed.
+     │  Unchanged files are skipped entirely.
+     │  0 changes = 0 parses.
      │
   3. Scalameta parse (parallel)
-     │
-     │  For each changed file:
-     │  - Parse source → AST (Scala 3 first, falls back to 2.13)
-     │  - Extract: class, trait, object, def, val,
-     │    type, enum, given, extension
-     │  - Record: name, kind, line, package, parents,
-     │    signature, annotations
-     │  - Build bloom filter of all identifiers
-     │  Runs on all CPU cores via Java parallel streams.
+     │  Source → AST → symbols, bloom filters, imports, parents.
+     │  All CPU cores via Java parallel streams.
      │
   4. Save to .scalex/index.bin
-     │
      │  Binary format with string interning.
-     │  Bloom filters serialized per file.
      │  Loads in ~275ms for 200k+ symbols.
      │
   5. Answer the query
-     │
-     │  Derived maps (symbolsByName, parentIndex, etc.)
-     │  are lazy vals — built on first access, not upfront.
-     │  Commands that need 1–2 maps skip building the rest.
+     │  Maps build lazily — each query only pays for the indexes it needs.
 ```
 
 ### Performance
@@ -141,16 +101,16 @@ The tool is ~3,100 lines of Scala 3 across 8 source files. Here's the architectu
 
 ### Claude Code (recommended)
 
-The fastest way — installs the binary + skill (teaches Claude when and how to use scalex) in one step:
+Installs the binary + skill (teaches Claude when and how to use scalex) in one step:
 
 ```bash
 /plugin marketplace add nguyenyou/scalex
 /plugin install scalex@scalex-marketplace
 ```
 
-Try this sample prompt:
+Then try:
 
-> *"use scalex skill to explore and explain how \<abcxyz\> works"*
+> *"use scalex to explore how Signal propagation works in this codebase"*
 
 ### Other AI agents / manual install
 
@@ -183,37 +143,27 @@ Place the `scalex/` folder wherever your agent reads skills from.
 ```bash
 cd /path/to/your/scala/project
 
-scalex search Service --kind trait      # Find all traits with "Service" in the name
-scalex search hms                       # Fuzzy camelCase: finds HttpMessageService
-scalex search Auth --prefix             # Only exact + prefix matches, no noise
-scalex search Signal --definitions-only # Only class/trait/object/enum, no defs/vals
-scalex def UserService --verbose        # Where is it defined? (with signature)
-scalex impl UserService                 # Who extends this trait?
-scalex refs UserService                 # Who uses it? (categorized by default)
-scalex refs UserService --flat          # Flat list (old default)
-scalex refs Signal --category ExtendedBy # Only show ExtendedBy category
-scalex imports UserService              # Who imports it?
-scalex members UserService --verbose    # What's inside this trait? (defs, vals, types)
-scalex doc UserService                  # Show scaladoc for a symbol
-scalex overview                         # Codebase summary: packages, kinds, extends
-scalex file PaymentService              # Find files by name (fuzzy camelCase)
-scalex annotated deprecated             # Find all @deprecated symbols
-scalex grep "def.*process" --no-tests   # Regex search in .scala file contents
-scalex grep -e "TODO" -e "FIXME" --count # Multi-pattern count
-scalex symbols src/main/scala/App.scala # What's in this file?
-scalex packages                         # What packages exist?
-scalex def UserService --json           # Structured JSON output
-scalex body findUser --in UserServiceLive  # Extract method body (eliminates Read calls)
-scalex hierarchy UserService               # Full inheritance tree (parents + children)
-scalex overrides findUser --of UserService # Find all implementations of a method
-scalex explain UserService                 # One-shot summary: def + doc + members + impls
-scalex deps UserService                    # What does this symbol depend on?
-scalex context src/Main.scala:42           # Enclosing scopes at line 42
-scalex diff HEAD~1                         # Symbol-level changes since last commit
-scalex ast-pattern --extends Service --has-method process  # Structural search
-scalex members UserService --inherited     # Include inherited members from parents
-scalex overview --architecture             # Package deps + hub types
+# Discover
+scalex search Service --kind trait         # Find traits by name
+scalex search hms                          # Fuzzy camelCase: finds HttpMessageService
+scalex file PaymentService                 # Find files by name (like IntelliJ)
+scalex packages                            # List all packages
+
+# Understand
+scalex def UserService --verbose           # Definition with signature
+scalex explain UserService                 # One-shot: def + doc + members + impls
+scalex members UserService --inherited     # Full API surface including parents
+scalex hierarchy UserService               # Inheritance tree (parents + children)
+
+# Navigate
+scalex refs UserService                    # Categorized references
+scalex impl UserService                    # Who extends this?
+scalex imports UserService                 # Who imports this?
+scalex grep "def.*process" --no-tests      # Regex content search
+scalex body findUser --in UserServiceLive  # Extract method body without Read
 ```
+
+All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`.
 
 ## Run Without Installing
 
@@ -234,7 +184,7 @@ Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.g
 git clone https://github.com/nguyenyou/scalex.git
 cd scalex
 ./build-native.sh
-# Output: 28MB standalone binary, no JVM needed
+# Output: ~30MB standalone binary, no JVM needed
 cp scalex ~/.local/bin/scalex
 ```
 
@@ -273,193 +223,113 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 | Flag | Effect |
 |---|---|
 | `--verbose` | Show signatures, extends clauses, param types |
-| `--categorize`, `-c` | Group refs by category (default; kept for backwards compatibility) |
-| `--flat` | Refs: flat list instead of categorized (overrides default) |
-| `--definitions-only` | Search: only return class/trait/object/enum definitions |
-| `--category CAT` | Refs: filter to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment) |
+| `--flat` | Refs: flat list instead of categorized (default is categorized) |
+| `--definitions-only` | Search: only class/trait/object/enum definitions |
+| `--category CAT` | Refs: filter to one category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment) |
 | `--limit N` | Max results (default: 20) |
-| `--kind K` | Filter search: class, trait, object, def, val, type, enum, given, extension |
-| `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
-| `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
-| `-C N` | Show N context lines around each reference (refs, grep) |
-| `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
-| `--count` | Grep: output match/file count only, no full results |
-| `--exact` | Search: only exact name matches (case-insensitive) |
-| `--prefix` | Search: only exact + prefix matches |
-| `--json` | Output results as JSON — structured output for programmatic parsing |
-| `--in OWNER` | Body: restrict to members of the given enclosing type |
-| `--of TRAIT` | Overrides: restrict to implementations of the given trait |
-| `--impl-limit N` | Explain: max implementations to show (default: 5) |
-| `--up` | Hierarchy: show only parents (default: both) |
-| `--down` | Hierarchy: show only children (default: both) |
-| `--inherited` | Members: include inherited members from parent types |
-| `--architecture` | Overview: show package dependency graph and hub types |
-| `--has-method NAME` | AST pattern: match types that have a method with NAME |
-| `--extends TRAIT` | AST pattern: match types that extend TRAIT |
-| `--body-contains PAT` | AST pattern: match types whose body contains PAT |
+| `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
+| `--no-tests` | Exclude test files |
+| `--path PREFIX` | Restrict to files under PREFIX (e.g. `compiler/src/`) |
+| `-C N` | Context lines around each reference (refs, grep) |
+| `-e PATTERN` | Grep: additional pattern (repeatable) |
+| `--count` | Grep: match/file count only |
+| `--exact` | Search: exact name matches only |
+| `--prefix` | Search: exact + prefix matches only |
+| `--json` | Structured JSON output on all commands |
+| `--in OWNER` | Body: restrict to enclosing type |
+| `--of TRAIT` | Overrides: restrict to trait |
+| `--impl-limit N` | Explain: max implementations (default: 5) |
+| `--up` / `--down` | Hierarchy: limit direction |
+| `--inherited` | Members: include inherited members |
+| `--architecture` | Overview: package deps + hub types |
+| `--has-method NAME` | AST pattern: types with method NAME |
+| `--extends TRAIT` | AST pattern: types extending TRAIT |
+| `--body-contains PAT` | AST pattern: types whose body contains PAT |
 | `--version` | Print version and exit |
 
-### AI-Friendly Features
+### What Makes It AI-Friendly
 
-- **`--verbose`** on `def` returns the full signature — saves the agent a follow-up Read call
-- **Categorized refs by default** — `refs` groups results by relationship (Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage) without any flags; use `--flat` for the old flat list
-- **`--category`** on `refs` filters to a single category — `refs Signal --category ExtendedBy` for targeted impact analysis
-- **`--definitions-only`** on `search` filters to class/trait/object/enum — eliminates noise from defs/vals with common names
-- **`impl`** finds concrete implementations of a trait — much more targeted than `refs`
-- **`imports`** shows dependency relationships — which files depend on this symbol
-- **`members`** lists what's inside a class/trait/object — defs, vals, vars, types — without reading the whole file
-- **`doc`** extracts scaladoc comments for a symbol — eliminates the most common Read call
-- **`overview`** gives a one-shot codebase summary — symbol counts by kind, top packages, most-extended traits
-- **Fuzzy camelCase search** — `search "hms"` finds `HttpMessageService`, `file "psl"` finds `PaymentServiceLive.scala`
-- **`file`** command searches file names with the same fuzzy matching — like IntelliJ's file search
-- **`annotated`** finds symbols by annotation — `@deprecated`, `@main`, `@tailrec`, etc.
-- **`grep`** does regex content search inside `.scala` files with `--path` and `--no-tests` filtering built in; `-e` for multi-pattern, `--count` for quick triage
-- **`--json`** flag on all commands produces structured JSON output — eliminates fragile text parsing
-- **`--exact` / `--prefix`** on `search` eliminates noise from substring/fuzzy matches — `search Auth --prefix` returns ~20 results instead of 1300+
-- **`batch`** mode loads the index once for multiple queries — 5 queries in ~1s instead of ~5s; not-found output is condensed to a single line
-- **Fallback hints** on "not found" — tells the agent how many files were searched and suggests using Grep/Glob as fallback
-- **20s timeout** on reference/grep search — prevents hangs on massive repos, shows partial results
-- **`body`** extracts method/val/class source bodies — eliminates ~50% of follow-up Read calls
-- **`hierarchy`** shows full inheritance tree — parents and children in one call, with `--up`/`--down` flags
-- **`overrides`** finds all implementations of a specific method across classes — combines impl lookup with member filtering
-- **`explain`** gives a composite one-shot summary — definition + scaladoc + members + implementations + import count in a single call
-- **`deps`** shows what a symbol depends on — file imports and body references to other indexed symbols
-- **`context`** shows enclosing scopes at a file:line — package, class, method chain
-- **`diff`** shows symbol-level changes vs a git ref — added/removed/modified symbols, not raw line diffs
-- **`ast-pattern`** does structural AST search — find types by what they extend, what methods they have, or what their body contains
-- **`members --inherited`** shows the full API surface — own members plus inherited from parent types
-- **`overview --architecture`** shows package dependency graph and hub types — architectural understanding in one call
+**Fewer round-trips.** The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space.
 
-## Scalex vs Grep/Glob/Read — Honest Comparison
+- `explain` replaces 4-5 calls (def + doc + members + impl + imports) with one
+- `body` extracts source without a Read call — eliminates ~50% of follow-up file reads
+- `refs` returns categorized results (Definition/ExtendedBy/ImportedBy/UsedAsType) — no post-processing
+- `hierarchy` shows the full inheritance tree in one call — parents up, children down
+- `batch` loads the index once for multiple queries — 5 queries in ~1s instead of ~5s
 
-We tested both approaches on the **Scala 3 compiler repo** (17.7k files, 203k symbols) — a real mixed Scala 2/3 codebase.
+**Less noise.** Large codebases produce hundreds of results. Scalex gives the agent tools to cut through:
 
-### Case 1: "Where is `Compiler` defined?"
+- `--kind`, `--path`, `--no-tests` — filter at the source, not after
+- `--exact` / `--prefix` — `search Auth --prefix` returns ~20 results instead of 1300+
+- `--definitions-only` — only class/trait/object/enum, no val/def name collisions
+- `--category` on refs — `refs Signal --category ExtendedBy` for targeted impact analysis
 
-**With Scalex** (1 tool call):
+**Structured, not raw.** Every result includes symbol kind, package name, file path, and line number. `--json` on all commands for programmatic parsing. Fallback hints on "not found" suggest Grep/Glob as alternatives.
 
-```bash
+## Scalex vs Grep — Honest Comparison
+
+Tested on the **Scala 3 compiler** (17.7k files, 203k symbols).
+
+### "Where is `Compiler` defined?"
+
+**Scalex** (1 call):
+```
 scalex def Compiler --verbose
-  class     Compiler (dotty.tools) — compiler/src/dotty/tools/dotc/Compiler.scala:16
-             class Compiler
-  trait     Compiler (scala.quoted) — staging/src/scala/quoted/staging/Compiler.scala:8
-             trait Compiler
-  object    Compiler (scala.quoted) — staging/src/scala/quoted/staging/Compiler.scala:12
-             object Compiler
+  class   Compiler (dotty.tools) — compiler/src/.../Compiler.scala:16
+  trait   Compiler (scala.quoted) — staging/src/.../Compiler.scala:8
+  object  Compiler (scala.quoted) — staging/src/.../Compiler.scala:12
 ```
+3 definitions across 2 packages, with kind and signature. Done.
 
-Done. Found 3 definitions — class, trait, and companion object — across different packages. With signatures.
+**Grep** (2-3 calls): `class Compiler|trait Compiler|object Compiler` returns ~30 results including `CompilerCommand`, `CompilerTest`. Needs regex refinement, still no package info.
 
-**With Grep** (agent must reason about patterns):
+### "Who extends `Compiler`?"
 
-```bash
-# Step 1: Agent tries the obvious pattern
-Grep pattern="class Compiler|trait Compiler|object Compiler" glob="*.scala"
-# Returns ~30 results including "class CompilerCommand", "class CompilerTest",
-# "object CompilerSearchVisitor" — lots of noise from substring matches
-
-# Step 2: Agent refines to exact match
-Grep pattern="^(class|trait|object) Compiler[\s\[\({]" glob="*.scala"
-# Better, but misses indented definitions and requires regex expertise
-
-# Step 3: Agent still doesn't know the package for each result — needs Read calls
+**Scalex** (1 call):
 ```
-
-**Verdict**: Scalex returns structured results (kind + package + signature) in 1 call. Grep requires 2-3 iterations of regex refinement, and the agent still doesn't get package names without additional Read calls.
-
-### Case 2: "Who extends `Compiler`?"
-
-**With Scalex** (1 tool call):
-
-```bash
-scalex impl Compiler --verbose
-  class     ExpressionCompiler (dotty.tools.debug) — .../ExpressionCompiler.scala:18
-             class ExpressionCompiler extends Compiler
-  class     TASTYCompiler (dotty.tools) — .../TASTYCompiler.scala:9
-             class TASTYCompiler extends Compiler
-  class     InteractiveCompiler (dotty.tools) — .../InteractiveCompiler.scala:10
-             class InteractiveCompiler extends Compiler
-  class     ReplCompiler (dotty.tools) — .../ReplCompiler.scala:34
-             class ReplCompiler extends Compiler
+scalex impl Compiler
+  ExpressionCompiler, TASTYCompiler, InteractiveCompiler, ReplCompiler
 ```
+Exact parent matching from the AST. No substring noise.
 
-**With Grep**:
+**Grep**: `extends Compiler` also matches `extends CompilerCommand`, `extends CompilerPhase`. Agent must filter manually.
 
-```bash
-Grep pattern="extends Compiler" glob="*.scala"
-# Returns lines with "extends Compiler" — works! But also matches
-# "extends CompilerCommand" and "extends CompilerPhase" (substring).
-# Agent must filter manually. No package info. No signatures.
+### "Find references and categorize them"
+
+**Scalex** (1 call):
 ```
-
-**Verdict**: Scalex's `impl` is purpose-built for this — exact parent matching from the AST, no substring noise. Grep works but returns false positives.
-
-### Case 3: "What are all the traits in the `dotty.tools.dotc.transform` package?"
-
-**With Scalex** (1 tool call):
-
-```bash
-scalex search transform --kind trait --limit 10
-```
-
-Returns only traits, ranked by relevance, with package names.
-
-**With Glob + Grep** (multi-step):
-
-```bash
-# Step 1: Find files in that package
-Glob pattern="**/transform/**/*.scala"
-# Step 2: Grep each file for trait declarations
-Grep pattern="^\s*trait " path="compiler/src/dotty/tools/dotc/transform/"
-# Step 3: Parse results to extract trait names
-```
-
-**Verdict**: Scalex does this in one call with `--kind` filtering. The agent doesn't need to know the directory structure.
-
-### Case 4: "Find all references to `Compiler` and categorize them"
-
-**With Scalex** (1 tool call):
-
-```bash
 scalex refs Compiler --limit 5
-  Definition:
-    .../Compiler.scala:16 — class Compiler {
-  ExtendedBy:
-    .../ExpressionCompiler.scala:18 — class ExpressionCompiler extends Compiler
-  ImportedBy:
-    .../InteractiveDriver.scala:5 — import dotty.tools.dotc.Compiler
-  UsedAsType:
-    .../Run.scala:12 — val compiler: Compiler
-  Comment:
-    .../Compiler.scala:3 — /** The Compiler class ...
+  Definition:  class Compiler {
+  ExtendedBy:  class ExpressionCompiler extends Compiler
+  ImportedBy:  import dotty.tools.dotc.Compiler
+  UsedAsType:  val compiler: Compiler
 ```
 
-**With Grep**: Returns a flat list of all 278 lines containing "Compiler". The agent must read each line and decide whether it's a definition, import, extends, type usage, or comment. That's 278 lines of reasoning.
-
-**Verdict**: `--categorize` gives the agent structured understanding in one call. This is something grep fundamentally cannot do.
+**Grep**: Returns 278 flat lines. Agent must classify each one.
 
 ### The Honest Truth
 
-**Grep/Glob/Read are faster** (~0.1s vs ~1s). For simple text search ("does this string exist?"), grep wins hands down.
+**Grep is faster** (~0.1s vs ~0.5s). For "does this string exist?" — use grep.
 
-**Scalex is smarter**. It returns structured results with symbol kinds, packages, signatures, parent classes, and categorized references. For Scala-specific navigation, this saves the agent 2-5 follow-up tool calls per query.
+**Scalex is smarter.** For "where is this defined?", "who implements this?", "what's the impact of changing this?" — scalex saves 2-5 follow-up tool calls per query.
 
-**What AI agents actually prefer**: It depends on the task.
+**Best approach: use both.** Scalex for Scala-aware navigation, Grep for text search. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
 
-- **"Find a file by name"** → Both work. Glob for exact patterns, `scalex file` for fuzzy camelCase matching.
-- **"Does this string appear anywhere?"** → Grep wins. Faster, simpler.
-- **"Where is this trait defined?"** → Scalex wins. Finds givens, shows package + signature.
-- **"Who implements this trait?"** → Scalex wins. `impl` vs multi-step grep + filter.
-- **"Understand impact before refactoring"** → Scalex wins. `--categorize` gives structured view.
-- **"Explore unfamiliar codebase"** → Scalex wins. `search --kind`, `packages`, `symbols --verbose`.
+## Credits
 
-**Best approach**: Use both. Scalex for Scala-aware navigation, Grep/Glob for everything else. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
+Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team. Specifically, the **MBT subsystem** in the `main-v2` branch (Databricks fork) pioneered git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server.
+
+- **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
+- **From Scalameta**: the parser that makes source-level symbol extraction possible
+- **From Guava**: bloom filter implementation
+
+Metals is [Apache 2.0](https://github.com/scalameta/metals/blob/main/LICENSE). Scalex does not contain code copied from Metals — the ideas were reimplemented independently.
+
+Built with [Claude Code](https://claude.ai/code) powered by **Claude Opus 4.6** (1M context).
 
 ## Name
 
-**Scalex** = **Scala** + **ex** (explore, extract, index). A tool that explores Scala codebases, extracts symbols, and indexes them for instant lookup.
-
-The name also nods to "Scala" itself — Italian for "staircase" or "scale" — and the idea of scaling up code navigation to massive repos without scaling up complexity.
+**Scalex** = **Scala** + **ex** (explore, extract, index).
 
 ## Mascot
 
@@ -467,31 +337,7 @@ The name also nods to "Scala" itself — Italian for "staircase" or "scale" — 
   <img src="site/Kestrel.png" alt="The Scalex Kestrel" width="256">
 </p>
 
-The Scalex mascot is a **kestrel** — the smallest falcon. It was chosen because it mirrors the tool's core qualities:
-
-- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~3,100 lines across 8 source files, single 28MB binary)
-- **Incredible eyesight** — spots symbols across 14k files, like a kestrel spots prey from 50 meters
-- **Hovers before diving** — systematically scans an area before striking, like indexing before querying
-- **Lives alongside people** — kestrels thrive near humans, like Scalex works alongside AI agents
-
-See [MASCOT.md](site/MASCOT.md) for the full design brief.
-
-## Credits
-
-Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team.
-
-Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~3,100 lines of Scala 3.
-
-- **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
-- **From Scalameta**: the parser that makes source-level symbol extraction possible
-- **From Guava**: bloom filter implementation
-
-
-Metals is [Apache 2.0](https://github.com/scalameta/metals/blob/main/LICENSE). Scalex does not contain code copied from Metals — we reimplemented the ideas independently.
-
-## Built With Claude
-
-This project was built with [Claude Code](https://claude.ai/code) powered by the **Claude Opus 4.6 model with 1M context window**.
+A **kestrel** — the smallest falcon. Fast, sharp-eyed, lightweight, hovers before diving. See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
 ## License
 
