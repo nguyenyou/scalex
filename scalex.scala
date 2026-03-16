@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.11.0"
+val ScalexVersion = "1.12.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -263,6 +263,9 @@ case class ScopeInfo(name: String, kind: String, line: Int)
 
 case class DiffSymbol(name: String, kind: SymbolKind, file: String, line: Int, packageName: String, signature: String)
 
+case class TestCaseInfo(name: String, line: Int, suiteName: String, suiteFile: Path)
+case class TestSuiteInfo(name: String, file: Path, line: Int, tests: List[TestCaseInfo])
+
 def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
   parseFile(file) match
     case None => Nil
@@ -358,6 +361,65 @@ def extractScaladoc(file: Path, targetLine: Int): Option[String] =
     Some(lines(endLine))
   else None
 
+// ── Test extraction ─────────────────────────────────────────────────────
+
+private val testFnNames = Set("test", "it", "describe")
+
+private def extractTestName(t: Tree): Option[(String, Int)] =
+  t match
+    case app: Term.Apply =>
+      app.fun match
+        case innerApp: Term.Apply =>
+          innerApp.fun match
+            case fn: Term.Name if testFnNames.contains(fn.value) =>
+              innerApp.argClause.values.collectFirst { case lit: Lit.String => (lit.value, app.pos.startLine + 1) }
+            case _ => None
+        case _ => None
+    case infix: Term.ApplyInfix =>
+      if infix.op.value == "in" || infix.op.value == ">>" then
+        infix.lhs match
+          case lit: Lit.String => Some((lit.value, infix.pos.startLine + 1))
+          case _ => None
+      else None
+    case _ => None
+
+def extractTests(file: Path): List[TestSuiteInfo] = {
+  parseFile(file) match
+    case None => Nil
+    case Some(tree) =>
+      val suites = mutable.ListBuffer.empty[TestSuiteInfo]
+
+      def collectTests(stats: List[Tree], suiteName: String): List[TestCaseInfo] = {
+        val tests = mutable.ListBuffer.empty[TestCaseInfo]
+        def visit(t: Tree): Unit = {
+          extractTestName(t) match
+            case Some((name, line)) =>
+              tests += TestCaseInfo(name, line, suiteName, file)
+            case None =>
+          t.children.foreach(visit)
+        }
+        stats.foreach(visit)
+        tests.toList
+      }
+
+      def findSuites(t: Tree): Unit = {
+        t match
+          case d: Defn.Class =>
+            val tests = collectTests(d.templ.stats, d.name.value)
+            if tests.nonEmpty then
+              suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests)
+          case d: Defn.Object =>
+            val tests = collectTests(d.templ.stats, d.name.value)
+            if tests.nonEmpty then
+              suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests)
+          case _ =>
+        t.children.foreach(findSuites)
+      }
+
+      findSuites(tree)
+      suites.toList
+}
+
 // ── Body extraction ─────────────────────────────────────────────────────────
 
 def extractBody(file: Path, symbolName: String, ownerName: Option[String]): List[BodyInfo] = {
@@ -430,6 +492,26 @@ def extractBody(file: Path, symbolName: String, ownerName: Option[String]): List
               val body = (sl to el).map(lines(_)).mkString("\n")
               buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
             d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+          case app: Term.Apply =>
+            extractTestName(app) match
+              case Some((name, _)) if name == symbolName =>
+                if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                  val sl = app.pos.startLine
+                  val el = app.pos.endLine
+                  val body = (sl to el).map(lines(_)).mkString("\n")
+                  buf += BodyInfo(currentOwner, name, body, sl + 1, el + 1)
+              case _ =>
+            app.children.foreach(c => extractFromTree(c, currentOwner))
+          case infix: Term.ApplyInfix =>
+            extractTestName(infix) match
+              case Some((name, _)) if name == symbolName =>
+                if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                  val sl = infix.pos.startLine
+                  val el = infix.pos.endLine
+                  val body = (sl to el).map(lines(_)).mkString("\n")
+                  buf += BodyInfo(currentOwner, name, body, sl + 1, el + 1)
+              case _ =>
+            infix.children.foreach(c => extractFromTree(c, currentOwner))
           case p: Pkg =>
             p.stats.foreach(s => extractFromTree(s, currentOwner))
           case _ =>
@@ -1304,7 +1386,8 @@ def isTestFile(path: Path, workspace: Path): Boolean =
   val rel = workspace.relativize(path).toString
   rel.contains("/test/") || rel.contains("/tests/") || rel.contains("/testing/") ||
   rel.startsWith("bench-") || rel.contains("/bench-") ||
-  rel.endsWith("Test.scala") || rel.endsWith("Spec.scala") || rel.endsWith("Suite.scala")
+  rel.endsWith("Test.scala") || rel.endsWith("Spec.scala") || rel.endsWith("Suite.scala") ||
+  rel.endsWith(".test.scala")
 
 def matchesPath(file: Path, prefix: String, workspace: Path): Boolean =
   val rel = workspace.relativize(file).toString
@@ -1993,6 +2076,85 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                 println()
               }
 
+    case "tests" =>
+      val nameFilter = rest.headOption
+      var filesToScan = idx.gitFiles.map(_.path).filter(f => isTestFile(f, workspace))
+      pathFilter.foreach { p => filesToScan = filesToScan.filter(f => matchesPath(f, p, workspace)) }
+      val allSuites = filesToScan.flatMap(extractTests).map { suite =>
+        nameFilter match
+          case Some(pattern) =>
+            val lower = pattern.toLowerCase
+            val filtered = suite.tests.filter(_.name.toLowerCase.contains(lower))
+            suite.copy(tests = filtered)
+          case None => suite
+      }.filter(_.tests.nonEmpty)
+      val showBody = nameFilter.isDefined
+      if jsonOutput then
+        val arr = allSuites.take(limit).map { suite =>
+          val rel = jsonEscape(workspace.relativize(suite.file).toString)
+          val fileLines = if showBody then
+            try Files.readAllLines(suite.file).asScala.toArray catch case _: Exception => Array.empty[String]
+          else Array.empty[String]
+          val testsJson = suite.tests.map { tc =>
+            val bodyField = if showBody then {
+              val bodies = extractBody(suite.file, tc.name, Some(suite.name))
+              bodies.headOption.map(b => s""","body":"${jsonEscape(b.sourceText)}"""").getOrElse("")
+            } else ""
+            s"""{"name":"${jsonEscape(tc.name)}","line":${tc.line}$bodyField}"""
+          }.mkString("[", ",", "]")
+          s"""{"suite":"${jsonEscape(suite.name)}","file":"$rel","line":${suite.line},"tests":$testsJson}"""
+        }.mkString("[", ",", "]")
+        println(arr)
+      else
+        if allSuites.isEmpty then
+          if nameFilter.isDefined then println(s"No tests matching \"${nameFilter.get}\"")
+          else println("No test suites found")
+        else
+          allSuites.take(limit).foreach { suite =>
+            val rel = workspace.relativize(suite.file)
+            println(s"${suite.name} — $rel:${suite.line}:")
+            suite.tests.foreach { tc =>
+              println(s"  test  \"${tc.name}\"  :${tc.line}")
+              if showBody || verbose then
+                val bodies = extractBody(suite.file, tc.name, Some(suite.name))
+                bodies.headOption.foreach { b =>
+                  val bodyLines = b.sourceText.split("\n")
+                  bodyLines.zipWithIndex.foreach { case (line, i) =>
+                    println(s"    ${(b.startLine + i).toString.padTo(4, ' ')} | $line")
+                  }
+                  println()
+                }
+            }
+            if !showBody && !verbose then println()
+          }
+
+    case "coverage" =>
+      rest.headOption match
+        case None => println("Usage: scalex coverage <symbol>")
+        case Some(symbol) =>
+          val refs = idx.findReferences(symbol)
+          val testRefs = refs.filter(r => isTestFile(r.file, workspace))
+          val testFiles = testRefs.map(r => workspace.relativize(r.file).toString).distinct
+          if jsonOutput then
+            val refsJson = testRefs.take(limit).map(r => jRef(r)).mkString("[", ",", "]")
+            println(s"""{"symbol":"${jsonEscape(symbol)}","testFileCount":${testFiles.size},"referenceCount":${testRefs.size},"references":$refsJson}""")
+          else
+            if testRefs.isEmpty then
+              if refs.isEmpty then
+                println(s"""Coverage of "$symbol" — no references found""")
+                printNotFoundHint(symbol, idx, "coverage", batchMode)
+              else
+                println(s"""Coverage of "$symbol" — ${refs.size} refs but 0 in test files""")
+            else
+              println(s"""Coverage of "$symbol" — ${testRefs.size} refs in ${testFiles.size} test files:""")
+              testFiles.sorted.foreach { f =>
+                val fileRefs = testRefs.filter(r => workspace.relativize(r.file).toString == f)
+                println(s"  $f")
+                fileRefs.take(limit).foreach { r =>
+                  println(s"    :${r.line}  ${r.contextLine}")
+                }
+              }
+
     case "hierarchy" =>
       rest.headOption match
         case None => println("Usage: scalex hierarchy <symbol> [--up] [--down]")
@@ -2411,6 +2573,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  scalex context <file:line>      Show enclosing scopes at line   (aka: scope chain)
         |  scalex diff <git-ref>           Symbol-level diff vs git ref    (aka: symbol diff)
         |  scalex ast-pattern              Structural AST search           (aka: pattern search)
+        |  scalex tests                    List test cases structurally    (aka: find tests)
+        |  scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
         |
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
@@ -2477,7 +2641,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                 case ws :: arg :: tail => (resolveWorkspace(ws), arg :: tail)
                 case Nil => (resolveWorkspace("."), Nil)
 
-      val bloomCmds = Set("refs", "imports")
+      val bloomCmds = Set("refs", "imports", "coverage")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
       runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, searchMode = searchMode, definitionsOnly = definitionsOnly, categoryFilter = categoryFilter,

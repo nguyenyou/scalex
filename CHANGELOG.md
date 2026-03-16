@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0] — 2026-03-16
+
+### Added
+- `scalex tests [<pattern>] [--verbose] [--path PREFIX]` — list test cases structurally from MUnit, ScalaTest, and specs2 frameworks; optional name filter shows bodies inline (#56)
+- `scalex coverage <symbol>` — "is this symbol tested?" shorthand: refs filtered to test files only, with count and file list (#56)
+- `scalex body` now finds test cases — match `test("exact name")`, `it("name")`, `describe("name")`, `"name" in { }`, `"name" >> { }` by string literal (#56)
+- `isTestFile` detects scala-cli `*.test.scala` convention (#56)
+
 ## [1.11.0] — 2026-03-16
 
 ### Added

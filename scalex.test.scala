@@ -160,6 +160,23 @@ class ScalexSuite extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/test/scala/com/example/UserServiceTest.scala",
+      """package com.example
+        |
+        |class UserServiceTest extends munit.FunSuite {
+        |  test("findUser returns None for unknown id") {
+        |    val svc = UserServiceLive(Database.live)
+        |    assertEquals(svc.findUser("unknown"), None)
+        |  }
+        |
+        |  test("createUser returns new user") {
+        |    val svc = UserServiceLive(Database.live)
+        |    val user = svc.createUser("Alice")
+        |    assertEquals(user.name, "Alice")
+        |  }
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
@@ -191,7 +208,7 @@ class ScalexSuite extends FunSuite:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 11)
+    assertEquals(files.size, 12)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
@@ -305,7 +322,7 @@ class ScalexSuite extends FunSuite:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 11)
+    assert(idx.fileCount == 12)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -448,13 +465,13 @@ class ScalexSuite extends FunSuite:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 11, s"Cold index should parse all 11 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 12, s"Cold index should parse all 12 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 11, s"Warm index should skip all 11 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 12, s"Warm index should skip all 12 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -478,7 +495,7 @@ class ScalexSuite extends FunSuite:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 10, s"Should skip 10 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 11, s"Should skip 11 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────
@@ -1032,6 +1049,12 @@ class ScalexSuite extends FunSuite:
     assert(isTestFile(workspace.resolve("src/bench-run/Foo.scala"), workspace))
   }
 
+  test("isTestFile detects scala-cli .test.scala convention") {
+    assert(isTestFile(workspace.resolve("scalex.test.scala"), workspace))
+    assert(isTestFile(workspace.resolve("src/foo.test.scala"), workspace))
+    assert(!isTestFile(workspace.resolve("src/foo.scala"), workspace))
+  }
+
   // ── --kind on def ──────────────────────────────────────────────────
 
   test("def --kind filters by symbol kind") {
@@ -1392,7 +1415,7 @@ class ScalexSuite extends FunSuite:
     }
     val output = out.toString
     assert(output.contains("User"), s"Should find exact match 'User': $output")
-    assert(!output.contains("UserService"), s"Should NOT find 'UserService' (not exact): $output")
+    assert(!output.contains("UserService ("), s"Should NOT find 'UserService' as symbol (not exact): $output")
   }
 
   test("search --prefix returns exact + prefix matches only") {
@@ -2103,4 +2126,93 @@ class ScalexSuite extends FunSuite:
     assert(output.startsWith("{"), s"JSON should start with brace: $output")
     assert(output.contains("\"packageDependencies\""), s"JSON should contain packageDependencies: $output")
     assert(output.contains("\"hubTypes\""), s"JSON should contain hubTypes: $output")
+  }
+
+  // ── Test awareness: extractTests ────────────────────────────────────────
+
+  test("extractTests finds test cases in MUnit suite") {
+    val file = workspace.resolve("src/test/scala/com/example/UserServiceTest.scala")
+    val suites = extractTests(file)
+    assert(suites.nonEmpty, "Should find at least one suite")
+    val suite = suites.find(_.name == "UserServiceTest").get
+    assertEquals(suite.tests.size, 2)
+    val testNames = suite.tests.map(_.name)
+    assert(testNames.contains("findUser returns None for unknown id"), s"Test names: $testNames")
+    assert(testNames.contains("createUser returns new user"), s"Test names: $testNames")
+  }
+
+  test("extractTests returns empty for non-test file") {
+    val file = workspace.resolve("src/main/scala/com/example/Model.scala")
+    val suites = extractTests(file)
+    assert(suites.isEmpty, s"Non-test file should have no suites: ${suites.map(_.name)}")
+  }
+
+  test("tests command --json output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("tests", Nil, idx, workspace, 20, None, false, false, false, None, 0, true)
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("["), s"JSON should start with [: $output")
+    assert(output.contains("\"suite\":\"UserServiceTest\""), s"Should contain suite name: $output")
+    assert(output.contains("\"name\":\"findUser returns None for unknown id\""), s"Should contain test name: $output")
+  }
+
+  // ── Test awareness: body for test cases ──────────────────────────────────
+
+  test("extractBody finds test case body by exact name") {
+    val file = workspace.resolve("src/test/scala/com/example/UserServiceTest.scala")
+    val results = extractBody(file, "findUser returns None for unknown id", None)
+    assert(results.nonEmpty, "Should find test body")
+    val body = results.head
+    assert(body.sourceText.contains("findUser"), s"Body should contain test code: ${body.sourceText}")
+    assert(body.ownerName == "UserServiceTest", s"Owner should be UserServiceTest: ${body.ownerName}")
+  }
+
+  test("extractBody finds test body with --in owner") {
+    val file = workspace.resolve("src/test/scala/com/example/UserServiceTest.scala")
+    val results = extractBody(file, "createUser returns new user", Some("UserServiceTest"))
+    assert(results.nonEmpty, "Should find test body with owner filter")
+    val body = results.head
+    assert(body.sourceText.contains("createUser"), s"Body should contain test code: ${body.sourceText}")
+  }
+
+  // ── Test awareness: coverage ─────────────────────────────────────────────
+
+  test("coverage finds refs only in test files") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("coverage", List("UserService"), idx, workspace, 20, None, false, false, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("Coverage of"), s"Should show coverage header: $output")
+    assert(output.contains("test"), s"Should mention test files: $output")
+  }
+
+  test("coverage excludes non-test file refs") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val refs = idx.findReferences("UserService")
+    val allFiles = refs.map(r => workspace.relativize(r.file).toString).distinct
+    val testFiles = refs.filter(r => isTestFile(r.file, workspace)).map(r => workspace.relativize(r.file).toString).distinct
+    // There should be refs in non-test files too
+    assert(allFiles.size > testFiles.size, s"Should have non-test refs too: all=$allFiles test=$testFiles")
+  }
+
+  test("coverage --json output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("coverage", List("UserService"), idx, workspace, 20, None, false, false, false, None, 0, true)
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("{"), s"JSON should start with brace: $output")
+    assert(output.contains("\"symbol\":\"UserService\""), s"Should contain symbol: $output")
+    assert(output.contains("\"testFileCount\""), s"Should contain testFileCount: $output")
+    assert(output.contains("\"referenceCount\""), s"Should contain referenceCount: $output")
   }
