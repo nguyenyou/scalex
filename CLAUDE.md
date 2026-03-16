@@ -48,8 +48,16 @@ src/                           # Production source code
 ├── index.scala                # Git integration, persistence, WorkspaceIndex, filtering
 ├── analysis.scala             # Cross-index analysis (hierarchy, overrides, deps, diff, ast-pattern)
 ├── format.scala               # JSON + text formatters for symbols and references
-├── commands.scala             # Command implementations, filters, dispatch map
-└── cli.scala                  # Arg parsing, workspace resolution, @main entry point
+├── cli.scala                  # Arg parsing, workspace resolution, @main entry point
+└── commands/                  # One file per command (ls to discover all)
+    ├── shared.scala           # Helpers: filterSymbols, filterRefs, mkNotFoundWithSuggestions
+    ├── dispatch.scala         # Command map + runCommand
+    ├── definition.scala       # cmdDef
+    ├── search.scala           # cmdSearch
+    ├── refs.scala             # cmdRefs
+    ├── hierarchy.scala        # cmdHierarchy
+    ├── overview.scala         # cmdOverview
+    └── ...                    # 24 commands total
 
 tests/                         # Test suite
 ├── test-base.test.scala       # Shared test fixture (workspace setup)
