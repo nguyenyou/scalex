@@ -15,7 +15,7 @@
 - Update BENCHMARK.md with fresh numbers — all metrics improved significantly since last capture
 
 ### Fixed
-- `hierarchy` hangs on large codebases — recursive `walkDown`/`walkUp` had no depth limit, causing exponential fan-out on types like `Phase` (40+ direct children, each with dozens more); added `MaxDepth = 5` cap
+- `hierarchy` hangs on large codebases — recursive `walkDown`/`walkUp` had no depth limit, causing exponential fan-out on types like `Phase` (40+ direct children, each with dozens more); added `--depth N` flag (default 5) to cap tree expansion
 
 ## [1.15.0] — 2026-03-16
 

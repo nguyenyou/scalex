@@ -242,6 +242,7 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 | `--of TRAIT` | Overrides: restrict to trait |
 | `--impl-limit N` | Explain: max implementations (default: 5) |
 | `--up` / `--down` | Hierarchy: limit direction |
+| `--depth N` | Hierarchy: max tree depth (default: 5) |
 | `--inherited` | Members: include inherited members |
 | `--architecture` | Overview: package deps + hub types |
 | `--focus-package PKG` | Overview: scope dependency graph to one package |
