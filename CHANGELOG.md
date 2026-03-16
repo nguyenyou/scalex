@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- `scalex members <Symbol> [--verbose]` — list member declarations (def/val/var/type) inside a class/trait/object body; on-the-fly source parse, not stored in index (#48)
+- `scalex doc <Symbol>` — extract leading scaladoc comment attached to a symbol; on-the-fly line scan (#48)
+- `scalex overview` — one-shot architectural summary: symbols by kind, top packages, most-extended traits/classes (#48)
+- `search --definitions-only` flag — filter search results to only class/trait/object/enum definitions (#48)
+- `refs --category <cat>` flag — filter categorized refs to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment) (#48)
+
 ## [1.9.0] — 2026-03-16
 
 ### Added

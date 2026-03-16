@@ -138,6 +138,28 @@ class ScalexSuite extends FunSuite:
         |@specialized val fastVal: Int = 42
         |""".stripMargin)
 
+    writeFile("src/main/scala/com/example/Documented.scala",
+      """package com.example
+        |
+        |/**
+        | * A service for processing payments.
+        | * Handles credit cards and bank transfers.
+        | */
+        |trait PaymentService {
+        |  /** Process a single payment */
+        |  def processPayment(amount: BigDecimal): Boolean
+        |  def refund(id: String): Unit
+        |}
+        |
+        |class PaymentServiceLive extends PaymentService {
+        |  def processPayment(amount: BigDecimal): Boolean = true
+        |  def refund(id: String): Unit = ()
+        |  val maxRetries: Int = 3
+        |  var lastError: Option[String] = None
+        |  type TransactionId = String
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
@@ -169,7 +191,7 @@ class ScalexSuite extends FunSuite:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 10)
+    assertEquals(files.size, 11)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
@@ -283,7 +305,7 @@ class ScalexSuite extends FunSuite:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 10)
+    assert(idx.fileCount == 11)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -426,13 +448,13 @@ class ScalexSuite extends FunSuite:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 10, s"Cold index should parse all 10 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 11, s"Cold index should parse all 11 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 10, s"Warm index should skip all 10 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 11, s"Warm index should skip all 11 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -456,7 +478,7 @@ class ScalexSuite extends FunSuite:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 9, s"Should skip 9 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 10, s"Should skip 10 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────
@@ -1445,4 +1467,305 @@ class ScalexSuite extends FunSuite:
     val output = out.toString
     assert(output.contains("Hint:"), s"Normal mode should contain Hint: $output")
     assert(output.contains("Fallback:"), s"Normal mode should contain Fallback: $output")
+  }
+
+  // ── search --definitions-only ────────────────────────────────────────
+
+  test("search --definitions-only returns only type definitions") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("search", List("User"), idx, workspace, 50, None, false, true, false, None, 0, false, definitionsOnly = true)
+    }
+    val output = out.toString
+    // Should contain class User, trait UserService, class UserServiceLive, object UserService, etc.
+    assert(output.contains("User"), s"Should find User-related symbols: $output")
+    // Should NOT contain val or def results
+    assert(!output.contains("  def "), s"Should not contain def results: $output")
+    assert(!output.contains("  val "), s"Should not contain val results: $output")
+  }
+
+  test("search --definitions-only excludes defs and vals") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Search for "findUser" which is a def — should return empty with --definitions-only
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("search", List("findUser"), idx, workspace, 50, None, false, true, false, None, 0, false, definitionsOnly = true)
+    }
+    val output = out.toString
+    assert(output.contains("Found 0"), s"Should find 0 definitions for 'findUser': $output")
+  }
+
+  // ── refs --category ──────────────────────────────────────────────────
+
+  test("refs --category ExtendedBy returns only that category") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("refs", List("UserService"), idx, workspace, 50, None, false, true, false, None, 0, false, categoryFilter = Some("ExtendedBy"))
+    }
+    val output = out.toString
+    assert(output.contains("ExtendedBy"), s"Should contain ExtendedBy section: $output")
+    // Should NOT contain other categories
+    assert(!output.contains("\n    Definition:"), s"Should not contain Definition: $output")
+    assert(!output.contains("\n    ImportedBy:"), s"Should not contain ImportedBy: $output")
+  }
+
+  test("refs --category with invalid name returns empty results") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    val errStream = new java.io.ByteArrayOutputStream()
+    val oldErr = System.err
+    System.setErr(new java.io.PrintStream(errStream))
+    try {
+      Console.withOut(out) {
+        runCommand("refs", List("UserService"), idx, workspace, 50, None, false, true, false, None, 0, false, categoryFilter = Some("InvalidCat"))
+      }
+    } finally {
+      System.setErr(oldErr)
+    }
+    val errOutput = errStream.toString
+    assert(errOutput.contains("Unknown category"), s"Should print unknown category error: $errOutput")
+    assert(errOutput.contains("Valid:"), s"Should list valid categories: $errOutput")
+  }
+
+  // ── members ──────────────────────────────────────────────────────────
+
+  test("members of trait with abstract defs") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val members = extractMembers(
+      workspace.resolve("src/main/scala/com/example/Documented.scala"),
+      "PaymentService"
+    )
+    assert(members.nonEmpty, "PaymentService should have members")
+    val names = members.map(_.name).toSet
+    assert(names.contains("processPayment"), s"Should contain processPayment: $names")
+    assert(names.contains("refund"), s"Should contain refund: $names")
+  }
+
+  test("members of class with concrete defs, vals, vars, types") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val members = extractMembers(
+      workspace.resolve("src/main/scala/com/example/Documented.scala"),
+      "PaymentServiceLive"
+    )
+    val names = members.map(_.name).toSet
+    assert(names.contains("processPayment"), s"Should contain processPayment: $names")
+    assert(names.contains("refund"), s"Should contain refund: $names")
+    assert(names.contains("maxRetries"), s"Should contain maxRetries: $names")
+    assert(names.contains("lastError"), s"Should contain lastError: $names")
+    assert(names.contains("TransactionId"), s"Should contain TransactionId: $names")
+  }
+
+  test("members of object") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val members = extractMembers(
+      workspace.resolve("src/main/scala/com/example/UserService.scala"),
+      "UserService"
+    )
+    // Object UserService has `val default`
+    val objectMembers = members.filter(_.name == "default")
+    assert(objectMembers.nonEmpty, s"Object UserService should have val default: ${members.map(_.name)}")
+  }
+
+  test("members command output format") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("members", List("PaymentService"), idx, workspace, 50, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("Members of trait PaymentService"), s"Should have header: $output")
+    assert(output.contains("processPayment"), s"Should list processPayment: $output")
+  }
+
+  test("members --verbose shows full signatures") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("members", List("PaymentServiceLive"), idx, workspace, 50, None, true, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("def processPayment"), s"Verbose should show signature: $output")
+    assert(output.contains("val maxRetries"), s"Verbose should show val signature: $output")
+  }
+
+  test("members returns empty for non-type symbols") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("members", List("findUser"), idx, workspace, 50, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("No class/trait/object/enum"), s"Should report no type found: $output")
+  }
+
+  test("members Scala 2 fallback") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserServiceLive uses Scala 3 syntax — extract members from trait UserService (Scala 2 compatible braces)
+    val members = extractMembers(
+      workspace.resolve("src/main/scala/com/example/UserService.scala"),
+      "UserServiceLive"
+    )
+    val names = members.map(_.name).toSet
+    assert(names.contains("findUser"), s"Should find members in Scala 2 compatible file: $names")
+  }
+
+  // ── doc ──────────────────────────────────────────────────────────────
+
+  test("doc extracts multi-line scaladoc") {
+    val doc = extractScaladoc(
+      workspace.resolve("src/main/scala/com/example/Documented.scala"),
+      7 // trait PaymentService is on line 7
+    )
+    assert(doc.isDefined, "Should find scaladoc for PaymentService")
+    assert(doc.get.contains("processing payments"), s"Should contain doc text: ${doc.get}")
+    assert(doc.get.contains("/**"), s"Should contain opening: ${doc.get}")
+    assert(doc.get.contains("*/"), s"Should contain closing: ${doc.get}")
+  }
+
+  test("doc extracts single-line scaladoc") {
+    val doc = extractScaladoc(
+      workspace.resolve("src/main/scala/com/example/Documented.scala"),
+      9 // def processPayment is on line 9
+    )
+    assert(doc.isDefined, "Should find single-line scaladoc for processPayment")
+    assert(doc.get.contains("Process a single payment"), s"Should contain doc text: ${doc.get}")
+  }
+
+  test("doc returns None when no scaladoc") {
+    val doc = extractScaladoc(
+      workspace.resolve("src/main/scala/com/example/Documented.scala"),
+      10 // def refund on line 10 — no doc
+    )
+    assert(doc.isEmpty, "refund should have no scaladoc")
+  }
+
+  test("doc command output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("doc", List("PaymentService"), idx, workspace, 50, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("processing payments"), s"Should show scaladoc: $output")
+  }
+
+  test("doc for symbol without scaladoc") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("doc", List("User"), idx, workspace, 50, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("(no scaladoc)"), s"Should report no scaladoc: $output")
+  }
+
+  // ── overview ─────────────────────────────────────────────────────────
+
+  test("overview shows file count and symbol count") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("Project overview"), s"Should have header: $output")
+    assert(output.contains("files"), s"Should mention files: $output")
+    assert(output.contains("symbols"), s"Should mention symbols: $output")
+  }
+
+  test("overview shows symbols by kind") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("Symbols by kind"), s"Should show kind breakdown: $output")
+    assert(output.contains("Class"), s"Should list Class kind: $output")
+    assert(output.contains("Trait"), s"Should list Trait kind: $output")
+  }
+
+  test("overview shows top packages") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("Top packages"), s"Should show top packages: $output")
+    assert(output.contains("com.example"), s"Should list com.example: $output")
+  }
+
+  test("overview shows most extended") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false)
+    }
+    val output = out.toString
+    assert(output.contains("Most extended"), s"Should show most extended: $output")
+    assert(output.contains("userservice") || output.contains("database"), s"Should list a known trait: $output")
+  }
+
+  test("overview JSON output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, true)
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("{"), s"JSON should start with brace: $output")
+    assert(output.contains("\"fileCount\""), s"JSON should contain fileCount: $output")
+    assert(output.contains("\"topPackages\""), s"JSON should contain topPackages: $output")
+    assert(output.contains("\"mostExtended\""), s"JSON should contain mostExtended: $output")
+  }
+
+  // ── members JSON output ──────────────────────────────────────────────
+
+  test("members --json output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("members", List("PaymentServiceLive"), idx, workspace, 50, None, false, true, false, None, 0, true)
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("["), s"JSON should start with bracket: $output")
+    assert(output.contains("\"processPayment\""), s"JSON should contain processPayment: $output")
+    assert(output.contains("\"owner\":\"PaymentServiceLive\""), s"JSON should contain owner: $output")
+  }
+
+  // ── doc JSON output ──────────────────────────────────────────────────
+
+  test("doc --json output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("doc", List("PaymentService"), idx, workspace, 50, None, false, true, false, None, 0, true)
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("["), s"JSON should start with bracket: $output")
+    assert(output.contains("\"doc\""), s"JSON should contain doc field: $output")
+    assert(output.contains("processing payments"), s"JSON should contain doc text: $output")
   }

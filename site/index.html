@@ -486,7 +486,7 @@
 
   <!-- Commands -->
   <section class="reveal">
-    <h2>12 commands. <span class="red">Zero config.</span></h2>
+    <h2>15 commands. <span class="red">Zero config.</span></h2>
     <p class="section-sub">Point it at any git repo with Scala files. Works on Scala 2 and 3, auto-detects dialect per file.</p>
 
     <div class="cmd-grid">
@@ -509,6 +509,18 @@
       <div class="cmd-card">
         <div class="cmd-name">scalex imports</div>
         <div class="cmd-desc">Who imports this symbol? Clean dependency view — which files depend on what.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex members</div>
+        <div class="cmd-desc">What's inside this class/trait? Lists defs, vals, vars, types — without reading the file.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex doc</div>
+        <div class="cmd-desc">Show scaladoc for a symbol. Extracts /** ... */ comments — eliminates Read calls.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex overview</div>
+        <div class="cmd-desc">Codebase summary: symbols by kind, top packages, most-extended traits. One command.</div>
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex symbols</div>

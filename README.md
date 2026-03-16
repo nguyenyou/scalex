@@ -187,11 +187,16 @@ cd /path/to/your/scala/project
 scalex search Service --kind trait      # Find all traits with "Service" in the name
 scalex search hms                       # Fuzzy camelCase: finds HttpMessageService
 scalex search Auth --prefix             # Only exact + prefix matches, no noise
+scalex search Signal --definitions-only # Only class/trait/object/enum, no defs/vals
 scalex def UserService --verbose        # Where is it defined? (with signature)
 scalex impl UserService                 # Who extends this trait?
 scalex refs UserService                 # Who uses it? (categorized by default)
 scalex refs UserService --flat          # Flat list (old default)
+scalex refs Signal --category ExtendedBy # Only show ExtendedBy category
 scalex imports UserService              # Who imports it?
+scalex members UserService --verbose    # What's inside this trait? (defs, vals, types)
+scalex doc UserService                  # Show scaladoc for a symbol
+scalex overview                         # Codebase summary: packages, kinds, extends
 scalex file PaymentService              # Find files by name (fuzzy camelCase)
 scalex annotated deprecated             # Find all @deprecated symbols
 scalex grep "def.*process" --no-tests   # Regex search in .scala file contents
@@ -232,6 +237,9 @@ scalex def <symbol>             Where is this symbol defined?   (aka: find defin
 scalex impl <trait>             Who extends this trait/class?   (aka: find implementations)
 scalex refs <symbol>            Who uses this symbol?           (aka: find references)
 scalex imports <symbol>         Who imports this symbol?        (aka: import graph)
+scalex members <symbol>         What's inside this class/trait? (aka: list members)
+scalex doc <symbol>             Show scaladoc for a symbol      (aka: show docs)
+scalex overview                 Codebase summary                (aka: project overview)
 scalex symbols <file>           What's defined in this file?    (aka: file symbols)
 scalex file <query>             Search files by name            (aka: find file)
 scalex annotated <annotation>   Find symbols with annotation    (aka: find annotated)
@@ -248,6 +256,8 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 | `--verbose` | Show signatures, extends clauses, param types |
 | `--categorize`, `-c` | Group refs by category (default; kept for backwards compatibility) |
 | `--flat` | Refs: flat list instead of categorized (overrides default) |
+| `--definitions-only` | Search: only return class/trait/object/enum definitions |
+| `--category CAT` | Refs: filter to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment) |
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter search: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
@@ -264,8 +274,13 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 
 - **`--verbose`** on `def` returns the full signature — saves the agent a follow-up Read call
 - **Categorized refs by default** — `refs` groups results by relationship (Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage) without any flags; use `--flat` for the old flat list
+- **`--category`** on `refs` filters to a single category — `refs Signal --category ExtendedBy` for targeted impact analysis
+- **`--definitions-only`** on `search` filters to class/trait/object/enum — eliminates noise from defs/vals with common names
 - **`impl`** finds concrete implementations of a trait — much more targeted than `refs`
 - **`imports`** shows dependency relationships — which files depend on this symbol
+- **`members`** lists what's inside a class/trait/object — defs, vals, vars, types — without reading the whole file
+- **`doc`** extracts scaladoc comments for a symbol — eliminates the most common Read call
+- **`overview`** gives a one-shot codebase summary — symbol counts by kind, top packages, most-extended traits
 - **Fuzzy camelCase search** — `search "hms"` finds `HttpMessageService`, `file "psl"` finds `PaymentServiceLive.scala`
 - **`file`** command searches file names with the same fuzzy matching — like IntelliJ's file search
 - **`annotated`** finds symbols by annotation — `@deprecated`, `@main`, `@tailrec`, etc.

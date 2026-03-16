@@ -1,6 +1,6 @@
 ---
 name: scalex
-description: Scala code intelligence CLI for navigating Scala codebases (Scala 2 and 3). Use this skill whenever you're working in a project with .scala files and need to understand code structure — finding where a class/trait/object is defined, who extends a trait, who uses or imports a symbol, what's in a file, searching for files by name, finding annotated symbols, or searching file contents. Trigger on any Scala navigation task like "where is X defined", "who implements Y", "find usages of Z", "what traits exist", "find the file for X", "find all @deprecated symbols", "search for a pattern in Scala files", or when you need to understand impact before renaming/refactoring. Also use proactively when exploring an unfamiliar Scala codebase — scalex is much faster and more structured than grep for Scala-specific queries. Supports fuzzy camelCase search (e.g. "hms" finds HttpMessageService). Always prefer scalex over grep/glob for Scala symbol and file lookups. Use `scalex grep` instead of the Grep tool for searching inside .scala files — it integrates with scalex's --path and --no-tests filters.
+description: Scala code intelligence CLI for navigating Scala codebases (Scala 2 and 3). Use this skill whenever you're working in a project with .scala files and need to understand code structure — finding where a class/trait/object is defined, who extends a trait, who uses or imports a symbol, what's in a file, what members a class has, reading scaladoc, getting a codebase overview, searching for files by name, finding annotated symbols, or searching file contents. Trigger on any Scala navigation task like "where is X defined", "who implements Y", "find usages of Z", "what traits exist", "what methods does X have", "show me the docs for X", "give me an overview of this codebase", "find the file for X", "find all @deprecated symbols", "search for a pattern in Scala files", or when you need to understand impact before renaming/refactoring. Also use proactively when exploring an unfamiliar Scala codebase — scalex is much faster and more structured than grep for Scala-specific queries. Supports fuzzy camelCase search (e.g. "hms" finds HttpMessageService). Always prefer scalex over grep/glob for Scala symbol and file lookups. Use `scalex grep` instead of the Grep tool for searching inside .scala files — it integrates with scalex's --path and --no-tests filters.
 ---
 
 You have access to `scalex`, a Scala code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals). It parses source files via Scalameta — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
@@ -66,14 +66,15 @@ scalex impl PaymentService --no-tests --path core/src/
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--flat] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
+### `scalex refs <symbol> [--flat] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
-Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead.
+Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `--category CAT` to filter to a single category (e.g. `--category ExtendedBy`). Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead.
 
 ```bash
 scalex refs PaymentService                        # categorized by default
+scalex refs PaymentService --category ExtendedBy  # only show ExtendedBy
 scalex refs PaymentService --no-tests --path core/src/
 scalex refs PaymentService -C 3                   # show 3 lines of context
 scalex refs PaymentService --flat                 # flat list (old default)
@@ -100,17 +101,76 @@ scalex imports PaymentService
 scalex imports PaymentService --no-tests
 ```
 
-### `scalex search <query> [--kind K] [--verbose] [--limit N] [--exact] [--prefix]` — search symbols
+### `scalex members <symbol> [--verbose] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — list members
+
+Lists member declarations (def, val, var, type) inside a class, trait, object, or enum body. Parses source on-the-fly — NOT stored in the index, so no index bloat. Single file parse is <50ms. Use `--verbose` to see full signatures.
+
+Shows all `findDefinition` matches that are class/trait/object/enum, then extracts their `templ.stats` one level deep.
+
+```bash
+scalex members PaymentService --verbose          # show all defs/vals with signatures
+scalex members PaymentService --no-tests         # exclude test definitions
+```
+```
+Members of trait PaymentService (com.example) — src/.../PaymentService.scala:3:
+  def   def processPayment(amount: BigDecimal): Boolean   :4
+  def   def refund(id: String): Unit                      :5
+```
+
+### `scalex doc <symbol> [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — show scaladoc
+
+Extracts the leading scaladoc comment (`/** ... */`) attached to a symbol. Scans backwards from the symbol's line to find the doc block. Returns "(no scaladoc)" if none found.
+
+```bash
+scalex doc PaymentService                        # show scaladoc
+scalex doc PaymentService --kind trait            # only trait definition's doc
+```
+```
+trait PaymentService (com.example) — src/.../PaymentService.scala:7:
+/**
+ * A service for processing payments.
+ * Handles credit cards and bank transfers.
+ */
+```
+
+### `scalex overview [--limit N]` — codebase summary
+
+One-shot architectural summary. Shows symbols by kind, top packages by symbol count, and most-extended traits/classes. All computed from existing in-memory index data — no extra I/O. Use `--limit N` to control "top N" lists (default: 20).
+
+```bash
+scalex overview
+scalex overview --limit 5
+```
+```
+Project overview (14,000 files, 215,000 symbols):
+
+Symbols by kind:
+  Class      45,200
+  Trait      12,800
+  ...
+
+Top packages (by symbol count):
+  dotty.tools.dotc.ast           1,245
+  ...
+
+Most extended (by implementation count):
+  miniphase                      42 impl
+  phase                          38 impl
+  ...
+```
+
+### `scalex search <query> [--kind K] [--verbose] [--limit N] [--exact] [--prefix] [--definitions-only]` — search symbols
 
 Fuzzy search by name, ranked: exact > prefix > substring > camelCase fuzzy. Supports camelCase abbreviation matching — e.g. `search "hms"` matches `HttpMessageService`, `search "usl"` matches `UserServiceLive`. Use `--kind` to filter by symbol type.
 
-Use `--exact` to only return symbols with exact name match (case-insensitive). Use `--prefix` to only return symbols whose name starts with the query. Both eliminate noise from substring/fuzzy matches on large codebases.
+Use `--exact` to only return symbols with exact name match (case-insensitive). Use `--prefix` to only return symbols whose name starts with the query. Both eliminate noise from substring/fuzzy matches on large codebases. Use `--definitions-only` to filter to class/trait/object/enum definitions only — excludes defs and vals whose name happens to match.
 
 ```bash
 scalex search Service --kind trait --limit 10
 scalex search hms       # finds HttpMessageService via camelCase matching
 scalex search Auth --prefix    # only exact + prefix matches, no substring/fuzzy
 scalex search Auth --exact     # only exact name matches
+scalex search Signal --definitions-only  # only class/trait/object/enum, no defs/vals
 ```
 
 ### `scalex file <query> [--limit N]` — find file
@@ -194,6 +254,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--verbose` | Show signatures, extends clauses, param types |
 | `--categorize`, `-c` | Group refs by category (default; kept for backwards compatibility) |
 | `--flat` | Refs: flat list instead of categorized (overrides default) |
+| `--definitions-only` | Search: only return class/trait/object/enum definitions |
+| `--category CAT` | Refs: filter to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment) |
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
@@ -220,6 +282,16 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 **"Find a file named like X"** → `scalex file X` (fuzzy camelCase search on filenames)
 
 **"What's in this file?"** → `scalex symbols path/to/File.scala --verbose`
+
+**"What methods does this trait have?"** → `scalex members MyTrait --verbose` (lists all defs/vals/types without reading the file)
+
+**"Show me the docs for X"** → `scalex doc X` (extracts scaladoc comment)
+
+**"Give me an overview of this codebase"** → `scalex overview` (symbols by kind, top packages, most-extended traits)
+
+**"Only show who extends this symbol"** → `scalex refs X --category ExtendedBy` (filter to one category)
+
+**"Search for types only, not defs/vals"** → `scalex search Signal --definitions-only` (class/trait/object/enum only)
 
 **"I need to look up 3+ symbols"** → use `batch` to avoid repeated index loads
 

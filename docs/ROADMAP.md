@@ -191,16 +191,16 @@ Feedback from heavy AI agent usage — three targeted improvements for large-cod
 
 Feedback from AI agent usage focused on *understanding unfamiliar codebases* — extending scalex from targeted lookup to codebase comprehension.
 
-**High priority:**
-- [ ] `scalex members <Symbol> [--verbose]` — list member declarations (def/val/var/type) inside a class/trait/object body; extends indexing one level deeper into Scalameta AST templates; biggest single improvement for eliminating file reads
-- [ ] `scalex doc <Symbol>` — extract leading scaladoc comment attached to a symbol; Scalameta preserves `Token.Comment`, needs association to preceding declaration
+**High priority:** — DONE
+- [x] `scalex members <Symbol> [--verbose]` — list member declarations (def/val/var/type) inside a class/trait/object body; on-the-fly source parse, NOT stored in index; biggest single improvement for eliminating file reads
+- [x] `scalex doc <Symbol>` — extract leading scaladoc comment attached to a symbol; on-the-fly line scan, ~<5ms per file
 
-**Medium priority — noise reduction:**
-- [ ] `search --definitions-only` — filter search results to only class/trait/object/enum definitions, excluding vals/defs whose *name* matches; reduces noise on common names (e.g. `search Signal --kind trait` returning 374 results → ~1)
-- [ ] `refs --category <cat>` — filter categorized refs to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment); e.g. `refs Signal --category ExtendedBy`
+**Medium priority — noise reduction:** — DONE
+- [x] `search --definitions-only` — filter search results to only class/trait/object/enum definitions, excluding vals/defs whose *name* matches; reduces noise on common names
+- [x] `refs --category <cat>` — filter categorized refs to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment); e.g. `refs Signal --category ExtendedBy`
 
-**Lower priority — composite:**
-- [ ] `scalex overview` — one-shot architectural summary: top packages by symbol count, most-extended traits/classes, most-referenced types; composite of `packages` + `search` + `impl` count heuristics
+**Lower priority — composite:** — DONE
+- [x] `scalex overview` — one-shot architectural summary: top packages by symbol count, most-extended traits/classes; computed from existing in-memory data
 
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")

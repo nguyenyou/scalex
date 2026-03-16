@@ -231,6 +231,122 @@ def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], Li
   traverse(tree)
   (buf.toList, bloom, imports, aliases)
 
+// ── Source parsing helper ────────────────────────────────────────────────────
+
+def parseFile(path: Path): Option[Source] =
+  val source = try Files.readString(path) catch
+    case _: Exception => return None
+  val input = Input.VirtualFile(path.toString, source)
+  try
+    given scala.meta.Dialect = scala.meta.dialects.Scala3
+    Some(input.parse[Source].get)
+  catch
+    case _: Exception =>
+      try
+        given scala.meta.Dialect = scala.meta.dialects.Scala213
+        Some(input.parse[Source].get)
+      catch
+        case _: Exception => None
+
+// ── Member extraction ───────────────────────────────────────────────────────
+
+case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil)
+
+def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
+  parseFile(file) match
+    case None => Nil
+    case Some(tree) =>
+      val buf = mutable.ListBuffer.empty[MemberInfo]
+
+      def extractFromTemplate(templ: Template): Unit =
+        templ.stats.foreach {
+          case d: Defn.Def =>
+            val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+            val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots)
+          case d: Defn.Val =>
+            val annots = extractAnnotations(d.mods)
+            d.pats.foreach {
+              case Pat.Var(name) =>
+                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+                buf += MemberInfo(name.value, SymbolKind.Val, d.pos.startLine + 1, s"val ${name.value}$tpe", annots)
+              case _ =>
+            }
+          case d: Defn.Var =>
+            val annots = extractAnnotations(d.mods)
+            d.pats.foreach {
+              case Pat.Var(name) =>
+                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+                buf += MemberInfo(name.value, SymbolKind.Var, d.pos.startLine + 1, s"var ${name.value}$tpe", annots)
+              case _ =>
+            }
+          case d: Defn.Type =>
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value} = ${d.body.toString().take(60)}", annots)
+          case d: Decl.Def =>
+            val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+            val ret = s": ${d.decltpe.toString()}"
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots)
+          case d: Decl.Val =>
+            val annots = extractAnnotations(d.mods)
+            d.pats.foreach {
+              case p: Pat.Var =>
+                val tpe = s": ${d.decltpe.toString()}"
+                buf += MemberInfo(p.name.value, SymbolKind.Val, d.pos.startLine + 1, s"val ${p.name.value}$tpe", annots)
+              case _ =>
+            }
+          case d: Decl.Type =>
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value}", annots)
+          case d: Defn.Class =>
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Class, d.pos.startLine + 1, s"class ${d.name.value}", annots)
+          case d: Defn.Trait =>
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Trait, d.pos.startLine + 1, s"trait ${d.name.value}", annots)
+          case d: Defn.Object =>
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Object, d.pos.startLine + 1, s"object ${d.name.value}", annots)
+          case d: Defn.Enum =>
+            val annots = extractAnnotations(d.mods)
+            buf += MemberInfo(d.name.value, SymbolKind.Enum, d.pos.startLine + 1, s"enum ${d.name.value}", annots)
+          case _ =>
+        }
+
+      def findAndExtract(t: Tree): Unit = t match
+        case d: Defn.Class if d.name.value == symbolName => extractFromTemplate(d.templ)
+        case d: Defn.Trait if d.name.value == symbolName => extractFromTemplate(d.templ)
+        case d: Defn.Object if d.name.value == symbolName => extractFromTemplate(d.templ)
+        case d: Defn.Enum if d.name.value == symbolName => extractFromTemplate(d.templ)
+        case _ => t.children.foreach(findAndExtract)
+
+      findAndExtract(tree)
+      buf.toList
+
+// ── Scaladoc extraction ─────────────────────────────────────────────────────
+
+def extractScaladoc(file: Path, targetLine: Int): Option[String] =
+  val lines = try Files.readAllLines(file).asScala.toArray catch
+    case _: Exception => return None
+  // targetLine is 1-indexed, array is 0-indexed
+  var i = targetLine - 2 // line before the symbol
+  // skip blank lines between doc and symbol
+  while i >= 0 && lines(i).trim.isEmpty do i -= 1
+  if i < 0 then return None
+  // Check if this line ends a scaladoc
+  val endLine = i
+  if lines(endLine).trim == "*/" || lines(endLine).trim.endsWith("*/") then
+    // Multi-line or single-line: find the opening /**
+    while i >= 0 && !lines(i).trim.startsWith("/**") do i -= 1
+    if i >= 0 then Some((i to endLine).map(lines(_)).mkString("\n"))
+    else None
+  else if lines(endLine).trim.startsWith("/**") && lines(endLine).trim.endsWith("*/") then
+    // Single-line /** brief */
+    Some(lines(endLine))
+  else None
+
 // ── Binary persistence ──────────────────────────────────────────────────────
 
 object IndexPersistence:
@@ -389,10 +505,10 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   var packages: Set[String] = Set.empty
   var gitFiles: List[GitFile] = Nil
   private var indexedFiles: List[IndexedFile] = Nil
-  private var parentIndex: Map[String, List[SymbolInfo]] = Map.empty
+  var parentIndex: Map[String, List[SymbolInfo]] = Map.empty
 
   private var distinctSymbols: List[SymbolInfo] = Nil
-  private var packageToSymbols: Map[String, Set[String]] = Map.empty
+  var packageToSymbols: Map[String, Set[String]] = Map.empty
   private var indexedByPath: Map[String, IndexedFile] = Map.empty
   private var aliasIndex: Map[String, List[(IndexedFile, String)]] = Map.empty
   private var annotationIndex: Map[String, List[SymbolInfo]] = Map.empty
@@ -872,7 +988,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                noTests: Boolean, pathFilter: Option[String], contextLines: Int,
                jsonOutput: Boolean, grepPatterns: List[String] = Nil,
                countOnly: Boolean = false, batchMode: Boolean = false,
-               searchMode: Option[String] = None): Unit =
+               searchMode: Option[String] = None, definitionsOnly: Boolean = false,
+               categoryFilter: Option[String] = None): Unit =
   val fmt = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
     if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines)
@@ -915,6 +1032,9 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               results = results.filter(_.name.toLowerCase.startsWith(lower))
             case _ => ()
           }
+          if definitionsOnly then
+            val defKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+            results = results.filter(s => defKinds.contains(s.kind))
           kindFilter.foreach { k =>
             val kk = k.toLowerCase
             results = results.filter(_.kind.toString.toLowerCase == kk)
@@ -1002,9 +1122,20 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             if noTests then r = r.filter(ref => !isTestFile(ref.file, workspace))
             pathFilter.foreach { p => r = r.filter(ref => matchesPath(ref.file, p, workspace)) }
             r
+          def filterByCategory(grouped: Map[RefCategory, List[Reference]]): Map[RefCategory, List[Reference]] =
+            categoryFilter match
+              case Some(catName) =>
+                val validCats = RefCategory.values.map(_.toString.toLowerCase).toSet
+                val lower = catName.toLowerCase
+                if !validCats.contains(lower) then
+                  System.err.println(s"Unknown category: $catName. Valid: ${RefCategory.values.map(_.toString).mkString(", ")}")
+                  Map.empty
+                else
+                  grouped.filter((cat, _) => cat.toString.toLowerCase == lower)
+              case None => grouped
           if jsonOutput then
             if categorize then
-              val grouped = idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs)))
+              val grouped = filterByCategory(idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs))))
               val entries = grouped.map { (cat, refs) =>
                 val arr = refs.take(limit).map(jRef).mkString("[", ",", "]")
                 s""""${cat.toString}":$arr"""
@@ -1016,7 +1147,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               println(s"""{"results":$arr,"timedOut":${idx.timedOut}}""")
           else
             if categorize then
-              val grouped = idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs)))
+              val grouped = filterByCategory(idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs))))
               val total = grouped.values.map(_.size).sum
               val suffix = if idx.timedOut then " (timed out — partial results)" else ""
               println(s"References to \"$symbol\" — $total found:$suffix")
@@ -1179,6 +1310,104 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
               results.take(limit).foreach(r => println(fmtRef(r)))
               if results.size > limit then println(s"  ... and ${results.size - limit} more")
 
+    case "members" =>
+      rest.headOption match
+        case None => println("Usage: scalex members <Symbol>")
+        case Some(symbol) =>
+          val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+          var defs = idx.findDefinition(symbol).filter(s => typeKinds.contains(s.kind))
+          if noTests then defs = defs.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, workspace)) }
+          kindFilter.foreach { k =>
+            val kk = k.toLowerCase
+            defs = defs.filter(_.kind.toString.toLowerCase == kk)
+          }
+          if jsonOutput then
+            val allMembers = defs.flatMap { s =>
+              val members = extractMembers(s.file, symbol)
+              members.map { m =>
+                val rel = jsonEscape(workspace.relativize(s.file).toString)
+                s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(symbol)}","ownerKind":"${s.kind.toString.toLowerCase}","package":"${jsonEscape(s.packageName)}"}"""
+              }
+            }
+            println(allMembers.take(limit).mkString("[", ",", "]"))
+          else
+            if defs.isEmpty then
+              println(s"No class/trait/object/enum \"$symbol\" found")
+              printNotFoundHint(symbol, idx, "members", batchMode)
+            else
+              defs.foreach { s =>
+                val rel = workspace.relativize(s.file)
+                val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
+                val members = extractMembers(s.file, symbol)
+                println(s"Members of ${s.kind.toString.toLowerCase} $symbol$pkg — $rel:${s.line}:")
+                if members.isEmpty then println("  (no members)")
+                else members.take(limit).foreach { m =>
+                  if verbose then
+                    println(s"  ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
+                  else
+                    println(s"  ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+                }
+                if members.size > limit then println(s"  ... and ${members.size - limit} more")
+              }
+
+    case "doc" =>
+      rest.headOption match
+        case None => println("Usage: scalex doc <Symbol>")
+        case Some(symbol) =>
+          var defs = idx.findDefinition(symbol)
+          if noTests then defs = defs.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, workspace)) }
+          kindFilter.foreach { k =>
+            val kk = k.toLowerCase
+            defs = defs.filter(_.kind.toString.toLowerCase == kk)
+          }
+          if jsonOutput then
+            val entries = defs.take(limit).map { s =>
+              val rel = jsonEscape(workspace.relativize(s.file).toString)
+              val doc = extractScaladoc(s.file, s.line).map(d => s""""${jsonEscape(d)}"""").getOrElse("null")
+              s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"$rel","line":${s.line},"package":"${jsonEscape(s.packageName)}","doc":$doc}"""
+            }
+            println(entries.mkString("[", ",", "]"))
+          else
+            if defs.isEmpty then
+              println(s"Definition of \"$symbol\": not found")
+              printNotFoundHint(symbol, idx, "doc", batchMode)
+            else
+              defs.take(limit).foreach { s =>
+                val rel = workspace.relativize(s.file)
+                val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
+                println(s"${s.kind.toString.toLowerCase} $symbol$pkg — $rel:${s.line}:")
+                extractScaladoc(s.file, s.line) match
+                  case Some(doc) => println(doc)
+                  case None => println("  (no scaladoc)")
+                println()
+              }
+
+    case "overview" =>
+      val symbolsByKind = idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size)
+      val topPackages = idx.packageToSymbols.toList.sortBy(-_._2.size).take(limit)
+      val mostExtended = idx.parentIndex.toList.sortBy(-_._2.size).take(limit)
+      if jsonOutput then
+        val kindJson = symbolsByKind.map((k, v) => s""""${k.toString.toLowerCase}":${v.size}""").mkString("{", ",", "}")
+        val pkgJson = topPackages.map((p, s) => s"""{"package":"${jsonEscape(p)}","count":${s.size}}""").mkString("[", ",", "]")
+        val extJson = mostExtended.map((p, s) => s"""{"name":"${jsonEscape(p)}","implementations":${s.size}}""").mkString("[", ",", "]")
+        println(s"""{"fileCount":${idx.fileCount},"symbolCount":${idx.symbols.size},"packageCount":${idx.packages.size},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
+      else
+        println(s"Project overview (${idx.fileCount} files, ${idx.symbols.size} symbols):\n")
+        println("Symbols by kind:")
+        symbolsByKind.foreach { (kind, syms) =>
+          println(s"  ${kind.toString.padTo(10, ' ')} ${syms.size}")
+        }
+        println(s"\nTop packages (by symbol count):")
+        topPackages.foreach { (pkg, syms) =>
+          println(s"  ${pkg.padTo(50, ' ')} ${syms.size}")
+        }
+        println(s"\nMost extended (by implementation count):")
+        mostExtended.foreach { (name, impls) =>
+          println(s"  ${name.padTo(30, ' ')} ${impls.size} impl")
+        }
+
     case other =>
       println(s"Unknown command: $other")
 
@@ -1210,6 +1439,10 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     if argList.contains("--exact") then Some("exact")
     else if argList.contains("--prefix") then Some("prefix")
     else None
+  val definitionsOnly = argList.contains("--definitions-only")
+  val categoryFilter: Option[String] = argList.indexOf("--category") match
+    case -1 => None
+    case i => argList.lift(i + 1)
   val grepPatterns: List[String] = argList.zipWithIndex.collect {
     case ("-e", i) if argList.lift(i + 1).exists(a => !a.startsWith("-")) => argList(i + 1)
   }
@@ -1219,7 +1452,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     val idx = if longIdx >= 0 then longIdx else shortIdx
     if idx >= 0 then argList.lift(idx + 1) else None
 
-  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e")
+  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || a == "--flat" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -1235,6 +1468,9 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  scalex impl <trait>             Who extends this trait/class?   (aka: find implementations)
         |  scalex refs <symbol>            Who uses this symbol?           (aka: find references)
         |  scalex imports <symbol>         Who imports this symbol?        (aka: import graph)
+        |  scalex members <symbol>         What's inside this class/trait? (aka: list members)
+        |  scalex doc <symbol>             Show scaladoc for a symbol      (aka: show docs)
+        |  scalex overview                 Codebase summary                (aka: project overview)
         |  scalex symbols <file>           What's defined in this file?    (aka: file symbols)
         |  scalex file <query>             Search files by name            (aka: find file)
         |  scalex annotated <annotation>   Find symbols with annotation    (aka: find annotated)
@@ -1250,6 +1486,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  --verbose             Show signatures and extends clauses
         |  --categorize, -c      Group refs by category (default; kept for backwards compatibility)
         |  --flat                Refs: flat list instead of categorized (overrides default)
+        |  --definitions-only    Search: only return class/trait/object/enum definitions
+        |  --category CAT        Refs: filter to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment)
         |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
         |  -C N                  Show N context lines around each reference (refs, grep)
@@ -1276,7 +1514,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val batchCmd = parts.head
           val batchRest = parts.tail
           println(s">>> $line")
-          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, batchMode = true, searchMode)
+          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, batchMode = true, searchMode, definitionsOnly, categoryFilter)
           println()
         line = reader.readLine()
 
@@ -1297,4 +1535,4 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val bloomCmds = Set("refs", "imports")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
-      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, searchMode = searchMode)
+      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, searchMode = searchMode, definitionsOnly = definitionsOnly, categoryFilter = categoryFilter)
