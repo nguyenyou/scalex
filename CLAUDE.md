@@ -50,6 +50,10 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 4. **Persistence**: Binary format with string interning at `.scalex/index.bin`
 5. **Bloom filters**: Per-file bloom filter of identifiers — `refs` and `imports` only read candidate files
 
+### Code style
+
+- **Named tuples**: Never use unnamed tuples. Whenever a tuple is needed — return types, local variables, collection elements — always use named tuples. E.g. `(results: List[Reference], timedOut: Boolean)` not `(List[Reference], Boolean)`.
+
 ### Key design choices
 
 - **Scalameta, not presentation compiler**: Scala 3's PC requires compiled `.class`/`.tasty` on classpath, which reintroduces build server dependency. Scalameta parses source directly.

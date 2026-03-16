@@ -5,6 +5,10 @@
 ### Fixed
 - `overview --architecture` "Most extended" and "Hub types" no longer dominated by stdlib/framework types (`None`, `AnyVal`, `Object`, etc.) — both lists now filter to types defined in the indexed codebase (#64)
 
+### Changed
+- Refactor all tuples to named tuples for readability — `extractSymbols`, `extractImports`, `extractDeps`, `grepFiles`, `fixPosixRegex`, `parseWorkspaceAndArg`, `extractTestName`, and all inline tuple types
+- Add named tuple code style rule to `CLAUDE.md`
+
 ## [1.13.0] — 2026-03-16
 
 ### Fixed

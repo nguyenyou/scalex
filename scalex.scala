@@ -125,7 +125,7 @@ private def extractAnnotations(mods: List[Mod]): List[String] =
       case _ => init.tpe.toString()
   }
 
-private def extractImports(tree: Tree): (List[String], Map[String, String]) =
+private def extractImports(tree: Tree): (imports: List[String], aliases: Map[String, String]) =
   val buf = mutable.ListBuffer.empty[String]
   val aliases = mutable.Map.empty[String, String]
   def visit(t: Tree): Unit =
@@ -143,7 +143,7 @@ private def extractImports(tree: Tree): (List[String], Map[String, String]) =
   visit(tree)
   (buf.toList, aliases.toMap)
 
-def extractSymbols(file: Path): (List[SymbolInfo], BloomFilter[CharSequence], List[String], Map[String, String], Boolean) =
+def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[CharSequence], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
   val source = try Files.readString(file) catch
     case _: Exception =>
       val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
@@ -370,7 +370,7 @@ def extractScaladoc(file: Path, targetLine: Int): Option[String] =
 
 private val testFnNames = Set("test", "it", "describe")
 
-private def extractTestName(t: Tree): Option[(String, Int)] =
+private def extractTestName(t: Tree): Option[(name: String, line: Int)] =
   t match
     case app: Term.Apply =>
       app.fun match
@@ -652,7 +652,7 @@ def extractScopes(file: Path, targetLine: Int): List[ScopeInfo] = {
 
 case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[Int], packageName: String)
 
-def extractDeps(idx: WorkspaceIndex, symbolName: String, workspace: Path): (List[DepInfo], List[DepInfo]) = {
+def extractDeps(idx: WorkspaceIndex, symbolName: String, workspace: Path): (importDeps: List[DepInfo], bodyDeps: List[DepInfo]) = {
   val defs = idx.findDefinition(symbolName)
   if defs.isEmpty then return (Nil, Nil)
 
@@ -1034,7 +1034,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   private var distinctSymbols: List[SymbolInfo] = Nil
   var packageToSymbols: Map[String, Set[String]] = Map.empty
   private var indexedByPath: Map[String, IndexedFile] = Map.empty
-  private var aliasIndex: Map[String, List[(IndexedFile, String)]] = Map.empty
+  private var aliasIndex: Map[String, List[(file: IndexedFile, alias: String)]] = Map.empty
   private var annotationIndex: Map[String, List[SymbolInfo]] = Map.empty
 
   var fileCount: Int = 0
@@ -1130,7 +1130,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
     // Single-pass over indexedFiles: build file-level indexes
     val iByPath = mutable.HashMap.empty[String, IndexedFile]
-    val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(IndexedFile, String)]]
+    val aIdx = mutable.HashMap.empty[String, mutable.ListBuffer[(file: IndexedFile, alias: String)]]
     indexedFiles.foreach { f =>
       iByPath(f.relativePath) = f
       f.aliases.foreach { (orig, alias) =>
@@ -1163,7 +1163,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     annotationIndex.getOrElse(annotation.toLowerCase, Nil)
 
   def grepFiles(pattern: String, noTests: Boolean, pathFilter: Option[String],
-                timeoutMs: Long = defaultTimeoutMs): (List[Reference], Boolean) =
+                timeoutMs: Long = defaultTimeoutMs): (results: List[Reference], timedOut: Boolean) =
     val regex = try java.util.regex.Pattern.compile(pattern)
     catch
       case e: java.util.regex.PatternSyntaxException =>
@@ -1491,7 +1491,7 @@ def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String, batchMod
 def hasRegexHint(pattern: String): Boolean =
   pattern.contains("\\|") || pattern.contains("\\(") || pattern.contains("\\)")
 
-def fixPosixRegex(pattern: String): (String, Boolean) =
+def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
   val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
   (fixed, fixed != pattern)
 
@@ -1499,7 +1499,7 @@ def resolveWorkspace(path: String): Path =
   val p = Path.of(path).toAbsolutePath.normalize
   if Files.isDirectory(p) then p else p.getParent
 
-def parseWorkspaceAndArg(rest: List[String]): Option[(Path, String)] =
+def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: String)] =
   rest match
     case a :: Nil => Some((resolveWorkspace("."), a))
     case ws :: a :: _ => Some((resolveWorkspace(ws), a))
@@ -1851,7 +1851,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           }
 
           // Collect inherited members if --inherited is set
-          def collectInherited(sym: SymbolInfo): List[(String, List[MemberInfo])] = {
+          def collectInherited(sym: SymbolInfo): List[(parentName: String, members: List[MemberInfo])] = {
             if !inherited then return Nil
             val visited = mutable.HashSet.empty[String]
             visited += sym.name.toLowerCase
@@ -1993,7 +1993,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       } else Map.empty
 
       // Architecture: hub types (most-referenced + most-extended)
-      val hubTypes: List[(String, Int)] = if architecture then {
+      val hubTypes: List[(name: String, score: Int)] = if architecture then {
         val refCounts = mutable.HashMap.empty[String, Int]
         idx.parentIndex.foreach { (name, impls) =>
           if idx.symbolsByName.contains(name) then
@@ -2395,7 +2395,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           else
             val added = mutable.ListBuffer.empty[DiffSymbol]
             val removed = mutable.ListBuffer.empty[DiffSymbol]
-            val modified = mutable.ListBuffer.empty[(DiffSymbol, DiffSymbol)]
+            val modified = mutable.ListBuffer.empty[(before: DiffSymbol, after: DiffSymbol)]
 
             changedFiles.take(limit * 5).foreach { relPath =>
               val currentPath = workspace.resolve(relPath)
