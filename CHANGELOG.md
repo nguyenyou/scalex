@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- False "parse error" reports for files with no extractable symbols — files containing only `Pkg.Object` (package objects), top-level `export` statements, or anonymous `given` aliases are no longer misreported (#61)
+- `parseFailedFiles` now tracks actual parse failures via a `parseFailed` flag on `IndexedFile`, instead of the heuristic `symbols.isEmpty && file-size > 0`
+
+### Added
+- Index `Pkg.Object` (package objects) as `SymbolKind.Object` — previously ignored by the `visit` function
+
+### Changed
+- Index format bumped to v6 (adds `parseFailed` boolean per file) — first run after upgrade triggers a full reindex
+
 ## [1.12.0] — 2026-03-16
 
 ### Added
