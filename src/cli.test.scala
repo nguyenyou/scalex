@@ -730,15 +730,19 @@ class CliSuite extends ScalexTestBase:
     assert(!output.contains("UserServiceTest"), s"Should exclude test symbols: $output")
   }
 
-  test("package command not found suggests packages") {
+  test("package command not found suggests packages via segment matching") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("package", List("nonexistent"), CommandContext(idx = idx, workspace = workspace))
+      // "com.exmple" doesn't substring-match any package, but segments "com" and "exmple"
+      // should match packages containing "com" (com.example, com.other, com.client, etc.)
+      runCommand("package", List("com.exmple"), CommandContext(idx = idx, workspace = workspace))
     }
     val output = out.toString
     assert(output.contains("not found"), s"Should say not found: $output")
+    assert(output.contains("Did you mean"), s"Should suggest packages via segment match: $output")
+    assert(output.contains("com.example"), s"Should suggest com.example: $output")
   }
 
   // ── #96: overview --focus-package ─────────────────────────────────────
