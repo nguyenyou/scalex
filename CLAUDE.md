@@ -56,6 +56,7 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 - **Git OIDs for caching**: Available free from `git ls-files --stage`, no disk reads needed to detect changes.
 - **No build server**: AI agents can run `./mill __.compile` directly for error checking.
 - **Feature gate question**: "Is this better than grep, or does it introduce a worst case that grep never has?" If a feature risks being slower or less reliable than grep in any scenario, don't add it. The agent can always fall back to grep — scalex must never be the worse option.
+- **Performance budget**: Every new feature must be benchmarked before/after on a large codebase (e.g. scala3 compiler, 17.7k files). Measure: index size (`.scalex/index.bin`), cold index time, warm index time, and query latency. Accept <5% regression on index times, 0% index size growth for non-index features, <10% if index schema changes. Prefer on-the-fly source reads over index bloat for infrequent queries (e.g. `members`, `doc`).
 
 ### Dependencies
 
