@@ -4,6 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT="${1:-$SCRIPT_DIR/scalex}"
 
+# -march=native is only safe for local builds (not portable across machines)
+MARCH_FLAG=()
+if [ -z "${CI:-}" ]; then
+  MARCH_FLAG=(-march=native)
+fi
+
 echo "Building Scalex native image..."
 scala-cli package --native-image \
   "$SCRIPT_DIR/src/" \
@@ -11,7 +17,7 @@ scala-cli package --native-image \
   --force \
   -- --no-fallback \
   --initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies \
-  -march=native
+  "${MARCH_FLAG[@]}"
 
 echo ""
 echo "Built: $OUT"
