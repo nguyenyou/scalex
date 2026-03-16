@@ -1,6 +1,6 @@
 ---
 name: scalex
-description: Scala code intelligence CLI for navigating Scala codebases (Scala 2 and 3). Use this skill whenever you're working in a project with .scala files and need to understand code structure — finding definitions, implementations, references, and imports; extracting bodies, members, scaladoc, and inheritance hierarchies; getting composite summaries (explain, deps, overview); or doing structural search (ast-pattern, grep, diff). Trigger on any Scala navigation task like "where is X defined", "who implements Y", "find usages of Z", "what methods does X have", "show me the body/source of X", "what's the inheritance tree", "explain this type", "what changed since last commit", "find types that extend X with method Y", or when you need to understand impact before renaming/refactoring. Also use proactively when exploring an unfamiliar Scala codebase — scalex is much faster and more structured than grep for Scala-specific queries. Supports fuzzy camelCase search (e.g. "hms" finds HttpMessageService). Always prefer scalex over grep/glob for Scala symbol and file lookups. Use `scalex grep` instead of the Grep tool for searching inside .scala files — it integrates with scalex's --path and --no-tests filters.
+description: Scala code intelligence CLI for navigating Scala codebases (Scala 2 and 3). Use this skill whenever you're working in a project with .scala files and need to understand code structure — finding where a class/trait/object is defined, who extends a trait, who uses or imports a symbol, what's in a file, what members a class has, reading scaladoc, getting a codebase overview, searching for files by name, finding annotated symbols, or searching file contents. Trigger on any Scala navigation task like "where is X defined", "who implements Y", "find usages of Z", "what methods does X have", "show me the body/source of X", "what's the inheritance tree", "explain this type", "what changed since last commit", "find types that extend X with method Y", or when you need to understand impact before renaming/refactoring. Also triggers on test navigation: "what tests exist", "is X tested", "show me the test for Y", "list test cases", "find tests that cover Z", "read that test body". Also use proactively when exploring an unfamiliar Scala codebase — scalex is much faster and more structured than grep for Scala-specific queries. Supports fuzzy camelCase search (e.g. "hms" finds HttpMessageService). Always prefer scalex over grep/glob for Scala symbol and file lookups. Use `scalex grep` instead of the Grep tool for searching inside .scala files — it integrates with scalex's --path and --no-tests filters.
 ---
 
 You have access to `scalex`, a Scala code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals). It parses source files via Scalameta — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
@@ -228,13 +228,19 @@ Extracts the full source body of a def, val, var, type, class, trait, object, or
 
 Use `--in <owner>` to restrict to members of a specific enclosing type — essential when the same method name exists in multiple classes.
 
+**Also works with test cases** — pass the exact test name string to extract a test body. Matches `test("name")`, `it("name")`, `describe("name")`, `"name" in { }`, and `"name" >> { }` patterns. Use `--in SuiteName` to scope to a specific suite.
+
 ```bash
 scalex body findUser --in UserServiceLive    # method body in specific class
 scalex body UserService                       # full trait body
+scalex body "findUser returns None" --in UserServiceTest  # test case body
 ```
 ```
-Body of findUser — UserServiceLive — src/.../UserService.scala:9:
-  9    | def findUser(id: String): Option[User] = db.query(id)
+Body of findUser returns None — UserServiceTest — src/.../UserServiceTest.scala:4:
+  4    |   test("findUser returns None") {
+  5    |     val svc = UserServiceLive(Database.live)
+  6    |     assertEquals(svc.findUser("unknown"), None)
+  7    |   }
 ```
 
 ### `scalex hierarchy <symbol> [--up] [--down] [--no-tests] [--path PREFIX]` — type hierarchy
@@ -399,6 +405,41 @@ echo -e "def UserService\nimpl UserService\nimports UserService" | scalex batch 
 echo -e "def UserService\ngrep processPayment\nimpl UserService" | scalex batch /path/to/project
 ```
 
+### `scalex tests [<pattern>] [--verbose] [--path PREFIX] [--json]` — list test cases structurally
+
+Extract test names from common Scala test frameworks: MUnit `test("...")`, ScalaTest `it("...")` / `describe("...")` / `"name" in { }`, specs2 `"name" >> { }`. Scans test files only (including `*.test.scala`). On-the-fly parse, no bloom filters needed.
+
+Pass a `<pattern>` to filter tests by name (case-insensitive substring match). **When filtering, full test bodies are shown inline** — this is the fastest way to find and read a specific test in one command, no follow-up needed.
+
+```bash
+scalex tests                                    # List all test cases (names + lines)
+scalex tests extractBody                        # Filter + show bodies inline
+scalex tests "bloom filter"                     # Multi-word filter works too
+scalex tests --path src/test/scala/com/auth/    # Tests under a specific path
+scalex tests --verbose                          # Show body for every test (no filter needed)
+scalex tests --json                             # Structured JSON output
+```
+```
+ScalexSuite — scalex.test.scala:10:
+  test  "extractBody finds method body in a class"  :1798
+    1798 |   test("extractBody finds method body in a class") {
+    1799 |     val file = workspace.resolve("src/main/.../UserService.scala")
+    1800 |     val results = extractBody(file, "findUser", None)
+    1801 |     assert(results.nonEmpty, "Should find findUser body")
+    1802 |     ...
+    1806 |   }
+```
+
+### `scalex coverage <symbol>` — is this symbol tested?
+
+Shorthand for "find references in test files only". Shows how many test files reference the symbol and where. Faster than `refs X` followed by manual test-file filtering.
+
+```bash
+scalex coverage UserService                     # Is UserService tested?
+scalex coverage extractBody -w .                # Is extractBody tested?
+scalex coverage UserService --json              # JSON: testFileCount, referenceCount, references
+```
+
 ### `scalex index` — force reindex
 
 Normally not needed — every command auto-reindexes changed files. Use after major branch switches or large merges to get a clean reindex.
@@ -497,6 +538,14 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 **"Show me inherited members too"** → `scalex members MyClass --inherited` (own + parent members)
 
 **"Show architecture"** → `scalex overview --architecture` (package deps + hub types)
+
+**"What tests exist?"** → `scalex tests` (lists all test cases with suite + line)
+
+**"Find tests for X / show me tests about X"** → `scalex tests extractBody` (filter by name + show bodies inline — one command, no follow-up)
+
+**"Is this function tested?"** → `scalex coverage extractBody` (refs in test files only, with count + locations)
+
+**"Show me a specific test"** → `scalex body "exact test name" --in MySuite` (when you know the exact name)
 
 ## Fallback
 

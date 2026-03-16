@@ -223,6 +223,17 @@ Feedback from real-world AI-assisted exploration of the Scala 3 compiler (17.7k 
 - [x] `scalex diff [git-ref]` — changed symbols since a git ref; cheap via OID diffing of two indices (#54)
 - [ ] `scalex pattern <name>` — detect common Scala design patterns (F-bounded, typeclass, strategy via implicits) via heuristic AST matching (#53)
 
+### Test awareness (#56)
+
+Feedback from dogfooding scalex on itself — test cases (`test("name") { ... }`) are expression statements, not declarations, so they're invisible to the index. AI agents frequently need to find, list, and read test cases.
+
+**High priority:** — DONE
+- [x] `scalex tests [--verbose] [--path PREFIX]` — extract test names from common frameworks: MUnit `test("...")`, ScalaTest `"name" in { }` / `it("...") { }` / `describe("...") { }`, specs2. On-the-fly parse, heuristic pattern matching on `templ.stats` expressions. Returns test name + line + enclosing suite. Biggest gap when using scalex for test navigation.
+- [x] `scalex body` for test cases — extend body extraction to find `test("exact name") { ... }` blocks by matching the string literal in the first argument. Agent can do `body "extractBody finds method body" --in ScalexSuite` to read a specific test without opening the file.
+
+**Medium priority:** — DONE
+- [x] `scalex coverage <symbol>` — "is this function tested?" shorthand: refs filtered to test files only, with count and file list. Faster than `refs X` followed by manual test-file filtering. Shows test file names + line numbers where the symbol appears.
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)
