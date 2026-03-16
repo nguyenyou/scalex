@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.10.0"
+val ScalexVersion = "1.11.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -252,6 +252,17 @@ def parseFile(path: Path): Option[Source] =
 
 case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil)
 
+case class BodyInfo(ownerName: String, symbolName: String, sourceText: String, startLine: Int, endLine: Int)
+
+case class HierarchyNode(name: String, kind: Option[SymbolKind], file: Option[Path], line: Option[Int], packageName: String, isExternal: Boolean)
+case class HierarchyTree(root: HierarchyNode, parents: List[HierarchyTree], children: List[HierarchyTree])
+
+case class OverrideInfo(file: Path, line: Int, enclosingClass: String, enclosingKind: SymbolKind, signature: String, packageName: String)
+
+case class ScopeInfo(name: String, kind: String, line: Int)
+
+case class DiffSymbol(name: String, kind: SymbolKind, file: String, line: Int, packageName: String, signature: String)
+
 def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
   parseFile(file) match
     case None => Nil
@@ -346,6 +357,426 @@ def extractScaladoc(file: Path, targetLine: Int): Option[String] =
     // Single-line /** brief */
     Some(lines(endLine))
   else None
+
+// ── Body extraction ─────────────────────────────────────────────────────────
+
+def extractBody(file: Path, symbolName: String, ownerName: Option[String]): List[BodyInfo] = {
+  val lines = try Files.readAllLines(file).asScala.toArray catch
+    case _: Exception => return Nil
+  parseFile(file) match
+    case None => Nil
+    case Some(tree) =>
+      val buf = mutable.ListBuffer.empty[BodyInfo]
+
+      def extractFromTree(t: Tree, currentOwner: String): Unit = {
+        t match
+          case d: Defn.Def if d.name.value == symbolName =>
+            if ownerName.isEmpty || ownerName.contains(currentOwner) then
+              val sl = d.pos.startLine
+              val el = d.pos.endLine
+              val body = (sl to el).map(lines(_)).mkString("\n")
+              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+          case d: Defn.Val =>
+            d.pats.foreach {
+              case Pat.Var(name) if name.value == symbolName =>
+                if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                  val sl = d.pos.startLine
+                  val el = d.pos.endLine
+                  val body = (sl to el).map(lines(_)).mkString("\n")
+                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1)
+              case _ =>
+            }
+          case d: Defn.Var =>
+            d.pats.foreach {
+              case Pat.Var(name) if name.value == symbolName =>
+                if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                  val sl = d.pos.startLine
+                  val el = d.pos.endLine
+                  val body = (sl to el).map(lines(_)).mkString("\n")
+                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1)
+              case _ =>
+            }
+          case d: Defn.Type if d.name.value == symbolName =>
+            if ownerName.isEmpty || ownerName.contains(currentOwner) then
+              val sl = d.pos.startLine
+              val el = d.pos.endLine
+              val body = (sl to el).map(lines(_)).mkString("\n")
+              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+          case d: Defn.Class =>
+            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
+              val sl = d.pos.startLine
+              val el = d.pos.endLine
+              val body = (sl to el).map(lines(_)).mkString("\n")
+              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+          case d: Defn.Trait =>
+            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
+              val sl = d.pos.startLine
+              val el = d.pos.endLine
+              val body = (sl to el).map(lines(_)).mkString("\n")
+              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+          case d: Defn.Object =>
+            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
+              val sl = d.pos.startLine
+              val el = d.pos.endLine
+              val body = (sl to el).map(lines(_)).mkString("\n")
+              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+          case d: Defn.Enum =>
+            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
+              val sl = d.pos.startLine
+              val el = d.pos.endLine
+              val body = (sl to el).map(lines(_)).mkString("\n")
+              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+          case p: Pkg =>
+            p.stats.foreach(s => extractFromTree(s, currentOwner))
+          case _ =>
+      }
+
+      tree.children.foreach(c => extractFromTree(c, ""))
+      buf.toList
+}
+
+// ── Hierarchy building ──────────────────────────────────────────────────────
+
+def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDown: Boolean, workspace: Path): Option[HierarchyTree] = {
+  val defs = idx.findDefinition(symbolName)
+  if defs.isEmpty then return None
+
+  val sym = defs.head
+  val rootNode = HierarchyNode(sym.name, Some(sym.kind), Some(sym.file), Some(sym.line), sym.packageName, isExternal = false)
+
+  def walkUp(name: String, visited: Set[String]): List[HierarchyTree] = {
+    if visited.contains(name.toLowerCase) then return Nil
+    val newVisited = visited + name.toLowerCase
+    val defs = idx.findDefinition(name)
+    if defs.isEmpty then Nil
+    else {
+      val s = defs.head
+      s.parents.map { parentName =>
+        val parentDefs = idx.findDefinition(parentName)
+        if parentDefs.isEmpty then {
+          val extNode = HierarchyNode(parentName, None, None, None, "", isExternal = true)
+          HierarchyTree(extNode, Nil, Nil)
+        } else {
+          val pd = parentDefs.head
+          val pNode = HierarchyNode(pd.name, Some(pd.kind), Some(pd.file), Some(pd.line), pd.packageName, isExternal = false)
+          val grandParents = walkUp(pd.name, newVisited)
+          HierarchyTree(pNode, grandParents, Nil)
+        }
+      }
+    }
+  }
+
+  def walkDown(name: String, visited: Set[String]): List[HierarchyTree] = {
+    if visited.contains(name.toLowerCase) then return Nil
+    val newVisited = visited + name.toLowerCase
+    val impls = idx.findImplementations(name)
+    impls.map { s =>
+      val node = HierarchyNode(s.name, Some(s.kind), Some(s.file), Some(s.line), s.packageName, isExternal = false)
+      val grandChildren = walkDown(s.name, newVisited)
+      HierarchyTree(node, Nil, grandChildren)
+    }
+  }
+
+  val parents = if goUp then walkUp(sym.name, Set(sym.name.toLowerCase)) else Nil
+  val children = if goDown then walkDown(sym.name, Set(sym.name.toLowerCase)) else Nil
+  Some(HierarchyTree(rootNode, parents, children))
+}
+
+// ── Override finding ────────────────────────────────────────────────────────
+
+def findOverrides(idx: WorkspaceIndex, methodName: String, ofTrait: Option[String], limit: Int): List[OverrideInfo] = {
+  val buf = mutable.ListBuffer.empty[OverrideInfo]
+  val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+
+  ofTrait match
+    case Some(traitName) =>
+      val impls = idx.findImplementations(traitName)
+      impls.foreach { s =>
+        if typeKinds.contains(s.kind) then {
+          val members = extractMembers(s.file, s.name)
+          members.filter(_.name == methodName).foreach { m =>
+            buf += OverrideInfo(s.file, m.line, s.name, s.kind, m.signature, s.packageName)
+          }
+        }
+      }
+    case None =>
+      // Find the method's defining type first
+      val methodDefs = idx.findDefinition(methodName).filter(s => s.kind == SymbolKind.Def || s.kind == SymbolKind.Val)
+      // Also search all types that have a member with this name
+      val allTypes = idx.symbols.filter(s => typeKinds.contains(s.kind))
+      val iter = allTypes.iterator
+      while iter.hasNext && buf.size < limit do {
+        val s = iter.next()
+        val members = extractMembers(s.file, s.name)
+        members.filter(_.name == methodName).foreach { m =>
+          buf += OverrideInfo(s.file, m.line, s.name, s.kind, m.signature, s.packageName)
+        }
+      }
+
+  buf.toList
+}
+
+// ── Scope extraction (context) ──────────────────────────────────────────────
+
+def extractScopes(file: Path, targetLine: Int): List[ScopeInfo] = {
+  parseFile(file) match
+    case None => Nil
+    case Some(tree) =>
+      val buf = mutable.ListBuffer.empty[ScopeInfo]
+
+      def visit(t: Tree): Unit = {
+        val startLine = t.pos.startLine + 1
+        val endLine = t.pos.endLine + 1
+        if targetLine >= startLine && targetLine <= endLine then {
+          t match
+            case d: Pkg =>
+              buf += ScopeInfo(d.ref.toString(), "package", startLine)
+            case d: Defn.Class =>
+              buf += ScopeInfo(d.name.value, "class", startLine)
+            case d: Defn.Trait =>
+              buf += ScopeInfo(d.name.value, "trait", startLine)
+            case d: Defn.Object =>
+              buf += ScopeInfo(d.name.value, "object", startLine)
+            case d: Defn.Enum =>
+              buf += ScopeInfo(d.name.value, "enum", startLine)
+            case d: Defn.Def =>
+              buf += ScopeInfo(d.name.value, "def", startLine)
+            case d: Defn.Val =>
+              d.pats.foreach {
+                case Pat.Var(name) => buf += ScopeInfo(name.value, "val", startLine)
+                case _ =>
+              }
+            case d: Defn.ExtensionGroup =>
+              buf += ScopeInfo("<extension>", "extension", startLine)
+            case _ =>
+          t.children.foreach(visit)
+        }
+      }
+
+      visit(tree)
+      buf.toList
+}
+
+// ── Dependency extraction ───────────────────────────────────────────────────
+
+case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[Int], packageName: String)
+
+def extractDeps(idx: WorkspaceIndex, symbolName: String, workspace: Path): (List[DepInfo], List[DepInfo]) = {
+  val defs = idx.findDefinition(symbolName)
+  if defs.isEmpty then return (Nil, Nil)
+
+  val sym = defs.head
+  val importDeps = mutable.ListBuffer.empty[DepInfo]
+  val bodyDeps = mutable.ListBuffer.empty[DepInfo]
+  val seenNames = mutable.HashSet.empty[String]
+
+  parseFile(sym.file) match
+    case None => (Nil, Nil)
+    case Some(tree) =>
+      // Find the target symbol's AST node and extract info
+      def findNode(t: Tree): Option[Tree] = {
+        t match
+          case d: Defn.Class if d.name.value == symbolName => Some(d)
+          case d: Defn.Trait if d.name.value == symbolName => Some(d)
+          case d: Defn.Object if d.name.value == symbolName => Some(d)
+          case d: Defn.Enum if d.name.value == symbolName => Some(d)
+          case d: Defn.Def if d.name.value == symbolName => Some(d)
+          case _ =>
+            var result: Option[Tree] = None
+            t.children.foreach { c =>
+              if result.isEmpty then result = findNode(c)
+            }
+            result
+      }
+
+      // Collect imports at the file level
+      def collectImports(t: Tree): Unit = {
+        t match
+          case i: Import =>
+            i.importers.foreach { importer =>
+              importer.importees.foreach {
+                case importee: Importee.Name =>
+                  val iname = importee.name.value
+                  if !seenNames.contains(iname) then {
+                    seenNames += iname
+                    val found = idx.findDefinition(iname)
+                    if found.nonEmpty then {
+                      val f = found.head
+                      importDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName)
+                    }
+                  }
+                case importee: Importee.Rename =>
+                  val iname = importee.name.value
+                  if !seenNames.contains(iname) then {
+                    seenNames += iname
+                    val found = idx.findDefinition(iname)
+                    if found.nonEmpty then {
+                      val f = found.head
+                      importDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName)
+                    }
+                  }
+                case _ =>
+              }
+            }
+          case _ =>
+        t.children.foreach(collectImports)
+      }
+      collectImports(tree)
+
+      // Collect type/term references in the symbol's body
+      findNode(tree).foreach { node =>
+        def collectRefs(t: Tree): Unit = {
+          t match
+            case Type.Name(name) if name != symbolName && !seenNames.contains(name) =>
+              seenNames += name
+              val found = idx.findDefinition(name)
+              if found.nonEmpty then {
+                val f = found.head
+                bodyDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName)
+              }
+            case Term.Name(name) if name != symbolName && !seenNames.contains(name) =>
+              seenNames += name
+              val found = idx.findDefinition(name)
+              if found.nonEmpty then {
+                val f = found.head
+                bodyDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName)
+              }
+            case _ =>
+          t.children.foreach(collectRefs)
+        }
+        collectRefs(node)
+      }
+
+      (importDeps.toList, bodyDeps.toList)
+}
+
+// ── Diff extraction ─────────────────────────────────────────────────────────
+
+def runGitDiff(workspace: Path, ref: String): List[String] = {
+  val pb = ProcessBuilder("git", "diff", "--name-only", ref)
+  pb.directory(workspace.toFile)
+  pb.redirectErrorStream(true)
+  val proc = pb.start()
+  val reader = BufferedReader(InputStreamReader(proc.getInputStream))
+  val files = reader.lines().iterator().asScala.filter(_.endsWith(".scala")).toList
+  proc.waitFor()
+  files
+}
+
+def gitShowFile(workspace: Path, ref: String, relPath: String): Option[String] = {
+  try {
+    val pb = ProcessBuilder("git", "show", s"$ref:$relPath")
+    pb.directory(workspace.toFile)
+    pb.redirectErrorStream(false)
+    val proc = pb.start()
+    val reader = BufferedReader(InputStreamReader(proc.getInputStream))
+    val content = reader.lines().iterator().asScala.mkString("\n")
+    val exitCode = proc.waitFor()
+    if exitCode == 0 then Some(content) else None
+  } catch {
+    case _: Exception => None
+  }
+}
+
+def extractSymbolsFromSource(source: String, filePath: String): List[DiffSymbol] = {
+  val input = Input.VirtualFile(filePath, source)
+  val tree = try {
+    given scala.meta.Dialect = scala.meta.dialects.Scala3
+    input.parse[Source].get
+  } catch {
+    case _: Exception =>
+      try {
+        given scala.meta.Dialect = scala.meta.dialects.Scala213
+        input.parse[Source].get
+      } catch {
+        case _: Exception => return Nil
+      }
+  }
+
+  val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
+  val buf = mutable.ListBuffer.empty[DiffSymbol]
+
+  def visit(t: Tree): Unit = {
+    t match
+      case d: Defn.Class =>
+        buf += DiffSymbol(d.name.value, SymbolKind.Class, filePath, d.pos.startLine + 1, pkg, s"class ${d.name.value}")
+      case d: Defn.Trait =>
+        buf += DiffSymbol(d.name.value, SymbolKind.Trait, filePath, d.pos.startLine + 1, pkg, s"trait ${d.name.value}")
+      case d: Defn.Object =>
+        buf += DiffSymbol(d.name.value, SymbolKind.Object, filePath, d.pos.startLine + 1, pkg, s"object ${d.name.value}")
+      case d: Defn.Enum =>
+        buf += DiffSymbol(d.name.value, SymbolKind.Enum, filePath, d.pos.startLine + 1, pkg, s"enum ${d.name.value}")
+      case d: Defn.Def =>
+        buf += DiffSymbol(d.name.value, SymbolKind.Def, filePath, d.pos.startLine + 1, pkg, s"def ${d.name.value}")
+      case d: Defn.Val =>
+        d.pats.foreach {
+          case Pat.Var(name) =>
+            buf += DiffSymbol(name.value, SymbolKind.Val, filePath, d.pos.startLine + 1, pkg, s"val ${name.value}")
+          case _ =>
+        }
+      case d: Defn.Type =>
+        buf += DiffSymbol(d.name.value, SymbolKind.Type, filePath, d.pos.startLine + 1, pkg, s"type ${d.name.value}")
+      case _ =>
+  }
+
+  def traverse(t: Tree): Unit = {
+    visit(t)
+    t.children.foreach(traverse)
+  }
+
+  traverse(tree)
+  buf.toList
+}
+
+// ── AST pattern matching ────────────────────────────────────────────────────
+
+case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int, packageName: String, signature: String)
+
+def astPatternSearch(idx: WorkspaceIndex, workspace: Path,
+                     hasMethod: Option[String], extendsTrait: Option[String],
+                     bodyContains: Option[String], noTests: Boolean,
+                     pathFilter: Option[String], limit: Int): List[AstPatternMatch] = {
+  val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+  var candidates = idx.symbols.filter(s => typeKinds.contains(s.kind))
+  if noTests then candidates = candidates.filter(s => !isTestFile(s.file, workspace))
+  pathFilter.foreach { p => candidates = candidates.filter(s => matchesPath(s.file, p, workspace)) }
+
+  // Filter by extends
+  extendsTrait.foreach { traitName =>
+    candidates = candidates.filter(_.parents.exists(_.equalsIgnoreCase(traitName)))
+  }
+
+  val buf = mutable.ListBuffer.empty[AstPatternMatch]
+
+  val iter = candidates.iterator
+  while iter.hasNext && buf.size < limit do {
+    val s = iter.next()
+    var matches = true
+
+    // Filter by has-method
+    hasMethod.foreach { methodName =>
+      val members = extractMembers(s.file, s.name)
+      if !members.exists(_.name == methodName) then matches = false
+    }
+
+    // Filter by body-contains
+    bodyContains.foreach { pattern =>
+      if matches then {
+        val bodies = extractBody(s.file, s.name, None)
+        if !bodies.exists(_.sourceText.contains(pattern)) then matches = false
+      }
+    }
+
+    if matches then {
+      buf += AstPatternMatch(s.name, s.kind, s.file, s.line, s.packageName, s.signature)
+    }
+  }
+  buf.toList
+}
 
 // ── Binary persistence ──────────────────────────────────────────────────────
 
@@ -989,7 +1420,12 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                jsonOutput: Boolean, grepPatterns: List[String] = Nil,
                countOnly: Boolean = false, batchMode: Boolean = false,
                searchMode: Option[String] = None, definitionsOnly: Boolean = false,
-               categoryFilter: Option[String] = None): Unit =
+               categoryFilter: Option[String] = None,
+               inOwner: Option[String] = None, ofTrait: Option[String] = None,
+               implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true,
+               inherited: Boolean = false, architecture: Boolean = false,
+               hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
+               bodyContainsFilter: Option[String] = None): Unit =
   val fmt = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
     if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines)
@@ -1322,13 +1758,48 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
             val kk = k.toLowerCase
             defs = defs.filter(_.kind.toString.toLowerCase == kk)
           }
+
+          // Collect inherited members if --inherited is set
+          def collectInherited(sym: SymbolInfo): List[(String, List[MemberInfo])] = {
+            if !inherited then return Nil
+            val visited = mutable.HashSet.empty[String]
+            visited += sym.name.toLowerCase
+            val ownMembers = extractMembers(sym.file, sym.name).map(m => (m.name, m.kind)).toSet
+            val result = mutable.ListBuffer.empty[(String, List[MemberInfo])]
+
+            def walk(parentNames: List[String]): Unit = {
+              parentNames.foreach { pName =>
+                if !visited.contains(pName.toLowerCase) then {
+                  visited += pName.toLowerCase
+                  val parentDefs = idx.findDefinition(pName).filter(s => typeKinds.contains(s.kind))
+                  parentDefs.headOption.foreach { pd =>
+                    val parentMembers = extractMembers(pd.file, pd.name)
+                    val filtered = parentMembers.filterNot(m => ownMembers.contains((m.name, m.kind)))
+                    if filtered.nonEmpty then result += ((pd.name, filtered))
+                    walk(pd.parents)
+                  }
+                }
+              }
+            }
+
+            walk(sym.parents)
+            result.toList
+          }
+
           if jsonOutput then
             val allMembers = defs.flatMap { s =>
-              val members = extractMembers(s.file, symbol)
-              members.map { m =>
+              val ownMembers = extractMembers(s.file, symbol).map { m =>
                 val rel = jsonEscape(workspace.relativize(s.file).toString)
-                s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(symbol)}","ownerKind":"${s.kind.toString.toLowerCase}","package":"${jsonEscape(s.packageName)}"}"""
+                s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(symbol)}","ownerKind":"${s.kind.toString.toLowerCase}","package":"${jsonEscape(s.packageName)}","inherited":false}"""
               }
+              val inheritedMembers = collectInherited(s).flatMap { case (parentName, members) =>
+                val parentDef = idx.findDefinition(parentName).headOption
+                members.map { m =>
+                  val rel = parentDef.map(pd => jsonEscape(workspace.relativize(pd.file).toString)).getOrElse("")
+                  s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(parentName)}","ownerKind":"inherited","package":"${parentDef.map(_.packageName).getOrElse("")}","inherited":true}"""
+                }
+              }
+              ownMembers ++ inheritedMembers
             }
             println(allMembers.take(limit).mkString("[", ",", "]"))
           else
@@ -1342,13 +1813,26 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                 val members = extractMembers(s.file, symbol)
                 println(s"Members of ${s.kind.toString.toLowerCase} $symbol$pkg — $rel:${s.line}:")
                 if members.isEmpty then println("  (no members)")
-                else members.take(limit).foreach { m =>
-                  if verbose then
-                    println(s"  ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
-                  else
-                    println(s"  ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+                else
+                  println(s"  Defined in $symbol:")
+                  members.take(limit).foreach { m =>
+                    if verbose then
+                      println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
+                    else
+                      println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+                  }
+                  if members.size > limit then println(s"    ... and ${members.size - limit} more")
+                val inheritedGroups = collectInherited(s)
+                inheritedGroups.foreach { case (parentName, pMembers) =>
+                  println(s"  Inherited from $parentName:")
+                  pMembers.take(limit).foreach { m =>
+                    if verbose then
+                      println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
+                    else
+                      println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+                  }
+                  if pMembers.size > limit then println(s"    ... and ${pMembers.size - limit} more")
                 }
-                if members.size > limit then println(s"  ... and ${members.size - limit} more")
               }
 
     case "doc" =>
@@ -1388,11 +1872,55 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val symbolsByKind = idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size)
       val topPackages = idx.packageToSymbols.toList.sortBy(-_._2.size).take(limit)
       val mostExtended = idx.parentIndex.toList.sortBy(-_._2.size).take(limit)
+
+      // Architecture: compute package dependency graph from imports
+      val archPkgDeps: Map[String, Set[String]] = if architecture then {
+        val deps = mutable.HashMap.empty[String, mutable.HashSet[String]]
+        idx.symbols.groupBy(_.file).foreach { (file, syms) =>
+          val filePkg = syms.headOption.map(_.packageName).getOrElse("")
+          if filePkg.nonEmpty then {
+            parseFile(file).foreach { tree =>
+              val (imports, _) = extractImports(tree)
+              imports.foreach { imp =>
+                val trimmed = imp.trim.stripPrefix("import ")
+                // Extract package from import: "com.example.Foo" → "com.example"
+                val lastDot = trimmed.lastIndexOf('.')
+                if lastDot > 0 then {
+                  val importPkg = trimmed.substring(0, lastDot)
+                  // Only track cross-package dependencies
+                  if importPkg != filePkg && idx.packages.contains(importPkg) then {
+                    deps.getOrElseUpdate(filePkg, mutable.HashSet.empty) += importPkg
+                  }
+                }
+              }
+            }
+          }
+        }
+        deps.map((k, v) => k -> v.toSet).toMap
+      } else Map.empty
+
+      // Architecture: hub types (most-referenced + most-extended)
+      val hubTypes: List[(String, Int)] = if architecture then {
+        val refCounts = mutable.HashMap.empty[String, Int]
+        idx.parentIndex.foreach { (name, impls) =>
+          refCounts(name) = refCounts.getOrElse(name, 0) + impls.size
+        }
+        refCounts.toList.sortBy(-_._2).take(limit)
+      } else Nil
+
       if jsonOutput then
         val kindJson = symbolsByKind.map((k, v) => s""""${k.toString.toLowerCase}":${v.size}""").mkString("{", ",", "}")
         val pkgJson = topPackages.map((p, s) => s"""{"package":"${jsonEscape(p)}","count":${s.size}}""").mkString("[", ",", "]")
         val extJson = mostExtended.map((p, s) => s"""{"name":"${jsonEscape(p)}","implementations":${s.size}}""").mkString("[", ",", "]")
-        println(s"""{"fileCount":${idx.fileCount},"symbolCount":${idx.symbols.size},"packageCount":${idx.packages.size},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
+        if architecture then
+          val depsJson = archPkgDeps.map { (pkg, deps) =>
+            val dArr = deps.map(d => s""""${jsonEscape(d)}"""").mkString("[", ",", "]")
+            s""""${jsonEscape(pkg)}":$dArr"""
+          }.mkString("{", ",", "}")
+          val hubJson = hubTypes.map((n, c) => s"""{"name":"${jsonEscape(n)}","score":$c}""").mkString("[", ",", "]")
+          println(s"""{"fileCount":${idx.fileCount},"symbolCount":${idx.symbols.size},"packageCount":${idx.packages.size},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson,"packageDependencies":$depsJson,"hubTypes":$hubJson}""")
+        else
+          println(s"""{"fileCount":${idx.fileCount},"symbolCount":${idx.symbols.size},"packageCount":${idx.packages.size},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
       else
         println(s"Project overview (${idx.fileCount} files, ${idx.symbols.size} symbols):\n")
         println("Symbols by kind:")
@@ -1407,6 +1935,378 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         mostExtended.foreach { (name, impls) =>
           println(s"  ${name.padTo(30, ' ')} ${impls.size} impl")
         }
+        if architecture then
+          println(s"\nPackage dependencies:")
+          if archPkgDeps.isEmpty then println("  (no cross-package dependencies found)")
+          else archPkgDeps.toList.sortBy(_._1).foreach { (pkg, deps) =>
+            println(s"  $pkg → ${deps.toList.sorted.mkString(", ")}")
+          }
+          println(s"\nHub types (by extension count):")
+          if hubTypes.isEmpty then println("  (none)")
+          else hubTypes.foreach { (name, count) =>
+            println(s"  ${name.padTo(30, ' ')} $count references")
+          }
+
+    case "body" =>
+      rest.headOption match
+        case None => println("Usage: scalex body <symbol> [--in <owner>]")
+        case Some(symbol) =>
+          // Find files containing the symbol
+          var defs = idx.findDefinition(symbol)
+          if noTests then defs = defs.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, workspace)) }
+          // Also look in type definitions for member bodies
+          val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+          val filesToSearch = if defs.nonEmpty then {
+            defs.map(_.file).distinct
+          } else {
+            // If not found directly, search all files for member bodies
+            inOwner match
+              case Some(owner) =>
+                idx.findDefinition(owner).filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
+              case None =>
+                idx.symbols.filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
+          }
+          // Collect (file, body) pairs
+          val resultsWithFiles = filesToSearch.flatMap { f =>
+            extractBody(f, symbol, inOwner).map(b => (f, b))
+          }
+          if jsonOutput then
+            val arr = resultsWithFiles.take(limit).map { case (file, b) =>
+              val rel = jsonEscape(workspace.relativize(file).toString)
+              s"""{"name":"${jsonEscape(b.symbolName)}","owner":"${jsonEscape(b.ownerName)}","file":"$rel","startLine":${b.startLine},"endLine":${b.endLine},"body":"${jsonEscape(b.sourceText)}"}"""
+            }.mkString("[", ",", "]")
+            println(arr)
+          else
+            if resultsWithFiles.isEmpty then
+              println(s"No body found for \"$symbol\"")
+              printNotFoundHint(symbol, idx, "body", batchMode)
+            else
+              resultsWithFiles.take(limit).foreach { case (file, b) =>
+                val ownerStr = if b.ownerName.nonEmpty then s" — ${b.ownerName}" else ""
+                val rel = workspace.relativize(file)
+                println(s"Body of ${b.symbolName}$ownerStr — $rel:${b.startLine}:")
+                val bodyLines = b.sourceText.split("\n")
+                bodyLines.zipWithIndex.foreach { case (line, i) =>
+                  println(s"  ${(b.startLine + i).toString.padTo(4, ' ')} | $line")
+                }
+                println()
+              }
+
+    case "hierarchy" =>
+      rest.headOption match
+        case None => println("Usage: scalex hierarchy <symbol> [--up] [--down]")
+        case Some(symbol) =>
+          buildHierarchy(idx, symbol, goUp, goDown, workspace) match
+            case None =>
+              println(s"No definition of \"$symbol\" found")
+              printNotFoundHint(symbol, idx, "hierarchy", batchMode)
+            case Some(tree) =>
+              def nodeJson(n: HierarchyNode): String = {
+                val file = n.file.map(f => s""""${jsonEscape(workspace.relativize(f).toString)}"""").getOrElse("null")
+                val kind = n.kind.map(k => s""""${k.toString.toLowerCase}"""").getOrElse("null")
+                val line = n.line.map(_.toString).getOrElse("null")
+                s"""{"name":"${jsonEscape(n.name)}","kind":$kind,"file":$file,"line":$line,"package":"${jsonEscape(n.packageName)}","isExternal":${n.isExternal}}"""
+              }
+              def treeJson(t: HierarchyTree): String = {
+                val ps = t.parents.map(treeJson).mkString("[", ",", "]")
+                val cs = t.children.map(treeJson).mkString("[", ",", "]")
+                s"""{"node":${nodeJson(t.root)},"parents":$ps,"children":$cs}"""
+              }
+              if jsonOutput then
+                println(treeJson(tree))
+              else
+                val rootNode = tree.root
+                val pkg = if rootNode.packageName.nonEmpty then s" (${rootNode.packageName})" else ""
+                val kind = rootNode.kind.map(_.toString.toLowerCase).getOrElse("unknown")
+                val loc = rootNode.file.map(f => s" — ${workspace.relativize(f)}:${rootNode.line.getOrElse(0)}").getOrElse("")
+                println(s"Hierarchy of $kind ${rootNode.name}$pkg$loc:")
+                if goUp then
+                  println("  Parents:")
+                  def printParents(parents: List[HierarchyTree], indent: String): Unit = {
+                    parents.zipWithIndex.foreach { case (pt, i) =>
+                      val isLast = i == parents.size - 1
+                      val prefix = if isLast then s"$indent└── " else s"$indent├── "
+                      val nextIndent = if isLast then s"$indent    " else s"$indent│   "
+                      val n = pt.root
+                      val npkg = if n.packageName.nonEmpty then s" (${n.packageName})" else ""
+                      val nkind = n.kind.map(_.toString.toLowerCase + " ").getOrElse("")
+                      val nloc = if n.isExternal then " [external]"
+                                 else n.file.map(f => s" — ${workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
+                      println(s"$prefix$nkind${n.name}$npkg$nloc")
+                      printParents(pt.parents, nextIndent)
+                    }
+                  }
+                  if tree.parents.isEmpty then println("    (none)")
+                  else printParents(tree.parents, "    ")
+                if goDown then
+                  println("  Children:")
+                  def printChildren(children: List[HierarchyTree], indent: String): Unit = {
+                    children.zipWithIndex.foreach { case (ct, i) =>
+                      val isLast = i == children.size - 1
+                      val prefix = if isLast then s"$indent└── " else s"$indent├── "
+                      val nextIndent = if isLast then s"$indent    " else s"$indent│   "
+                      val n = ct.root
+                      val npkg = if n.packageName.nonEmpty then s" (${n.packageName})" else ""
+                      val nkind = n.kind.map(_.toString.toLowerCase + " ").getOrElse("")
+                      val nloc = n.file.map(f => s" — ${workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
+                      println(s"$prefix$nkind${n.name}$npkg$nloc")
+                      printChildren(ct.children, nextIndent)
+                    }
+                  }
+                  if tree.children.isEmpty then println("    (none)")
+                  else printChildren(tree.children, "    ")
+
+    case "overrides" =>
+      rest.headOption match
+        case None => println("Usage: scalex overrides <method> [--of <trait>]")
+        case Some(methodName) =>
+          val results = findOverrides(idx, methodName, ofTrait, limit)
+          if jsonOutput then
+            val arr = results.map { o =>
+              val rel = jsonEscape(workspace.relativize(o.file).toString)
+              s"""{"enclosingClass":"${jsonEscape(o.enclosingClass)}","enclosingKind":"${o.enclosingKind.toString.toLowerCase}","file":"$rel","line":${o.line},"signature":"${jsonEscape(o.signature)}","package":"${jsonEscape(o.packageName)}"}"""
+            }.mkString("[", ",", "]")
+            println(arr)
+          else
+            if results.isEmpty then
+              val ofStr = ofTrait.map(t => s" of $t").getOrElse("")
+              println(s"No overrides of \"$methodName\"$ofStr found")
+              printNotFoundHint(methodName, idx, "overrides", batchMode)
+            else
+              val ofStr = ofTrait.map(t => s" (in implementations of $t)").getOrElse("")
+              println(s"Overrides of $methodName$ofStr — ${results.size} found:")
+              results.foreach { o =>
+                val rel = workspace.relativize(o.file)
+                val pkg = if o.packageName.nonEmpty then s" (${o.packageName})" else ""
+                println(s"  ${o.enclosingClass}$pkg — $rel:${o.line}")
+                println(s"    ${o.signature}")
+              }
+
+    case "explain" =>
+      rest.headOption match
+        case None => println("Usage: scalex explain <symbol>")
+        case Some(symbol) =>
+          var defs = idx.findDefinition(symbol)
+          if noTests then defs = defs.filter(s => !isTestFile(s.file, workspace))
+          pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, workspace)) }
+          if defs.isEmpty then
+            if jsonOutput then println("""{"error":"not found"}""")
+            else
+              println(s"No definition of \"$symbol\" found")
+              printNotFoundHint(symbol, idx, "explain", batchMode)
+          else
+            val sym = defs.head
+            val rel = workspace.relativize(sym.file)
+            val pkg = if sym.packageName.nonEmpty then s" (${sym.packageName})" else ""
+
+            // Scaladoc
+            val doc = extractScaladoc(sym.file, sym.line)
+
+            // Members (for types)
+            val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+            val members = if typeKinds.contains(sym.kind) then extractMembers(sym.file, symbol).take(10) else Nil
+
+            // Implementations
+            val impls = idx.findImplementations(symbol).take(implLimit)
+
+            // Import count
+            val importCount = idx.findImports(symbol, timeoutMs = 3000).size
+
+            if jsonOutput then
+              val docJson = doc.map(d => s""""${jsonEscape(d)}"""").getOrElse("null")
+              val membersJson = members.map { m =>
+                s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+              }.mkString("[", ",", "]")
+              val implsJson = impls.map(s => jsonSymbol(s, workspace)).mkString("[", ",", "]")
+              println(s"""{"definition":${jsonSymbol(sym, workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount}""")
+            else
+              println(s"Explanation of ${sym.kind.toString.toLowerCase} $symbol$pkg:\n")
+              println(s"  Definition: $rel:${sym.line}")
+              println(s"  Signature: ${sym.signature}")
+              if sym.parents.nonEmpty then println(s"  Extends: ${sym.parents.mkString(", ")}")
+              println()
+              doc match
+                case Some(d) =>
+                  println("  Scaladoc:")
+                  d.split("\n").foreach(l => println(s"    $l"))
+                  println()
+                case None =>
+                  println("  Scaladoc: (none)\n")
+              if members.nonEmpty then
+                println(s"  Members (top ${members.size}):")
+                members.foreach(m => println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
+                println()
+              if impls.nonEmpty then
+                println(s"  Implementations (top ${impls.size}):")
+                impls.foreach(s => println(formatSymbol(s, workspace)))
+                println()
+              println(s"  Imported by: $importCount files")
+
+    case "deps" =>
+      rest.headOption match
+        case None => println("Usage: scalex deps <symbol>")
+        case Some(symbol) =>
+          val (importDeps, bodyDeps) = extractDeps(idx, symbol, workspace)
+          if jsonOutput then
+            val iArr = importDeps.map { d =>
+              val file = d.file.map(f => s""""${jsonEscape(workspace.relativize(f).toString)}"""").getOrElse("null")
+              val line = d.line.map(_.toString).getOrElse("null")
+              s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
+            }.mkString("[", ",", "]")
+            val bArr = bodyDeps.map { d =>
+              val file = d.file.map(f => s""""${jsonEscape(workspace.relativize(f).toString)}"""").getOrElse("null")
+              val line = d.line.map(_.toString).getOrElse("null")
+              s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
+            }.mkString("[", ",", "]")
+            println(s"""{"imports":$iArr,"bodyReferences":$bArr}""")
+          else
+            if importDeps.isEmpty && bodyDeps.isEmpty then
+              println(s"No dependencies found for \"$symbol\"")
+              printNotFoundHint(symbol, idx, "deps", batchMode)
+            else
+              println(s"Dependencies of \"$symbol\":")
+              if importDeps.nonEmpty then
+                println(s"\n  Imports:")
+                importDeps.take(limit).foreach { d =>
+                  val loc = d.file.map(f => s" — ${workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
+                  println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
+                }
+                if importDeps.size > limit then println(s"    ... and ${importDeps.size - limit} more")
+              if bodyDeps.nonEmpty then
+                println(s"\n  Body references:")
+                bodyDeps.take(limit).foreach { d =>
+                  val loc = d.file.map(f => s" — ${workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
+                  println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
+                }
+                if bodyDeps.size > limit then println(s"    ... and ${bodyDeps.size - limit} more")
+
+    case "context" =>
+      rest.headOption match
+        case None => println("Usage: scalex context <file:line>")
+        case Some(arg) =>
+          val parts = arg.split(":")
+          if parts.length < 2 then
+            println("Usage: scalex context <file:line> (e.g. src/Main.scala:42)")
+          else
+            val filePath = parts.dropRight(1).mkString(":")
+            val lineNum = parts.last.toIntOption
+            lineNum match
+              case None => println(s"Invalid line number: ${parts.last}")
+              case Some(line) =>
+                val resolved = if Path.of(filePath).isAbsolute then Path.of(filePath) else workspace.resolve(filePath)
+                val scopes = extractScopes(resolved, line)
+                if jsonOutput then
+                  val arr = scopes.map { s =>
+                    s"""{"name":"${jsonEscape(s.name)}","kind":"${jsonEscape(s.kind)}","line":${s.line}}"""
+                  }.mkString("[", ",", "]")
+                  val rel = jsonEscape(workspace.relativize(resolved).toString)
+                  println(s"""{"file":"$rel","line":$line,"scopes":$arr}""")
+                else
+                  val rel = workspace.relativize(resolved)
+                  println(s"Context at $rel:$line:")
+                  if scopes.isEmpty then println("  (no enclosing scopes found)")
+                  else
+                    scopes.foreach { s =>
+                      println(s"  ${s.kind.padTo(9, ' ')} ${s.name} (line ${s.line})")
+                    }
+
+    case "diff" =>
+      rest.headOption match
+        case None => println("Usage: scalex diff <git-ref> (e.g. scalex diff HEAD~1)")
+        case Some(ref) =>
+          val changedFiles = runGitDiff(workspace, ref)
+          if changedFiles.isEmpty then
+            if jsonOutput then println("""{"added":[],"removed":[],"modified":[]}""")
+            else println(s"No Scala files changed compared to $ref")
+          else
+            val added = mutable.ListBuffer.empty[DiffSymbol]
+            val removed = mutable.ListBuffer.empty[DiffSymbol]
+            val modified = mutable.ListBuffer.empty[(DiffSymbol, DiffSymbol)]
+
+            changedFiles.take(limit * 5).foreach { relPath =>
+              val currentPath = workspace.resolve(relPath)
+              val currentSource = try Some(Files.readString(currentPath)) catch { case _: Exception => None }
+              val oldSource = gitShowFile(workspace, ref, relPath)
+
+              val currentSyms = currentSource.map(s => extractSymbolsFromSource(s, relPath)).getOrElse(Nil)
+              val oldSyms = oldSource.map(s => extractSymbolsFromSource(s, relPath)).getOrElse(Nil)
+
+              val currentByKey = currentSyms.map(s => (s.name, s.kind) -> s).toMap
+              val oldByKey = oldSyms.map(s => (s.name, s.kind) -> s).toMap
+
+              // Added: in current but not in old
+              currentByKey.foreach { case (key, sym) =>
+                if !oldByKey.contains(key) then added += sym
+              }
+              // Removed: in old but not in current
+              oldByKey.foreach { case (key, sym) =>
+                if !currentByKey.contains(key) then removed += sym
+              }
+              // Modified: in both but signature changed
+              currentByKey.foreach { case (key, cSym) =>
+                oldByKey.get(key).foreach { oSym =>
+                  if cSym.signature != oSym.signature || cSym.line != oSym.line then
+                    modified += ((oSym, cSym))
+                }
+              }
+            }
+
+            if jsonOutput then
+              def diffSymJson(s: DiffSymbol): String =
+                s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"${jsonEscape(s.file)}","line":${s.line},"package":"${jsonEscape(s.packageName)}","signature":"${jsonEscape(s.signature)}"}"""
+              val addedJson = added.take(limit).map(diffSymJson).mkString("[", ",", "]")
+              val removedJson = removed.take(limit).map(diffSymJson).mkString("[", ",", "]")
+              val modifiedJson = modified.take(limit).map { case (o, n) =>
+                s"""{"old":${diffSymJson(o)},"new":${diffSymJson(n)}}"""
+              }.mkString("[", ",", "]")
+              println(s"""{"ref":"${jsonEscape(ref)}","filesChanged":${changedFiles.size},"added":$addedJson,"removed":$removedJson,"modified":$modifiedJson}""")
+            else
+              println(s"Symbol changes compared to $ref (${changedFiles.size} files changed):")
+              if added.nonEmpty then
+                println(s"\n  Added (${added.size}):")
+                added.take(limit).foreach { s =>
+                  println(s"    + ${s.kind.toString.toLowerCase.padTo(9, ' ')} ${s.name} — ${s.file}:${s.line}")
+                }
+                if added.size > limit then println(s"    ... and ${added.size - limit} more")
+              if removed.nonEmpty then
+                println(s"\n  Removed (${removed.size}):")
+                removed.take(limit).foreach { s =>
+                  println(s"    - ${s.kind.toString.toLowerCase.padTo(9, ' ')} ${s.name} — ${s.file}:${s.line}")
+                }
+                if removed.size > limit then println(s"    ... and ${removed.size - limit} more")
+              if modified.nonEmpty then
+                println(s"\n  Modified (${modified.size}):")
+                modified.take(limit).foreach { case (o, n) =>
+                  println(s"    ~ ${n.kind.toString.toLowerCase.padTo(9, ' ')} ${n.name} — ${n.file}:${n.line}")
+                }
+                if modified.size > limit then println(s"    ... and ${modified.size - limit} more")
+              if added.isEmpty && removed.isEmpty && modified.isEmpty then
+                println("  No symbol-level changes detected")
+
+    case "ast-pattern" =>
+      val results = astPatternSearch(idx, workspace, hasMethodFilter, extendsFilter, bodyContainsFilter, noTests, pathFilter, limit)
+      if jsonOutput then
+        val arr = results.map { m =>
+          val rel = jsonEscape(workspace.relativize(m.file).toString)
+          s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","file":"$rel","line":${m.line},"package":"${jsonEscape(m.packageName)}","signature":"${jsonEscape(m.signature)}"}"""
+        }.mkString("[", ",", "]")
+        println(arr)
+      else
+        val filters = List(
+          hasMethodFilter.map(m => s"has-method=$m"),
+          extendsFilter.map(e => s"extends=$e"),
+          bodyContainsFilter.map(b => s"body-contains=\"$b\"")
+        ).flatten.mkString(", ")
+        if results.isEmpty then
+          println(s"No types matching AST pattern ($filters)")
+        else
+          println(s"Types matching AST pattern ($filters) — ${results.size} found:")
+          results.foreach { m =>
+            val rel = workspace.relativize(m.file)
+            val pkg = if m.packageName.nonEmpty then s" (${m.packageName})" else ""
+            println(s"  ${m.kind.toString.toLowerCase.padTo(9, ' ')} ${m.name}$pkg — $rel:${m.line}")
+          }
 
     case other =>
       println(s"Unknown command: $other")
@@ -1452,7 +2352,32 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     val idx = if longIdx >= 0 then longIdx else shortIdx
     if idx >= 0 then argList.lift(idx + 1) else None
 
-  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category")
+  // New flags for new commands
+  val inOwner: Option[String] = argList.indexOf("--in") match
+    case -1 => None
+    case i => argList.lift(i + 1)
+  val ofTrait: Option[String] = argList.indexOf("--of") match
+    case -1 => None
+    case i => argList.lift(i + 1)
+  val implLimit: Int = argList.indexOf("--impl-limit") match
+    case -1 => 5
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
+  val goUp = !argList.contains("--down") || argList.contains("--up")
+  val goDown = !argList.contains("--up") || argList.contains("--down")
+  val inherited = argList.contains("--inherited")
+  val architecture = argList.contains("--architecture")
+  val hasMethodFilter: Option[String] = argList.indexOf("--has-method") match
+    case -1 => None
+    case i => argList.lift(i + 1)
+  val extendsFilter: Option[String] = argList.indexOf("--extends") match
+    case -1 => None
+    case i => argList.lift(i + 1)
+  val bodyContainsFilter: Option[String] = argList.indexOf("--body-contains") match
+    case -1 => None
+    case i => argList.lift(i + 1)
+
+  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
+                           "--in", "--of", "--impl-limit", "--has-method", "--extends", "--body-contains")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || a == "--flat" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -1478,6 +2403,14 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  scalex packages                 What packages exist?            (aka: list packages)
         |  scalex index                    Rebuild the index               (aka: reindex)
         |  scalex batch                    Run multiple queries at once    (aka: batch mode)
+        |  scalex body <symbol>            Extract method/val/class body   (aka: show source)
+        |  scalex hierarchy <symbol>       Full inheritance tree           (aka: type hierarchy)
+        |  scalex overrides <method>       Find override implementations   (aka: find overrides)
+        |  scalex explain <symbol>         Composite one-shot summary      (aka: explain symbol)
+        |  scalex deps <symbol>            Show symbol dependencies        (aka: dependency graph)
+        |  scalex context <file:line>      Show enclosing scopes at line   (aka: scope chain)
+        |  scalex diff <git-ref>           Symbol-level diff vs git ref    (aka: symbol diff)
+        |  scalex ast-pattern              Structural AST search           (aka: pattern search)
         |
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
@@ -1497,6 +2430,16 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  --prefix              Search: only exact + prefix matches
         |  --json                Output results as JSON (structured output for programmatic use)
         |  --version             Print version and exit
+        |  --in OWNER            Body: restrict to members of the given enclosing type
+        |  --of TRAIT            Overrides: restrict to implementations of the given trait
+        |  --impl-limit N        Explain: max implementations to show (default: 5)
+        |  --up                  Hierarchy: show only parents (default: both)
+        |  --down                Hierarchy: show only children (default: both)
+        |  --inherited           Members: include inherited members from parent types
+        |  --architecture        Overview: show package dependency graph and hub types
+        |  --has-method NAME     AST pattern: match types that have a method with NAME
+        |  --extends TRAIT       AST pattern: match types that extend TRAIT
+        |  --body-contains PAT   AST pattern: match types whose body contains PAT
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
         |First run indexes the project (~3s for 14k files). Subsequent runs use cache (~300ms).
@@ -1514,7 +2457,9 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val batchCmd = parts.head
           val batchRest = parts.tail
           println(s">>> $line")
-          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, batchMode = true, searchMode, definitionsOnly, categoryFilter)
+          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, batchMode = true, searchMode, definitionsOnly, categoryFilter,
+                     inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit, goUp = goUp, goDown = goDown, inherited = inherited, architecture = architecture,
+                     hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter, bodyContainsFilter = bodyContainsFilter)
           println()
         line = reader.readLine()
 
@@ -1524,7 +2469,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           (resolveWorkspace(ws), rest)
         case None =>
           cmd match
-            case "index" | "packages" =>
+            case "index" | "packages" | "overview" | "ast-pattern" =>
               (resolveWorkspace(rest.headOption.getOrElse(".")), rest)
             case _ =>
               rest match
@@ -1535,4 +2480,6 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val bloomCmds = Set("refs", "imports")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
-      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, searchMode = searchMode, definitionsOnly = definitionsOnly, categoryFilter = categoryFilter)
+      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, searchMode = searchMode, definitionsOnly = definitionsOnly, categoryFilter = categoryFilter,
+                 inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit, goUp = goUp, goDown = goDown, inherited = inherited, architecture = architecture,
+                 hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter, bodyContainsFilter = bodyContainsFilter)

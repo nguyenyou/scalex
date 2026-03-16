@@ -54,7 +54,7 @@ Build the fastest possible Scala code navigation tool, designed from the ground 
 
 ## How It Works
 
-The entire tool is ~1,500 lines of Scala 3 in a single file. Here's the architecture:
+The entire tool is ~2,500 lines of Scala 3 in a single file. Here's the architecture:
 
 ```
                          ┌─────────────────┐
@@ -204,6 +204,16 @@ scalex grep -e "TODO" -e "FIXME" --count # Multi-pattern count
 scalex symbols src/main/scala/App.scala # What's in this file?
 scalex packages                         # What packages exist?
 scalex def UserService --json           # Structured JSON output
+scalex body findUser --in UserServiceLive  # Extract method body (eliminates Read calls)
+scalex hierarchy UserService               # Full inheritance tree (parents + children)
+scalex overrides findUser --of UserService # Find all implementations of a method
+scalex explain UserService                 # One-shot summary: def + doc + members + impls
+scalex deps UserService                    # What does this symbol depend on?
+scalex context src/Main.scala:42           # Enclosing scopes at line 42
+scalex diff HEAD~1                         # Symbol-level changes since last commit
+scalex ast-pattern --extends Service --has-method process  # Structural search
+scalex members UserService --inherited     # Include inherited members from parents
+scalex overview --architecture             # Package deps + hub types
 ```
 
 ## Run Without Installing
@@ -247,6 +257,14 @@ scalex grep <pattern>           Regex search in file contents   (aka: content se
 scalex packages                 What packages exist?            (aka: list packages)
 scalex index                    Rebuild the index               (aka: reindex)
 scalex batch                    Run multiple queries at once    (aka: batch mode)
+scalex body <symbol>            Extract method/val/class body   (aka: show source)
+scalex hierarchy <symbol>       Full inheritance tree           (aka: type hierarchy)
+scalex overrides <method>       Find override implementations   (aka: find overrides)
+scalex explain <symbol>         Composite one-shot summary      (aka: explain symbol)
+scalex deps <symbol>            Show symbol dependencies        (aka: dependency graph)
+scalex context <file:line>      Show enclosing scopes at line   (aka: scope chain)
+scalex diff <git-ref>           Symbol-level diff vs git ref    (aka: symbol diff)
+scalex ast-pattern              Structural AST search           (aka: pattern search)
 ```
 
 ### Options
@@ -268,6 +286,16 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 | `--exact` | Search: only exact name matches (case-insensitive) |
 | `--prefix` | Search: only exact + prefix matches |
 | `--json` | Output results as JSON — structured output for programmatic parsing |
+| `--in OWNER` | Body: restrict to members of the given enclosing type |
+| `--of TRAIT` | Overrides: restrict to implementations of the given trait |
+| `--impl-limit N` | Explain: max implementations to show (default: 5) |
+| `--up` | Hierarchy: show only parents (default: both) |
+| `--down` | Hierarchy: show only children (default: both) |
+| `--inherited` | Members: include inherited members from parent types |
+| `--architecture` | Overview: show package dependency graph and hub types |
+| `--has-method NAME` | AST pattern: match types that have a method with NAME |
+| `--extends TRAIT` | AST pattern: match types that extend TRAIT |
+| `--body-contains PAT` | AST pattern: match types whose body contains PAT |
 | `--version` | Print version and exit |
 
 ### AI-Friendly Features
@@ -290,6 +318,16 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 - **`batch`** mode loads the index once for multiple queries — 5 queries in ~1s instead of ~5s; not-found output is condensed to a single line
 - **Fallback hints** on "not found" — tells the agent how many files were searched and suggests using Grep/Glob as fallback
 - **20s timeout** on reference/grep search — prevents hangs on massive repos, shows partial results
+- **`body`** extracts method/val/class source bodies — eliminates ~50% of follow-up Read calls
+- **`hierarchy`** shows full inheritance tree — parents and children in one call, with `--up`/`--down` flags
+- **`overrides`** finds all implementations of a specific method across classes — combines impl lookup with member filtering
+- **`explain`** gives a composite one-shot summary — definition + scaladoc + members + implementations + import count in a single call
+- **`deps`** shows what a symbol depends on — file imports and body references to other indexed symbols
+- **`context`** shows enclosing scopes at a file:line — package, class, method chain
+- **`diff`** shows symbol-level changes vs a git ref — added/removed/modified symbols, not raw line diffs
+- **`ast-pattern`** does structural AST search — find types by what they extend, what methods they have, or what their body contains
+- **`members --inherited`** shows the full API surface — own members plus inherited from parent types
+- **`overview --architecture`** shows package dependency graph and hub types — architectural understanding in one call
 
 ## Scalex vs Grep/Glob/Read — Honest Comparison
 
@@ -430,7 +468,7 @@ The name also nods to "Scala" itself — Italian for "staircase" or "scale" — 
 
 The Scalex mascot is a **kestrel** — the smallest falcon. It was chosen because it mirrors the tool's core qualities:
 
-- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~1,500 lines, single 28MB binary)
+- **Smallest falcon** — reflects Scalex's lightweight, minimal design (~2,500 lines, single 28MB binary)
 - **Incredible eyesight** — spots symbols across 14k files, like a kestrel spots prey from 50 meters
 - **Hovers before diving** — systematically scans an area before striking, like indexing before querying
 - **Lives alongside people** — kestrels thrive near humans, like Scalex works alongside AI agents
@@ -441,7 +479,7 @@ See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
 Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Scala language server by the [Scalameta](https://scalameta.org/) team.
 
-Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~1,500 lines of Scala 3.
+Specifically, the **MBT (Metal Build Tool) subsystem** in the `main-v2` branch (Databricks fork) pioneered the approach of using git OIDs for cache invalidation, bloom filters for reference pre-screening, and parallel source-level indexing without a build server. Scalex reimplements these ideas in ~2,500 lines of Scala 3.
 
 - **From Metals v2 MBT**: git-based file discovery, OID caching, bloom filter search, parallel indexing
 - **From Scalameta**: the parser that makes source-level symbol extraction possible

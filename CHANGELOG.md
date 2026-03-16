@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.11.0] — 2026-03-16
+
+### Added
+- `scalex body <symbol> [--in <owner>]` — extract method/val/class body from source using Scalameta spans; eliminates follow-up Read calls (#53, #54)
+- `scalex hierarchy <symbol> [--up] [--down]` — full inheritance tree: parents up + children down from extends clauses (#53, #54)
+- `scalex overrides <method> [--of <trait>]` — find all override implementations of a method across implementors (#54)
+- `scalex explain <symbol> [--impl-limit N]` — composite one-shot summary: definition + scaladoc + members + implementations + import count (#53, #54)
+- `scalex deps <symbol>` — show what a symbol depends on: file imports + body type/term references (#53)
+- `scalex context <file:line>` — show enclosing scopes at a given line: package, class, method (#54)
+- `scalex diff <git-ref>` — symbol-level diff vs a git ref: added/removed/modified symbols (#54)
+- `scalex ast-pattern [--has-method NAME] [--extends TRAIT] [--body-contains PAT]` — structural AST search with composable predicates (#54)
+- `members --inherited` flag — walk extends chain, collect members from parent types with dedup (#53)
+- `overview --architecture` flag — package dependency graph from imports + hub types (#53)
+
 ## [1.10.0] — 2026-03-16
 
 ### Added

@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scalex — Scala Code Intelligence for AI Agents</title>
-  <meta name="description" content="~1,500 lines. Zero compilation. Zero build server. Search symbols, find definitions, find implementations, find references — all from source.">
+  <meta name="description" content="~2,500 lines. Zero compilation. Zero build server. Search symbols, find definitions, find implementations, find references — all from source.">
 
   <!-- OpenGraph -->
   <meta property="og:title" content="Scalex — Scala Code Intelligence for AI Agents">
-  <meta property="og:description" content="~1,500 lines. Zero compilation. Zero build server. Just answers.">
+  <meta property="og:description" content="~2,500 lines. Zero compilation. Zero build server. Just answers.">
   <meta property="og:image" content="https://nguyenyou.github.io/scalex/og-banner.png">
   <meta property="og:url" content="https://nguyenyou.github.io/scalex">
   <meta property="og:type" content="website">
@@ -16,7 +16,7 @@
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Scalex — Scala Code Intelligence for AI Agents">
-  <meta name="twitter:description" content="~1,500 lines. Zero compilation. Zero build server. Just answers.">
+  <meta name="twitter:description" content="~2,500 lines. Zero compilation. Zero build server. Just answers.">
   <meta name="twitter:image" content="https://nguyenyou.github.io/scalex/og-banner.png">
 
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
@@ -421,7 +421,7 @@
   <section class="hero">
     <img src="Kestrel.png" alt="Scalex Kestrel" class="mascot">
     <h1>Scal<span class="red">ex</span></h1>
-    <p class="tagline"><em>Grep knows text. Scalex knows Scala.</em><br><strong>~1,500 lines. Zero compilation. Zero build server. Just answers.</strong></p>
+    <p class="tagline"><em>Grep knows text. Scalex knows Scala.</em><br><strong>~2,500 lines. Zero compilation. Zero build server. Just answers.</strong></p>
 
     <div class="stats">
       <div class="stat">
@@ -433,7 +433,7 @@
         <div class="stat-label">Warm Query</div>
       </div>
       <div class="stat">
-        <div class="stat-value">~1,500</div>
+        <div class="stat-value">~2,500</div>
         <div class="stat-label">Lines of Code</div>
       </div>
       <div class="stat">
@@ -486,7 +486,7 @@
 
   <!-- Commands -->
   <section class="reveal">
-    <h2>15 commands. <span class="red">Zero config.</span></h2>
+    <h2>23 commands. <span class="red">Zero config.</span></h2>
     <p class="section-sub">Point it at any git repo with Scala files. Works on Scala 2 and 3, auto-detects dialect per file.</p>
 
     <div class="cmd-grid">
@@ -549,6 +549,38 @@
       <div class="cmd-card">
         <div class="cmd-name">scalex index</div>
         <div class="cmd-desc">Force reindex. Normally automatic — every command auto-indexes.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex body</div>
+        <div class="cmd-desc">Extract method/val/class body from source. Eliminates ~50% of follow-up Read calls.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex hierarchy</div>
+        <div class="cmd-desc">Full inheritance tree — parents up, children down. Tree-formatted with --up/--down flags.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex overrides</div>
+        <div class="cmd-desc">Find all override implementations of a method. Combines impl + member filtering.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex explain</div>
+        <div class="cmd-desc">One-shot summary: definition + scaladoc + members + implementations + import count.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex deps</div>
+        <div class="cmd-desc">What does this symbol depend on? File imports + body references to indexed symbols.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex context</div>
+        <div class="cmd-desc">Enclosing scopes at a file:line — package, class, method chain.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex diff</div>
+        <div class="cmd-desc">Symbol-level diff vs git ref. Shows added/removed/modified symbols.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex ast-pattern</div>
+        <div class="cmd-desc">Structural AST search — find types by extends, methods, or body content.</div>
       </div>
     </div>
   </section>

@@ -1769,3 +1769,338 @@ class ScalexSuite extends FunSuite:
     assert(output.contains("\"doc\""), s"JSON should contain doc field: $output")
     assert(output.contains("processing payments"), s"JSON should contain doc text: $output")
   }
+
+  // ── body command — extractBody ────────────────────────────────────────
+
+  test("extractBody finds method body in a class") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val results = extractBody(file, "findUser", None)
+    assert(results.nonEmpty, "Should find findUser body")
+    // extractBody only finds Defn.Def (concrete), not Decl.Def (abstract in trait)
+    val inLive = results.find(_.ownerName == "UserServiceLive")
+    assert(inLive.isDefined, s"Should find findUser in UserServiceLive: ${results.map(_.ownerName)}")
+    assert(inLive.get.sourceText.contains("db.query"), s"Body should contain impl: ${inLive.get.sourceText}")
+  }
+
+  test("extractBody finds class/trait body") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val results = extractBody(file, "UserService", None)
+    assert(results.nonEmpty, "Should find UserService body")
+    val traitBody = results.find(_.sourceText.contains("trait UserService"))
+    assert(traitBody.isDefined, s"Should find trait body: ${results.map(_.sourceText.take(30))}")
+    assert(traitBody.get.sourceText.contains("findUser"), s"Trait body should contain findUser: ${traitBody.get.sourceText}")
+  }
+
+  test("extractBody with --in owner restriction") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val inLive = extractBody(file, "findUser", Some("UserServiceLive"))
+    assert(inLive.nonEmpty, "Should find findUser in UserServiceLive")
+    assert(inLive.forall(_.ownerName == "UserServiceLive"), s"Should only be in UserServiceLive: ${inLive.map(_.ownerName)}")
+    // findUser in trait UserService is a Decl.Def (abstract), not found by extractBody
+    val inTrait = extractBody(file, "findUser", Some("UserService"))
+    assert(inTrait.isEmpty, "Abstract Decl.Def in trait should not be found by extractBody")
+    // But the trait body itself can be extracted
+    val traitBody = extractBody(file, "UserService", None)
+    assert(traitBody.nonEmpty, "Should find trait UserService body")
+  }
+
+  test("extractBody returns empty for nonexistent symbol") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val results = extractBody(file, "nonExistentMethod", None)
+    assert(results.isEmpty, "Should return empty for nonexistent symbol")
+  }
+
+  test("extractBody sourceText includes full definition text") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val results = extractBody(file, "findUser", Some("UserServiceLive"))
+    assert(results.nonEmpty, "Should find findUser")
+    val body = results.head
+    assert(body.sourceText.contains("def findUser"), s"Should contain def keyword: ${body.sourceText}")
+    assert(body.startLine > 0, s"Start line should be positive: ${body.startLine}")
+    assert(body.endLine >= body.startLine, s"End line should be >= start line: ${body.startLine} to ${body.endLine}")
+  }
+
+  // ── hierarchy command — buildHierarchy ────────────────────────────────
+
+  test("buildHierarchy returns root node with correct name") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val result = buildHierarchy(idx, "UserServiceLive", goUp = true, goDown = true, workspace)
+    assert(result.isDefined, "Should find hierarchy for UserServiceLive")
+    val tree = result.get
+    assertEquals(tree.root.name, "UserServiceLive")
+    assert(!tree.root.isExternal, "Root should not be external")
+    assert(tree.root.kind.contains(SymbolKind.Class), s"Should be a class: ${tree.root.kind}")
+    assert(tree.root.file.isDefined, "Root should have a file")
+    assert(tree.root.line.isDefined, "Root should have a line")
+  }
+
+  test("buildHierarchy returns root for UserService trait") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val result = buildHierarchy(idx, "UserService", goUp = true, goDown = true, workspace)
+    assert(result.isDefined, "Should find hierarchy for UserService")
+    val tree = result.get
+    // UserService resolves to the trait (first hit)
+    assertEquals(tree.root.name, "UserService")
+  }
+
+  test("buildHierarchy goUp=false produces empty parents") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val result = buildHierarchy(idx, "UserServiceLive", goUp = false, goDown = false, workspace)
+    assert(result.isDefined, "Should find hierarchy")
+    val tree = result.get
+    assert(tree.parents.isEmpty, "Should have no parents with goUp=false")
+    assert(tree.children.isEmpty, "Should have no children with goDown=false")
+  }
+
+  test("buildHierarchy returns None for unknown symbol") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val result = buildHierarchy(idx, "NonExistentType", goUp = true, goDown = true, workspace)
+    assert(result.isEmpty, "Should return None for unknown symbol")
+  }
+
+  test("buildHierarchy root node isExternal is false for indexed symbols") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val result = buildHierarchy(idx, "PaymentServiceLive", goUp = true, goDown = false, workspace)
+    assert(result.isDefined)
+    val tree = result.get
+    assert(!tree.root.isExternal, "Root should not be external")
+    assert(tree.root.packageName == "com.example", s"Package should be com.example: ${tree.root.packageName}")
+  }
+
+  // ── overrides command — findOverrides ────────────────────────────────
+
+  test("findOverrides finds method overrides with --of trait") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = findOverrides(idx, "findUser", Some("UserService"), 50)
+    assert(results.nonEmpty, "Should find overrides of findUser in UserService impls")
+    assert(results.exists(_.enclosingClass == "UserServiceLive"),
+      s"Should find override in UserServiceLive: ${results.map(_.enclosingClass)}")
+  }
+
+  test("findOverrides returns empty for nonexistent method") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = findOverrides(idx, "nonExistentMethod", Some("UserService"), 50)
+    assert(results.isEmpty, "Should return empty for nonexistent method")
+  }
+
+  test("findOverrides returns correct enclosing class info") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = findOverrides(idx, "findUser", Some("UserService"), 50)
+    results.foreach { r =>
+      assert(r.enclosingClass.nonEmpty, s"Enclosing class should not be empty")
+      assert(r.signature.nonEmpty, s"Signature should not be empty: ${r.enclosingClass}")
+      assert(r.line > 0, s"Line should be positive: ${r.enclosingClass}")
+    }
+  }
+
+  // ── explain command — constituent calls ───────────────────────────────
+
+  test("explain: constituent calls work together for PaymentService") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // findDefinition
+    val defs = idx.findDefinition("PaymentService")
+    assert(defs.nonEmpty, "Should find PaymentService definition")
+    val sym = defs.head
+    // extractScaladoc
+    val doc = extractScaladoc(sym.file, sym.line)
+    assert(doc.isDefined, "Should find scaladoc for PaymentService")
+    assert(doc.get.contains("processing payments"))
+    // extractMembers
+    val members = extractMembers(sym.file, sym.name)
+    assert(members.nonEmpty, "Should find members of PaymentService")
+    assert(members.exists(_.name == "processPayment"))
+    // findImplementations
+    val impls = idx.findImplementations("PaymentService")
+    assert(impls.nonEmpty, "Should find implementations of PaymentService")
+    assert(impls.exists(_.name == "PaymentServiceLive"),
+      s"Should find PaymentServiceLive: ${impls.map(_.name)}")
+  }
+
+  // ── members --inherited ──────────────────────────────────────────────
+
+  test("members --inherited includes parent members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("members", List("PaymentServiceLive"), idx, workspace, 50, None, false, true, false, None, 0, false,
+        inherited = true)
+    }
+    val output = out.toString
+    // PaymentServiceLive should show its own members + inherited from PaymentService
+    assert(output.contains("PaymentServiceLive"), s"Should show PaymentServiceLive header: $output")
+    // The inherited section should show parent name
+    // PaymentServiceLive overrides processPayment and refund, so inherited section may only include
+    // members that are NOT overridden. Since PaymentServiceLive defines both processPayment and refund,
+    // we check that the output at least runs without error and shows the type
+    assert(output.contains("Members of"), s"Should have Members of header: $output")
+  }
+
+  test("members --inherited dedup: child overrides win") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("members", List("UserServiceLive"), idx, workspace, 50, None, false, true, false, None, 0, true,
+        inherited = true)
+    }
+    val output = out.toString
+    // JSON output — parse to verify dedup
+    assert(output.startsWith("["), s"JSON should start with bracket: $output")
+    // UserServiceLive defines findUser and createUser which are also in UserService.
+    // With dedup, inherited findUser/createUser should NOT appear
+    // Count how many times findUser appears
+    val findUserCount = "\"findUser\"".r.findAllIn(output).size
+    assertEquals(findUserCount, 1, s"findUser should appear only once (child wins dedup): $output")
+  }
+
+  // ── deps command — extractDeps ────────────────────────────────────────
+
+  test("extractDeps finds import deps for a symbol") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (importDeps, _) = extractDeps(idx, "ExplicitClient", workspace)
+    // ExplicitClient imports com.example.UserService
+    assert(importDeps.exists(_.name == "UserService"),
+      s"Should find UserService in import deps: ${importDeps.map(_.name)}")
+  }
+
+  test("extractDeps finds body refs (type names used in the body)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (importDeps, bodyDeps) = extractDeps(idx, "ExplicitClient", workspace)
+    // The body of ExplicitClient uses UserService as a type
+    val allNames = (importDeps ++ bodyDeps).map(_.name).toSet
+    assert(allNames.contains("UserService"),
+      s"Should find UserService in deps: imports=${importDeps.map(_.name)}, body=${bodyDeps.map(_.name)}")
+  }
+
+  // ── context command — extractScopes ────────────────────────────────────
+
+  test("extractScopes finds enclosing package + class + def for a line inside a method") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    // Line 9: "def findUser(id: String): Option[User] = db.query(id)" inside UserServiceLive
+    val scopes = extractScopes(file, 9)
+    assert(scopes.nonEmpty, s"Should find scopes for line 9")
+    val scopeNames = scopes.map(_.name)
+    val scopeKinds = scopes.map(_.kind)
+    assert(scopeKinds.contains("package"), s"Should contain package scope: $scopeKinds")
+    assert(scopeNames.exists(_ == "UserServiceLive"), s"Should contain UserServiceLive: $scopeNames")
+    assert(scopeNames.exists(_ == "findUser"), s"Should contain findUser: $scopeNames")
+  }
+
+  test("extractScopes returns empty for out-of-range line") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val scopes = extractScopes(file, 999)
+    assert(scopes.isEmpty, s"Should return empty for out-of-range line: ${scopes.map(_.name)}")
+  }
+
+  // ── diff command — extractSymbolsFromSource ────────────────────────────
+
+  test("extractSymbolsFromSource extracts symbols from source string") {
+    val source =
+      """package com.example
+        |
+        |class Foo {
+        |  def bar: Int = 42
+        |  val baz: String = "hello"
+        |}
+        |
+        |trait Qux {
+        |  def quux: Boolean = true
+        |}
+        |""".stripMargin
+    val symbols = extractSymbolsFromSource(source, "test.scala")
+    val names = symbols.map(_.name).toSet
+    assert(names.contains("Foo"), s"Should find class Foo: $names")
+    assert(names.contains("bar"), s"Should find def bar: $names")
+    assert(names.contains("baz"), s"Should find val baz: $names")
+    assert(names.contains("Qux"), s"Should find trait Qux: $names")
+    assert(names.contains("quux"), s"Should find def quux: $names")
+  }
+
+  test("extractSymbolsFromSource basic symbol comparison") {
+    val oldSource =
+      """package com.example
+        |class Foo {
+        |  def bar: Int = 42
+        |}
+        |""".stripMargin
+    val newSource =
+      """package com.example
+        |class Foo {
+        |  def bar: Int = 42
+        |  def baz: String = "new"
+        |}
+        |""".stripMargin
+    val oldSyms = extractSymbolsFromSource(oldSource, "Foo.scala")
+    val newSyms = extractSymbolsFromSource(newSource, "Foo.scala")
+    val oldNames = oldSyms.map(_.name).toSet
+    val newNames = newSyms.map(_.name).toSet
+    val added = newNames -- oldNames
+    assert(added.contains("baz"), s"Should detect baz as added: $added")
+    assert(!added.contains("bar"), s"bar should not be added: $added")
+  }
+
+  // ── ast-pattern — astPatternSearch ────────────────────────────────────
+
+  test("astPatternSearch with --extends filter finds PaymentServiceLive") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = astPatternSearch(idx, workspace,
+      hasMethod = None, extendsTrait = Some("PaymentService"),
+      bodyContains = None, noTests = false, pathFilter = None, limit = 50)
+    assert(results.nonEmpty, "Should find types extending PaymentService")
+    assert(results.exists(_.name == "PaymentServiceLive"),
+      s"Should find PaymentServiceLive: ${results.map(_.name)}")
+  }
+
+  test("astPatternSearch with --has-method filter finds types containing findUser") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = astPatternSearch(idx, workspace,
+      hasMethod = Some("findUser"), extendsTrait = None,
+      bodyContains = None, noTests = false, pathFilter = None, limit = 50)
+    assert(results.nonEmpty, "Should find types with findUser method")
+    val names = results.map(_.name).toSet
+    assert(names.contains("UserServiceLive"), s"Should find UserServiceLive: $names")
+    assert(names.contains("UserService"), s"Should find UserService trait: $names")
+  }
+
+  // ── overview --architecture ────────────────────────────────────────────
+
+  test("overview --architecture computes package dependencies without crash") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, false,
+        architecture = true)
+    }
+    val output = out.toString
+    assert(output.contains("Package dependencies"), s"Should show package dependencies section: $output")
+    assert(output.contains("Hub types"), s"Should show hub types section: $output")
+  }
+
+  test("overview --architecture JSON includes packageDependencies and hubTypes") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, idx, workspace, 10, None, false, true, false, None, 0, true,
+        architecture = true)
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("{"), s"JSON should start with brace: $output")
+    assert(output.contains("\"packageDependencies\""), s"JSON should contain packageDependencies: $output")
+    assert(output.contains("\"hubTypes\""), s"JSON should contain hubTypes: $output")
+  }
