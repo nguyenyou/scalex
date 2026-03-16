@@ -41,12 +41,7 @@ jobs:
           jvm: graalvm-java21
 
       - name: Build native image
-        run: |
-          scala-cli --power package --native-image src/ \
-            -o ${{ matrix.artifact }} \
-            --force \
-            -- --no-fallback \
-            --initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies
+        run: ./build-native.sh ${{ matrix.artifact }}
 
       - name: Test binary
         run: |
