@@ -186,9 +186,10 @@ cd /path/to/your/scala/project
 
 scalex search Service --kind trait      # Find all traits with "Service" in the name
 scalex search hms                       # Fuzzy camelCase: finds HttpMessageService
+scalex search Auth --prefix             # Only exact + prefix matches, no noise
 scalex def UserService --verbose        # Where is it defined? (with signature)
 scalex impl UserService                 # Who extends this trait?
-scalex refs UserService --categorize    # Who uses it? (grouped by how)
+scalex refs UserService -c              # Who uses it? (grouped by how)
 scalex imports UserService              # Who imports it?
 scalex file PaymentService              # Find files by name (fuzzy camelCase)
 scalex annotated deprecated             # Find all @deprecated symbols
@@ -244,7 +245,7 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 | Flag | Effect |
 |---|---|
 | `--verbose` | Show signatures, extends clauses, param types |
-| `--categorize` | Group refs into Definition / ExtendedBy / ImportedBy / UsedAsType / Comment / Usage |
+| `--categorize`, `-c` | Group refs into Definition / ExtendedBy / ImportedBy / UsedAsType / Comment / Usage |
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter search: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
@@ -252,13 +253,15 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 | `-C N` | Show N context lines around each reference (refs, grep) |
 | `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
 | `--count` | Grep: output match/file count only, no full results |
+| `--exact` | Search: only exact name matches (case-insensitive) |
+| `--prefix` | Search: only exact + prefix matches |
 | `--json` | Output results as JSON — structured output for programmatic parsing |
 | `--version` | Print version and exit |
 
 ### AI-Friendly Features
 
 - **`--verbose`** on `def` returns the full signature — saves the agent a follow-up Read call
-- **`--categorize`** on `refs` groups results by relationship — the agent sees who defines it, extends it, imports it, and uses it in one call
+- **`--categorize` / `-c`** on `refs` groups results by relationship — the agent sees who defines it, extends it, imports it, and uses it in one call
 - **`impl`** finds concrete implementations of a trait — much more targeted than `refs`
 - **`imports`** shows dependency relationships — which files depend on this symbol
 - **Fuzzy camelCase search** — `search "hms"` finds `HttpMessageService`, `file "psl"` finds `PaymentServiceLive.scala`
@@ -266,7 +269,8 @@ scalex batch                    Run multiple queries at once    (aka: batch mode
 - **`annotated`** finds symbols by annotation — `@deprecated`, `@main`, `@tailrec`, etc.
 - **`grep`** does regex content search inside `.scala` files with `--path` and `--no-tests` filtering built in; `-e` for multi-pattern, `--count` for quick triage
 - **`--json`** flag on all commands produces structured JSON output — eliminates fragile text parsing
-- **`batch`** mode loads the index once for multiple queries — 5 queries in ~1s instead of ~5s
+- **`--exact` / `--prefix`** on `search` eliminates noise from substring/fuzzy matches — `search Auth --prefix` returns ~20 results instead of 1300+
+- **`batch`** mode loads the index once for multiple queries — 5 queries in ~1s instead of ~5s; not-found output is condensed to a single line
 - **Fallback hints** on "not found" — tells the agent how many files were searched and suggests using Grep/Glob as fallback
 - **20s timeout** on reference/grep search — prevents hangs on massive repos, shows partial results
 

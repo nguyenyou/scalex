@@ -66,7 +66,7 @@ scalex impl PaymentService --no-tests --path core/src/
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--categorize] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
+### `scalex refs <symbol> [--categorize|-c] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
@@ -101,13 +101,17 @@ scalex imports PaymentService
 scalex imports PaymentService --no-tests
 ```
 
-### `scalex search <query> [--kind K] [--verbose] [--limit N]` — search symbols
+### `scalex search <query> [--kind K] [--verbose] [--limit N] [--exact] [--prefix]` — search symbols
 
 Fuzzy search by name, ranked: exact > prefix > substring > camelCase fuzzy. Supports camelCase abbreviation matching — e.g. `search "hms"` matches `HttpMessageService`, `search "usl"` matches `UserServiceLive`. Use `--kind` to filter by symbol type.
+
+Use `--exact` to only return symbols with exact name match (case-insensitive). Use `--prefix` to only return symbols whose name starts with the query. Both eliminate noise from substring/fuzzy matches on large codebases.
 
 ```bash
 scalex search Service --kind trait --limit 10
 scalex search hms       # finds HttpMessageService via camelCase matching
+scalex search Auth --prefix    # only exact + prefix matches, no substring/fuzzy
+scalex search Auth --exact     # only exact name matches
 ```
 
 ### `scalex file <query> [--limit N]` — find file
@@ -189,7 +193,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 |---|---|
 | `-w`, `--workspace PATH` | Set workspace path (default: current directory) |
 | `--verbose` | Show signatures, extends clauses, param types |
-| `--categorize` | Group refs into Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage |
+| `--categorize`, `-c` | Group refs into Definition/ExtendedBy/ImportedBy/UsedAsType/Comment/Usage |
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
@@ -197,6 +201,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `-C N` | Show N context lines around each reference (refs, grep) |
 | `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
 | `--count` | Grep: output match/file count only, no full results |
+| `--exact` | Search: only exact name matches (case-insensitive) |
+| `--prefix` | Search: only exact + prefix matches |
 | `--json` | Output results as JSON — structured output for programmatic parsing |
 
 ## Common workflows
@@ -205,7 +211,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 
 **"Who implements trait X?"** → `scalex impl X` (index-based, fast)
 
-**"What's the impact of renaming X?"** → `scalex refs X --categorize` (shows all usages grouped by kind)
+**"What's the impact of renaming X?"** → `scalex refs X -c` (shows all usages grouped by kind)
 
 **"Which files import X?"** → `scalex imports X` (just import lines, clean for dependency analysis)
 
@@ -217,7 +223,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 
 **"I need to look up 3+ symbols"** → use `batch` to avoid repeated index loads
 
-**"Too many results / noisy output"** → `--no-tests` and/or `--path compiler/src/` to filter
+**"Too many results / noisy output"** → `--no-tests`, `--path compiler/src/`, or `search --prefix`/`--exact` to filter
 
 **"I want to see the code around each reference"** → `scalex refs X -C 3` shows 3 lines of context
 

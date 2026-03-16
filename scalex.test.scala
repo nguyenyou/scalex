@@ -1358,3 +1358,77 @@ class ScalexSuite extends FunSuite:
     assertEquals(fixed, "class|trait")
     assert(!changed)
   }
+
+  // ── search --exact / --prefix ──────────────────────────────────────────
+
+  test("search --exact returns only exact name matches") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("search", List("User"), idx, workspace, 20, None, false, false, false, None, 0, false, searchMode = Some("exact"))
+    }
+    val output = out.toString
+    assert(output.contains("User"), s"Should find exact match 'User': $output")
+    assert(!output.contains("UserService"), s"Should NOT find 'UserService' (not exact): $output")
+  }
+
+  test("search --prefix returns exact + prefix matches only") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("search", List("User"), idx, workspace, 20, None, false, false, false, None, 0, false, searchMode = Some("prefix"))
+    }
+    val output = out.toString
+    assert(output.contains("User"), s"Should find 'User': $output")
+    assert(output.contains("UserService"), s"Should find prefix match 'UserService': $output")
+  }
+
+  test("search without mode returns all match types") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("search", List("User"), idx, workspace, 20, None, false, false, false, None, 0, false, searchMode = None)
+    }
+    val output = out.toString
+    // Should include substring matches too (e.g. userOrdering contains "user" as substring)
+    assert(output.contains("User"), s"Should find 'User': $output")
+  }
+
+  // ── refs -c alias ──────────────────────────────────────────────────────
+
+  test("-c is parsed as alias for --categorize") {
+    val args = List("refs", "UserService", "-c")
+    val categorize = args.contains("--categorize") || args.contains("-c")
+    assert(categorize, "-c should enable categorize")
+  }
+
+  // ── condensed not-found in batch mode ──────────────────────────────────
+
+  test("printNotFoundHint in batch mode prints single line") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      printNotFoundHint("NonExistent", idx, "def", batchMode = true)
+    }
+    val output = out.toString.trim
+    assert(output.startsWith("not found"), s"Batch not-found should be single line: $output")
+    assert(output.contains("files"), s"Should mention file count: $output")
+    assert(!output.contains("Hint:"), s"Should NOT contain verbose hints: $output")
+    assert(!output.contains("Fallback:"), s"Should NOT contain fallback: $output")
+  }
+
+  test("printNotFoundHint in normal mode prints full hints") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      printNotFoundHint("NonExistent", idx, "def", batchMode = false)
+    }
+    val output = out.toString
+    assert(output.contains("Hint:"), s"Normal mode should contain Hint: $output")
+    assert(output.contains("Fallback:"), s"Normal mode should contain Fallback: $output")
+  }

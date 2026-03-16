@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
 
-val ScalexVersion = "1.8.0"
+val ScalexVersion = "1.9.0"
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -839,13 +839,16 @@ def formatRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
     i += 1
   buf.toString
 
-def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String): Unit =
-  if symbol.contains("/") || symbol.startsWith(".") then
-    println(s"  Note: \"$symbol\" looks like a path. Did you mean: scalex $cmd -w <workspace> $symbol?")
-  println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
-  if idx.parseFailures > 0 then
-    println(s"  ${idx.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
-  println(s"  Fallback: use Grep, Glob, or Read tools to search manually.")
+def printNotFoundHint(symbol: String, idx: WorkspaceIndex, cmd: String, batchMode: Boolean = false): Unit =
+  if batchMode then
+    println(s"  not found (0 matches in ${idx.fileCount} files)")
+  else
+    if symbol.contains("/") || symbol.startsWith(".") then
+      println(s"  Note: \"$symbol\" looks like a path. Did you mean: scalex $cmd -w <workspace> $symbol?")
+    println(s"  Hint: scalex indexes ${idx.fileCount} git-tracked .scala files.")
+    if idx.parseFailures > 0 then
+      println(s"  ${idx.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
+    println(s"  Fallback: use Grep, Glob, or Read tools to search manually.")
 
 def hasRegexHint(pattern: String): Boolean =
   pattern.contains("\\|") || pattern.contains("\\(") || pattern.contains("\\)")
@@ -868,7 +871,8 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
                limit: Int, kindFilter: Option[String], verbose: Boolean, categorize: Boolean,
                noTests: Boolean, pathFilter: Option[String], contextLines: Int,
                jsonOutput: Boolean, grepPatterns: List[String] = Nil,
-               countOnly: Boolean = false): Unit =
+               countOnly: Boolean = false, batchMode: Boolean = false,
+               searchMode: Option[String] = None): Unit =
   val fmt = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
     if contextLines > 0 then r => jsonRefWithContext(r, workspace, contextLines)
@@ -902,6 +906,15 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         case None => println("Usage: scalex search <query>")
         case Some(query) =>
           var results = idx.search(query)
+          searchMode.foreach {
+            case "exact" =>
+              val lower = query.toLowerCase
+              results = results.filter(_.name.toLowerCase == lower)
+            case "prefix" =>
+              val lower = query.toLowerCase
+              results = results.filter(_.name.toLowerCase.startsWith(lower))
+            case _ => ()
+          }
           kindFilter.foreach { k =>
             val kk = k.toLowerCase
             results = results.filter(_.kind.toString.toLowerCase == kk)
@@ -914,7 +927,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           else
             if results.isEmpty then
               println(s"Found 0 symbols matching \"$query\"")
-              printNotFoundHint(query, idx, "search")
+              printNotFoundHint(query, idx, "search", batchMode)
             else
               println(s"Found ${results.size} symbols matching \"$query\":")
               results.take(limit).foreach(s => println(fmt(s, workspace)))
@@ -947,7 +960,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           else
             if results.isEmpty then
               println(s"Definition of \"$symbol\": not found")
-              printNotFoundHint(symbol, idx, "def")
+              printNotFoundHint(symbol, idx, "def", batchMode)
             else
               println(s"Definition of \"$symbol\":")
               results.take(limit).foreach(s => println(fmt(s, workspace)))
@@ -970,7 +983,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           else
             if results.isEmpty then
               println(s"No implementations of \"$symbol\" found")
-              printNotFoundHint(symbol, idx, "impl")
+              printNotFoundHint(symbol, idx, "impl", batchMode)
             else
               println(s"Implementations of \"$symbol\" — ${results.size} found:")
               results.take(limit).foreach(s => println(fmt(s, workspace)))
@@ -1064,7 +1077,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           else
             if results.isEmpty then
               println(s"No imports of \"$symbol\" found")
-              printNotFoundHint(symbol, idx, "imports")
+              printNotFoundHint(symbol, idx, "imports", batchMode)
             else
               val suffix = if idx.timedOut then " (timed out — partial results)" else ""
               println(s"Imports of \"$symbol\" — ${results.size} found:$suffix")
@@ -1183,7 +1196,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     case -1 => None
     case i => argList.lift(i + 1)
   val verbose = argList.contains("--verbose")
-  val categorize = argList.contains("--categorize")
+  val categorize = argList.contains("--categorize") || argList.contains("-c")
   val noTests = argList.contains("--no-tests")
   val pathFilter: Option[String] = argList.indexOf("--path") match
     case -1 => None
@@ -1193,6 +1206,10 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
   val jsonOutput = argList.contains("--json")
   val countOnly = argList.contains("--count")
+  val searchMode: Option[String] =
+    if argList.contains("--exact") then Some("exact")
+    else if argList.contains("--prefix") then Some("prefix")
+    else None
   val grepPatterns: List[String] = argList.zipWithIndex.collect {
     case ("-e", i) if argList.lift(i + 1).exists(a => !a.startsWith("-")) => argList(i + 1)
   }
@@ -1203,7 +1220,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
     if idx >= 0 then argList.lift(idx + 1) else None
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e")
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || {
+  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
   })
@@ -1231,12 +1248,14 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
         |  --limit N             Max results (default: 20)
         |  --kind K              Filter by kind: class, trait, object, def, val, type, enum, given, extension
         |  --verbose             Show signatures and extends clauses
-        |  --categorize          Group refs by: definition, extends, import, type usage, comment
+        |  --categorize, -c      Group refs by: definition, extends, import, type usage, comment
         |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
         |  -C N                  Show N context lines around each reference (refs, grep)
         |  -e PATTERN            Grep: additional pattern (combine multiple with |); repeatable
         |  --count               Grep: show match/file count only, no full results
+        |  --exact               Search: only exact name matches
+        |  --prefix              Search: only exact + prefix matches
         |  --json                Output results as JSON (structured output for programmatic use)
         |  --version             Print version and exit
         |
@@ -1256,7 +1275,7 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
           val batchCmd = parts.head
           val batchRest = parts.tail
           println(s">>> $line")
-          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly)
+          runCommand(batchCmd, batchRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, batchMode = true, searchMode)
           println()
         line = reader.readLine()
 
@@ -1277,4 +1296,4 @@ def runCommand(cmd: String, rest: List[String], idx: WorkspaceIndex, workspace: 
       val bloomCmds = Set("refs", "imports")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
-      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly)
+      runCommand(cmd, cmdRest, idx, workspace, limit, kindFilter, verbose, categorize, noTests, pathFilter, contextLines, jsonOutput, grepPatterns, countOnly, searchMode = searchMode)

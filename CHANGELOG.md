@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.0] — 2026-03-16
+
+### Added
+- `search --exact` flag — only return symbols with exact name match (#43)
+- `search --prefix` flag — only return symbols whose name starts with the query (#43)
+- `-c` short alias for `--categorize` on `refs` — saves tokens in agent workflows (#43)
+- Condensed "not found" output in batch mode — single line instead of multi-line hints (#43)
+
 ## [1.8.0] — 2026-03-16
 
 ### Improved
