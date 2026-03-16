@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.13.0] — 2026-03-16
 
 ### Fixed
 - False "parse error" reports for files with no extractable symbols — files containing only `Pkg.Object` (package objects), top-level `export` statements, or anonymous `given` aliases are no longer misreported (#61)
