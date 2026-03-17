@@ -30,6 +30,7 @@ def cmdSummary(args: List[String], ctx: CommandContext): CmdResult =
           }
           if ctx.noTests then allSymbols = allSymbols.filter(s => !isTestFile(s.file, ctx.workspace))
           ctx.pathFilter.foreach { p => allSymbols = allSymbols.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+          ctx.excludePath.foreach { p => allSymbols = allSymbols.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
 
           // Group by sub-package relative to resolvedPkg
           val grouped = allSymbols.groupBy { s =>

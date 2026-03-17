@@ -286,11 +286,13 @@ def extractSymbolsFromSource(source: String, filePath: String): List[DiffSymbol]
 def astPatternSearch(idx: WorkspaceIndex, workspace: Path,
                      hasMethod: Option[String], extendsTrait: Option[String],
                      bodyContains: Option[String], noTests: Boolean,
-                     pathFilter: Option[String], limit: Int): List[AstPatternMatch] = {
+                     pathFilter: Option[String], excludePath: Option[String] = None,
+                     limit: Int): List[AstPatternMatch] = {
   val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
   var candidates = idx.symbols.filter(s => typeKinds.contains(s.kind))
   if noTests then candidates = candidates.filter(s => !isTestFile(s.file, workspace))
   pathFilter.foreach { p => candidates = candidates.filter(s => matchesPath(s.file, p, workspace)) }
+  excludePath.foreach { p => candidates = candidates.filter(s => !matchesPath(s.file, p, workspace)) }
 
   // Filter by extends
   extendsTrait.foreach { traitName =>

@@ -2,6 +2,7 @@ def cmdTests(args: List[String], ctx: CommandContext): CmdResult =
   val nameFilter = args.headOption
   var filesToScan = ctx.idx.gitFiles.map(_.path).filter(f => isTestFile(f, ctx.workspace))
   ctx.pathFilter.foreach { p => filesToScan = filesToScan.filter(f => matchesPath(f, p, ctx.workspace)) }
+  ctx.excludePath.foreach { p => filesToScan = filesToScan.filter(f => !matchesPath(f, p, ctx.workspace)) }
   val allSuites = filesToScan.flatMap(extractTests).map { suite =>
     nameFilter match
       case Some(pattern) =>

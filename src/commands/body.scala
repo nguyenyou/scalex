@@ -6,6 +6,7 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
       var defs = ctx.idx.findDefinition(symbol)
       if ctx.noTests then defs = defs.filter(s => !isTestFile(s.file, ctx.workspace))
       ctx.pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+      ctx.excludePath.foreach { p => defs = defs.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
       // Also look in type definitions for member bodies
       val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
       val filesToSearch = if defs.nonEmpty then {
