@@ -1235,6 +1235,42 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("\"total\":"), s"JSON should have total: $output")
   }
 
+  // ── body command: dotted syntax + error messages ───────────────────
+
+  test("body Owner.member dotted syntax resolves to member body") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("UserServiceLive.findUser"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("db.query"), s"Should find findUser body via dotted syntax: $output")
+    assert(output.contains("UserServiceLive"), s"Should mention owner: $output")
+  }
+
+  test("body with --in owner not-found includes owner in message") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("nonExistentMethod"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive")))
+    }
+    assert(output.contains("UserServiceLive"), s"Error should mention owner: $output")
+    assert(output.contains("No body found"), s"Should say not found: $output")
+  }
+
+  test("body dotted syntax not used when --in is already set") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserServiceLive.findUser with --in should treat whole string as symbol name, not split
+    val output = captureOut {
+      runCommand("body", List("UserServiceLive.findUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive")))
+    }
+    // With --in already set, dotted fallback is skipped; "UserServiceLive.findUser" is not a real symbol name
+    assert(output.contains("No body found"), s"Should not find body when --in is set with dotted symbol: $output")
+  }
+
   test("entrypoints --no-tests excludes test suites from results") {
     val idx = WorkspaceIndex(workspace)
     idx.index()

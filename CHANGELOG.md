@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- `body` command now supports `Owner.method` dotted syntax (e.g. `body DynamicOwner.activate`) — splits into member name + implicit `--in` owner (#147)
+- `body` not-found error message now includes the owner name when `--in` is used (e.g. `No body found for "onStart" in WritableObservable`) (#147)
+
 ## [1.19.0] — 2026-03-17
 
 ### Added

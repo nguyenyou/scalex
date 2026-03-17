@@ -23,9 +23,25 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
       val blocks = filesToSearch.flatMap { f =>
         extractBody(f, symbol, ctx.inOwner).map(b => (file = f, body = b))
       }
+      // Fallback: if no results and symbol has a dot, split into Owner.member
+      if blocks.isEmpty && symbol.contains(".") && ctx.inOwner.isEmpty then
+        val lastDot = symbol.lastIndexOf('.')
+        if lastDot > 0 then
+          val ownerName = symbol.substring(0, lastDot)
+          val memberName = symbol.substring(lastDot + 1)
+          val ownerFiles = ctx.idx.findDefinition(ownerName)
+            .filter(s => typeKinds.contains(s.kind))
+            .map(_.file).distinct
+          val dottedBlocks = ownerFiles.flatMap { f =>
+            extractBody(f, memberName, Some(ownerName)).map(b => (file = f, body = b))
+          }
+          if dottedBlocks.nonEmpty then
+            return CmdResult.SourceBlocks(memberName, dottedBlocks)
+
       if blocks.isEmpty then
-        CmdResult.NotFound(
-          s"""No body found for "$symbol"""",
-          mkNotFoundWithSuggestions(symbol, ctx, "body"))
+        val msg = ctx.inOwner match
+          case Some(owner) => s"""No body found for "$symbol" in $owner"""
+          case None => s"""No body found for "$symbol""""
+        CmdResult.NotFound(msg, mkNotFoundWithSuggestions(symbol, ctx, "body"))
       else
         CmdResult.SourceBlocks(symbol, blocks)
