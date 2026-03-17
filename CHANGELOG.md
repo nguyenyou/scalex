@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.20.0] — 2026-03-17
+
 ### Changed
 - `identifierBloom` field is now `Option[BloomFilter]` — eliminates null sentinel; index format bumped to v8 (old caches auto-rebuild) (#148)
 - Exception catches narrowed from `Exception` to `java.io.IOException` for file I/O; parse fallbacks log to stderr: `scalex: parse failed: <path>` (#148)

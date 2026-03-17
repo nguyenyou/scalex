@@ -2,7 +2,7 @@ import java.nio.file.Path
 import com.google.common.hash.BloomFilter
 import java.util.concurrent.ConcurrentLinkedQueue as CLQ
 
-val ScalexVersion = "1.19.0"
+val ScalexVersion = "1.20.0"
 
 // ── Timings ────────────────────────────────────────────────────────────────
 
