@@ -105,6 +105,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: GrepCount        => renderGrepCount(r, ctx)
     case r: Packages         => renderPackages(r, ctx)
     case r: PackageSymbols   => renderPackageSymbols(r, ctx)
+    case r: PackageSummary   => renderPackageSummary(r, ctx)
     case r: ApiSurface       => renderApiSurface(r, ctx)
     case r: RefsSummary      => renderRefsSummary(r, ctx)
     case r: NotFound         => renderNotFound(r, ctx)
@@ -527,7 +528,8 @@ private def renderHierarchyResult(r: CmdResult.HierarchyResult, ctx: CommandCont
   def treeJson(t: HierarchyTree): String = {
     val ps = t.parents.map(treeJson).mkString("[", ",", "]")
     val cs = t.children.map(treeJson).mkString("[", ",", "]")
-    s"""{"node":${nodeJson(t.root)},"parents":$ps,"children":$cs}"""
+    val trunc = if t.truncatedChildren > 0 then s""","truncatedChildren":${t.truncatedChildren}""" else ""
+    s"""{"node":${nodeJson(t.root)},"parents":$ps,"children":$cs$trunc}"""
   }
   if ctx.jsonOutput then {
     println(treeJson(tree))
@@ -569,6 +571,8 @@ private def renderHierarchyResult(r: CmdResult.HierarchyResult, ctx: CommandCont
           val nloc = n.file.map(f => s" — ${ctx.workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
           println(s"$prefix$nkind${n.name}$npkg$nloc")
           printChildren(ct.children, nextIndent)
+          if ct.truncatedChildren > 0 then
+            println(s"$nextIndent... and ${ct.truncatedChildren} more children")
         }
       }
       if tree.children.isEmpty then println("    (none)")
@@ -855,6 +859,26 @@ private def renderPackageSymbols(r: CmdResult.PackageSymbols, ctx: CommandContex
             println(s"    ${s.name.padTo(30, ' ')} ${ctx.workspace.relativize(s.file)}:${s.line}")
         }
         if syms.size > ctx.limit then println(s"    ... and ${syms.size - ctx.limit} more")
+      }
+    }
+  }
+}
+
+private def renderPackageSummary(r: CmdResult.PackageSummary, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val arr = r.subPackages.map { (sub, count) =>
+      s"""{"subPackage":"${jsonEscape(sub)}","symbolCount":$count}"""
+    }.mkString("[", ",", "]")
+    println(s"""{"package":"${jsonEscape(r.pkg)}","totalSymbols":${r.totalSymbols},"subPackages":$arr}""")
+  } else {
+    if r.subPackages.isEmpty then {
+      println(s"""Package ${r.pkg}: no symbols found""")
+    } else {
+      println(s"Summary of ${r.pkg} (${r.totalSymbols} symbols):\n")
+      val maxNameLen = r.subPackages.map(_.subPkg.length).maxOption.getOrElse(10).min(50)
+      r.subPackages.foreach { (sub, count) =>
+        val label = if sub == "(root)" then "(root)" else s".${sub}"
+        println(s"  ${label.padTo(maxNameLen + 2, ' ')} $count")
       }
     }
   }

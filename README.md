@@ -152,6 +152,7 @@ scalex packages                            # List all packages
 scalex package com.example                 # Explore a specific package
 scalex api com.example                     # What does this package export?
 scalex api com.example --used-by com.web   # Coupling: what does web use from example?
+scalex summary com.example                 # Sub-packages with symbol counts
 
 # Understand
 scalex def UserService --verbose           # Definition with signature
@@ -230,6 +231,7 @@ scalex ast-pattern              Structural AST search           (aka: pattern se
 scalex tests                    List test cases structurally    (aka: find tests)
 scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
 scalex api <package>            Public API surface of a package (aka: exported symbols)
+scalex summary <package>        Sub-packages with symbol counts   (aka: package breakdown)
 ```
 
 All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
@@ -257,7 +259,8 @@ All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. S
 
 - `--kind`, `--path`, `--no-tests` — filter at the source, not after
 - `--exact` / `--prefix` — `search Auth --prefix` returns ~20 results instead of 1300+
-- `--definitions-only` — only class/trait/object/enum, no val/def name collisions
+- `--definitions-only` — only class/trait/object/enum, no val/def name collisions (works on `search` and `package`)
+- `summary` — sub-package breakdown with symbol counts; drill-down from overview to package
 - `--category` on refs — `refs Signal --category ExtendedBy` for targeted impact analysis
 
 **Structured, not raw.** Every result includes symbol kind, package name, file path, and line number. `--json` on all commands for programmatic parsing. Fallback hints on "not found" suggest Grep/Glob as alternatives.

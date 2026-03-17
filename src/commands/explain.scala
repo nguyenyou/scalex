@@ -24,6 +24,23 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
             return CmdResult.Explanation(msym, doc, Nil, Nil, Nil)
           case None => ()
       if defs.isEmpty then
+        // Fuzzy fallback: try search and auto-show best match if unambiguous
+        val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+        var fuzzyResults = ctx.idx.search(symbol).filter(s => typeKinds.contains(s.kind))
+        if ctx.noTests then fuzzyResults = fuzzyResults.filter(s => !isTestFile(s.file, ctx.workspace))
+        ctx.pathFilter.foreach { p => fuzzyResults = fuzzyResults.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+        // Auto-use if exactly one strong match (exact case-insensitive or prefix)
+        val lower = symbol.toLowerCase
+        val strongMatches = fuzzyResults.filter { s =>
+          val nl = s.name.toLowerCase
+          nl == lower || nl.startsWith(lower) || lower.startsWith(nl)
+        }
+        if strongMatches.size == 1 then
+          val bestMatch = strongMatches.head
+          System.err.println(s"""(no exact match for "$symbol" — showing ${bestMatch.name} instead)""")
+          defs = List(bestMatch)
+        end if
+      if defs.isEmpty then
         CmdResult.NotFound(
           s"""No definition of "$symbol" found""",
           mkNotFoundWithSuggestions(symbol, ctx, "explain"))
@@ -35,7 +52,9 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val doc = extractScaladoc(sym.file, sym.line)
         // Members (for types)
         val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
-        val members = if typeKinds.contains(sym.kind) then extractMembers(sym.file, simpleName).take(10) else Nil
+        val members = if typeKinds.contains(sym.kind) then
+          extractMembers(sym.file, simpleName).sortBy(memberKindRank).take(ctx.membersLimit)
+        else Nil
         // Companion lookup
         val companionKinds: Set[SymbolKind] = sym.kind match
           case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => Set(SymbolKind.Object)
@@ -46,7 +65,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           else
             defs.find(d => companionKinds.contains(d.kind) && d.packageName == sym.packageName && d.file == sym.file)
               .map { compSym =>
-                val compMembers = extractMembers(compSym.file, simpleName).take(10)
+                val compMembers = extractMembers(compSym.file, simpleName).sortBy(memberKindRank).take(ctx.membersLimit)
                 (sym = compSym, members = compMembers)
               }
         // Implementations
@@ -68,8 +87,15 @@ private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
       val key = s"${impl.packageName}.${impl.name}".toLowerCase
       if visited.contains(key) then ExplainedImpl(impl, Nil, Nil)
       else
-        val members = extractMembers(impl.file, impl.name).take(10)
+        val members = extractMembers(impl.file, impl.name).sortBy(memberKindRank).take(ctx.membersLimit)
         val subImpls = filterSymbols(ctx.idx.findImplementations(impl.name), ctx).take(ctx.implLimit)
         val expanded = expandImpls(subImpls, ctx, depth + 1, visited + key)
         ExplainedImpl(impl, members, expanded)
     }
+
+private def memberKindRank(m: MemberInfo): Int = m.kind match
+  case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
+  case SymbolKind.Def => 1
+  case SymbolKind.Val | SymbolKind.Var => 2
+  case SymbolKind.Type => 3
+  case _ => 4

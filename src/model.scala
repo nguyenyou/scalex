@@ -95,7 +95,7 @@ case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: Stri
 case class BodyInfo(ownerName: String, symbolName: String, sourceText: String, startLine: Int, endLine: Int)
 
 case class HierarchyNode(name: String, kind: Option[SymbolKind], file: Option[Path], line: Option[Int], packageName: String, isExternal: Boolean)
-case class HierarchyTree(root: HierarchyNode, parents: List[HierarchyTree], children: List[HierarchyTree])
+case class HierarchyTree(root: HierarchyNode, parents: List[HierarchyTree], children: List[HierarchyTree], truncatedChildren: Int = 0)
 
 case class OverrideInfo(file: Path, line: Int, enclosingClass: String, enclosingKind: SymbolKind, signature: String, packageName: String)
 
@@ -133,6 +133,7 @@ case class CommandContext(
   hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
   bodyContainsFilter: Option[String] = None,
   expandDepth: Int = 0,
+  membersLimit: Int = 10,
   usedByFilter: Option[String] = None,
   returnsFilter: Option[String] = None,
   takesFilter: Option[String] = None,
@@ -197,6 +198,7 @@ enum CmdResult:
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
   case Packages(packages: List[String])
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
+  case PackageSummary(pkg: String, subPackages: List[(subPkg: String, count: Int)], totalSymbols: Int)
   case ApiSurface(pkg: String, symbols: List[(symbol: SymbolInfo, importerCount: Int)], totalInPackage: Int, internalOnly: List[String])
   case RefsSummary(symbol: String, categoryCounts: List[(category: RefCategory, count: Int)], total: Int, timedOut: Boolean)
   case NotFound(message: String, hint: NotFoundHint)

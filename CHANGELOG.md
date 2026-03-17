@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- `package --definitions-only` — filter to class/trait/object/enum only, same as `search --definitions-only` (#121)
+- `overview` hub types filter stdlib — `mostExtended` and `hubTypes` now skip scala/java base types (object, serializable, anyval, matchable, etc.) to surface real domain types (#121)
+- `explain` members sorted by kind — classes/traits first, then defs, then vals/vars, then types; add `--members-limit N` (default: 10) (#121)
+- `explain` fuzzy fallback — if exact match fails, tries fuzzy search and auto-shows best type match with stderr hint (#121)
+- `hierarchy` truncation count — shows "... and N more children" at depth limit instead of silent cut-off (#121)
+- `scalex summary <package>` — sub-package breakdown with symbol counts; middle ground between `overview` and `package` for top-down exploration (#121)
 - `overview` defaults to `--no-tests` — production code is almost always the intent; use `--include-tests` to opt in (#119, #120)
 - `explain --verbose` shows member signatures instead of just names (#119, #120)
 - `explain` inlines "Imported by" file list when count <= 10; shows count + hint otherwise (#119, #120)

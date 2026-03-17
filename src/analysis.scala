@@ -41,8 +41,13 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
     val impls = idx.findImplementations(name)
     impls.map { s =>
       val node = HierarchyNode(s.name, Some(s.kind), Some(s.file), Some(s.line), s.packageName, isExternal = false)
-      val grandChildren = walkDown(s.name, newVisited, depth + 1)
-      HierarchyTree(node, Nil, grandChildren)
+      if depth + 1 >= maxDepth then {
+        val truncated = idx.findImplementations(s.name).size
+        HierarchyTree(node, Nil, Nil, truncatedChildren = truncated)
+      } else {
+        val grandChildren = walkDown(s.name, newVisited, depth + 1)
+        HierarchyTree(node, Nil, grandChildren)
+      }
     }
   }
 

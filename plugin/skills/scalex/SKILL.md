@@ -298,11 +298,11 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--verbose] [--impl-limit N] [--expand N] [--no-tests] [--path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX]` — composite summary
 
 One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
-`--verbose` shows member signatures instead of just names. `--impl-limit N` controls how many implementations to show (default: 5). `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint.
+`--verbose` shows member signatures instead of just names. `--impl-limit N` controls how many implementations to show (default: 5). `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint.
 
 ```bash
 scalex explain UserService                  # full summary with companion
@@ -409,16 +409,19 @@ Types matching AST pattern (extends=UserService, has-method=findUser) — 2 foun
   class     OldService (com.example) — .../Annotated.scala:4
 ```
 
-### `scalex package <pkg> [--verbose] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — explore package
+### `scalex package <pkg> [--verbose] [--kind K] [--definitions-only] [--no-tests] [--path PREFIX] [--limit N]` — explore package
 
 Lists all symbols in a package, grouped by kind (Class, Trait, Object, Enum, etc.). Fills the gap between `overview` (top packages) and `symbols` (per-file) — enables top-down exploration: overview → package → explain.
 
 Package name is fuzzy matched: exact → suffix (`.example` matches `com.example`) → substring. On not-found, suggests matching package names.
 
+Use `--definitions-only` to filter to class/trait/object/enum — hides val/def noise on large packages.
+
 ```bash
 scalex package com.example                  # all symbols in com.example
 scalex package example                      # fuzzy match: resolves to com.example
 scalex package com.example --kind trait     # only traits
+scalex package com.example --definitions-only  # only class/trait/object/enum
 scalex package com.example --no-tests       # exclude test symbols
 scalex package com.example --verbose        # show signatures
 ```
@@ -459,6 +462,27 @@ API surface of com.example (8 of 15 symbols imported externally):
   UserService               trait      8 importers  src/.../UserService.scala:7
 
   Not imported externally (7): Role, UserId, userOrdering, ...
+```
+
+### `scalex summary <package> [--no-tests] [--path PREFIX]` — package breakdown
+
+Sub-package view with symbol counts. Middle ground between `overview` (project-wide) and `package` (single-package symbols). Use for top-down drill-down: overview → summary → package → explain.
+
+Package name is fuzzy matched (same as `package` command).
+
+```bash
+scalex summary com.example                  # sub-packages with counts
+scalex summary example                      # fuzzy match on package name
+scalex summary com.example --no-tests       # exclude test symbols
+```
+```
+Summary of com.example (245 symbols):
+
+  .backend.emitter      89
+  .frontend.parser      67
+  .core.types           45
+  (root)                24
+  .util                 20
 ```
 
 ### `scalex symbols <file> [--verbose]` / `scalex packages` — file symbols / list packages
@@ -538,6 +562,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--in OWNER` | Body: restrict to members of the given enclosing type |
 | `--of TRAIT` | Overrides: restrict to implementations of the given trait |
 | `--impl-limit N` | Explain: max implementations to show (default: 5) |
+| `--members-limit N` | Explain: max members to show per type (default: 10) |
 | `--expand N` | Explain: recursively expand implementations N levels deep |
 | `--up` | Hierarchy: show only parents (default: both) |
 | `--down` | Hierarchy: show only children (default: both) |
@@ -564,6 +589,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"What's the impact of renaming X?"** → `scalex refs X` (categorized by default — groups by Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment)
 
 **"What's in this package?"** → `scalex package com.example` — all symbols grouped by kind; fuzzy match on package name
+
+**"How is this package structured?"** → `scalex summary com.example` — sub-packages with symbol counts for top-down exploration
 
 **"What does this package export?"** → `scalex api com.example` — shows symbols imported by other packages, sorted by importer count
 

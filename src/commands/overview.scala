@@ -1,5 +1,13 @@
 import scala.collection.mutable
 
+private val stdlibParentNames = Set(
+  "product", "serializable", "anyval", "anyref", "any", "matchable",
+  "equals", "object", "enum", "throwable", "exception"
+)
+
+private def isStdlibParent(name: String): Boolean =
+  stdlibParentNames.contains(name.toLowerCase)
+
 def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
   val allSymbols = if ctx.noTests then ctx.idx.symbols.filter(s => !isTestFile(s.file, ctx.workspace))
                    else ctx.idx.symbols
@@ -8,7 +16,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     .filter(_._1.nonEmpty).toList.sortBy(-_._2.size).take(ctx.limit)
     .map((p, s) => (pkg = p, syms = s))
   val mostExtended = ctx.idx.parentIndex.toList
-    .filter((name, _) => ctx.idx.symbolsByName.contains(name))
+    .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name))
     .map { (name, impls) =>
       if ctx.noTests then (name, impls.filter(s => !isTestFile(s.file, ctx.workspace)))
       else (name, impls)
@@ -58,7 +66,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
   val hubTypes: List[(name: String, score: Int)] = if effectiveArch then {
     val refCounts = mutable.HashMap.empty[String, Int]
     ctx.idx.parentIndex.foreach { (name, impls) =>
-      if ctx.idx.symbolsByName.contains(name) then
+      if ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) then
         val filteredImpls = if ctx.noTests then impls.filter(s => !isTestFile(s.file, ctx.workspace)) else impls
         refCounts(name) = refCounts.getOrElse(name, 0) + filteredImpls.size
     }

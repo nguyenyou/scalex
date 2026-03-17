@@ -87,6 +87,9 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val expandDepth: Int = argList.indexOf("--expand") match
     case -1 => 0
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(1)
+  val membersLimit: Int = argList.indexOf("--members-limit") match
+    case -1 => 10
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(10)
   val brief = argList.contains("--brief")
   val strict = argList.contains("--strict")
   val usedByFilter: Option[String] = argList.indexOf("--used-by") match
@@ -103,7 +106,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
                            "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
-                           "--used-by", "--returns", "--takes")
+                           "--members-limit", "--used-by", "--returns", "--takes")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -141,6 +144,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  scalex tests                    List test cases structurally    (aka: find tests)
         |  scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
         |  scalex api <package>            Public API surface of a package (aka: exported symbols)
+        |  scalex summary <package>        Sub-packages with symbol counts   (aka: package breakdown)
         |
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
@@ -164,6 +168,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --in OWNER            Body: restrict to members of the given enclosing type
         |  --of TRAIT            Overrides: restrict to implementations of the given trait
         |  --impl-limit N        Explain: max implementations to show (default: 5)
+        |  --members-limit N    Explain: max members to show per type (default: 10)
         |  --expand N            Explain: recursively expand implementations N levels deep
         |  --up                  Hierarchy: show only parents (default: both)
         |  --down                Hierarchy: show only children (default: both)
@@ -200,7 +205,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         architecture = architecture, focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
-        brief = brief, strict = strict,
+        membersLimit = membersLimit, brief = brief, strict = strict,
         usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
@@ -245,7 +250,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
-        brief = brief, strict = strict,
+        membersLimit = membersLimit, brief = brief, strict = strict,
         usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter)
       runCommand(cmd, cmdRest, ctx)
       Timings.report()

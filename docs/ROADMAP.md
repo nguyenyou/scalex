@@ -4,7 +4,22 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Discarded from #121
+
+- ~~`scalex flow <from> <to>`~~ — BFS without type resolution is fragile via name collisions; fails "better than grep" gate (same reasoning as rejected `scalex path` in #102)
+- ~~`scalex sealed <trait>`~~ — `hierarchy --down --depth 1` already serves this use case; marginal
+- ~~Smarter default limits~~ — auto-summarize is hard to get right universally; better to give users explicit flags (`--members-limit`, `--definitions-only`)
+
 ## Completed
+
+### Signal vs noise (#121)
+
+- `package --definitions-only` — filter out vals/defs, show only class/trait/object/enum
+- `overview` hub types filter stdlib — skip scala/java base types (object, serializable, anyval) to surface real domain hub types
+- `explain` members sorted by kind — classes before defs before vals; `--members-limit N` flag (default 10)
+- `explain` fuzzy fallback — if exact match fails, auto-show best fuzzy match with stderr hint
+- `hierarchy` truncation count — "... and 87 more children" at depth limit instead of silent cut-off
+- `scalex summary <package>` — sub-package view with symbol counts; middle ground between `overview` and `package`
 
 ### Reduce round-trips (#119, #120)
 

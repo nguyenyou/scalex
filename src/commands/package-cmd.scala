@@ -24,5 +24,8 @@ def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
             s"""Package "$pkg" not found""",
             NotFoundHint(pkg, ctx.idx.fileCount, ctx.idx.parseFailures, "package", ctx.batchMode, false, pkgSuggestions))
         case Some(resolvedPkg) =>
-          val symbols = filterSymbols(ctx.idx.symbols.filter(_.packageName == resolvedPkg), ctx)
+          var symbols = filterSymbols(ctx.idx.symbols.filter(_.packageName == resolvedPkg), ctx)
+          if ctx.definitionsOnly then
+            val defKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+            symbols = symbols.filter(s => defKinds.contains(s.kind))
           CmdResult.PackageSymbols(resolvedPkg, symbols)
