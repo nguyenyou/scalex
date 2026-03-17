@@ -5,7 +5,7 @@
     <img src="site/readme-banner-dark.png" alt="Scalex — Scala code intelligence for AI coding agents" width="839" height="440">
   </picture>
   <br>
-  <em>Grep knows text. Scalex knows Scala.</em>
+  <em>Scala code intelligence for AI coding agents.</em>
 </p>
 
 ---
@@ -30,7 +30,7 @@ What if we took the fast parts of a language server — source-level indexing �
 
 ## How It Works
 
-~3,100 lines of Scala 3 across 8 source files. Here's the architecture:
+Here's the architecture:
 
 ```
                          ┌─────────────────┐
