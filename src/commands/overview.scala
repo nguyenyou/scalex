@@ -40,7 +40,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
       (name = name, impls = filtered, distinctPkgs = distinctPkgs)
     }
     .filter(_.impls.nonEmpty)
-    .sortBy(t => (-t.distinctPkgs, -t.impls.size)) // primary: distinct packages, secondary: impl count
+    .sortBy(t => (primary = -t.distinctPkgs, secondary = -t.impls.size))
     .take(ctx.limit)
 
   val effectiveArch = ctx.architecture || ctx.focusPackage.isDefined
