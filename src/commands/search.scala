@@ -42,7 +42,7 @@ def cmdSearch(args: List[String], ctx: CommandContext): CmdResult =
       if results.isEmpty then
         CmdResult.NotFound(
           s"""Found 0 symbols matching "$query"""",
-          NotFoundHint(query, ctx.idx.fileCount, ctx.idx.parseFailures, "search", ctx.batchMode, query.contains("/") || query.startsWith(".")))
+          mkNotFoundWithSuggestions(query, ctx, "search"))
       else
         CmdResult.SymbolList(
           header = s"""Found ${results.size} symbols matching "$query":""",

@@ -21,6 +21,28 @@ def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String):
   NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode,
     symbol.contains("/") || symbol.startsWith("."), suggestions)
 
+// ── Package resolution (shared by package, api, summary) ────────────────────
+
+def resolvePackage(pkg: String, ctx: CommandContext): Option[String] =
+  val lower = pkg.toLowerCase
+  def bestMatch(candidates: Iterable[String]): Option[String] =
+    if candidates.isEmpty then None
+    else Some(candidates.maxBy(p => ctx.idx.packageToSymbols.getOrElse(p, Nil).size))
+  ctx.idx.packages.find(_.equalsIgnoreCase(pkg))
+    .orElse(bestMatch(ctx.idx.packages.filter(_.toLowerCase.endsWith("." + lower))))
+    .orElse(bestMatch(ctx.idx.packages.filter(_.toLowerCase.contains(lower))))
+
+def mkPackageNotFound(pkg: String, ctx: CommandContext, cmd: String): NotFoundHint =
+  val lower = pkg.toLowerCase
+  val segments = lower.split("[.]").filter(_.nonEmpty)
+  val pkgSuggestions = if segments.nonEmpty then
+    ctx.idx.packages.filter { p =>
+      val pl = p.toLowerCase
+      segments.exists(seg => pl.contains(seg))
+    }.toList.sortBy(p => -ctx.idx.packageToSymbols.getOrElse(p, Nil).size).take(5)
+  else Nil
+  NotFoundHint(pkg, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode, false, pkgSuggestions)
+
 // ── Shared filters ──────────────────────────────────────────────────────────
 
 def filterSymbols(symbols: List[SymbolInfo], ctx: CommandContext): List[SymbolInfo] =

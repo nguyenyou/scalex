@@ -136,7 +136,7 @@ private def renderHint(h: NotFoundHint): Unit = {
 }
 
 private def mkNotFoundHint(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
-  NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode, symbol.contains("/") || symbol.startsWith("."))
+  mkNotFoundWithSuggestions(symbol, ctx, cmd)
 
 private def renderSymbolList(r: CmdResult.SymbolList, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {

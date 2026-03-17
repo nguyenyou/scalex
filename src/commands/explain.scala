@@ -31,11 +31,11 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         if ctx.noTests then fuzzyResults = fuzzyResults.filter(s => !isTestFile(s.file, ctx.workspace))
         ctx.pathFilter.foreach { p => fuzzyResults = fuzzyResults.filter(s => matchesPath(s.file, p, ctx.workspace)) }
         ctx.excludePath.foreach { p => fuzzyResults = fuzzyResults.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
-        // Auto-use if exactly one strong match by name (exact case-insensitive or prefix)
+        // Auto-use if exactly one strong match by name (exact case-insensitive, prefix, or suffix)
         val lower = symbol.toLowerCase
         val strongMatches = fuzzyResults.filter { s =>
           val nl = s.name.toLowerCase
-          nl == lower || nl.startsWith(lower) || lower.startsWith(nl)
+          nl == lower || nl.startsWith(lower) || lower.startsWith(nl) || lower.endsWith(nl)
         }
         val distinctNames = strongMatches.map(_.name.toLowerCase).distinct
         if distinctNames.size == 1 then

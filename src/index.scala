@@ -446,6 +446,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val exact = mutable.ListBuffer.empty[SymbolInfo]
     val prefix = mutable.ListBuffer.empty[SymbolInfo]
     val contains = mutable.ListBuffer.empty[SymbolInfo]
+    val reverseContains = mutable.ListBuffer.empty[SymbolInfo]
     val fuzzy = mutable.ListBuffer.empty[SymbolInfo]
 
     distinctSymbols.foreach { s =>
@@ -453,6 +454,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       if n == lower then exact += s
       else if n.startsWith(lower) then prefix += s
       else if n.contains(lower) then contains += s
+      else if lower.endsWith(n) && n.length >= 3 && n.length > lower.length / 2 then reverseContains += s
       else if camelCaseMatch(lower, s.name) then fuzzy += s
     }
     def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, importRank: Int, pathLen: Int) =
@@ -466,7 +468,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       val importRank = -symbolImportRank.getOrElse(s.name.toLowerCase, 0)
       val pathLen = s.file.toString.length
       (kindRank, testRank, importRank, pathLen)
-    exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ fuzzy.sortBy(_.name.length).toList
+    exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ reverseContains.toList.sortBy(s => -s.name.length) ++ fuzzy.sortBy(_.name.length).toList
 
   def fileSymbols(path: String): List[SymbolInfo] =
     val resolved = if Path.of(path).isAbsolute then Path.of(path)

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- `search` now returns reverse-suffix matches — querying `ScalaJSClassEmitter` suggests `ClassEmitter` when no exact match exists (#156)
+- `explain` fuzzy auto-resolve now checks suffix matches — `explain ScalaJSClassEmitter` auto-shows `ClassEmitter` (#156)
+- `search` not-found now shows "Did you mean?" suggestions — previously returned bare "0 matches" with no hints (#156)
+- `coverage` not-found now shows "Did you mean?" suggestions — previously returned bare hint with no suggestions (#156)
+
+### Changed
+- Extracted `resolvePackage()` and `mkPackageNotFound()` shared helpers — deduplicated identical package resolution logic from `package`, `api`, `summary` commands (#156)
+
 ## [1.20.0] — 2026-03-17
 
 ### Changed
