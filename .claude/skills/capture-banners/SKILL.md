@@ -1,6 +1,6 @@
 ---
 name: capture-banners
-description: Re-render Scalex banner and OG image PNGs from their HTML source files using Chrome DevTools MCP. Use this skill whenever banner HTML files are edited (slogan changes, line count updates, color tweaks, layout changes) and the corresponding PNGs need to be regenerated. Triggers on "capture banners", "update banner images", "re-render banners", "regenerate PNGs", or after any edit to files in site/*-banner*.html or site/og-banner*.html.
+description: Re-render Scalex banner and OG image PNGs from their HTML source files using Chrome DevTools MCP. Use this skill whenever banner HTML files are edited (slogan changes, color tweaks, layout changes) and the corresponding PNGs need to be regenerated. Triggers on "capture banners", "update banner images", "re-render banners", "regenerate PNGs", or after any edit to files in site/*-banner*.html or site/og-banner*.html.
 ---
 
 # Capture Banners

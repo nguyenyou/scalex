@@ -24,7 +24,7 @@ A **small kestrel** (the smallest falcon) — fast, sharp-eyed, lightweight, hov
 
 ### Why a kestrel?
 
-- **Smallest falcon** — reflects our lightweight, minimal design (~3,100 lines of code across 8 source files)
+- **Smallest falcon** — reflects our lightweight, minimal design
 - **Incredible eyesight** — spots symbols from across 18k files, like a kestrel spots prey from 50 meters
 - **Hovers in place** — systematically scans an area before diving, like indexing before querying
 - **Fast dive** — instant results once it finds the target
