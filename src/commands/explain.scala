@@ -1,3 +1,6 @@
+import scala.collection.mutable
+import java.nio.file.Path
+
 def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
   args.headOption match
     case None => CmdResult.UsageError("Usage: scalex explain <symbol>")
@@ -68,6 +71,31 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val members = if typeKinds.contains(sym.kind) then
           extractMembers(sym.file, simpleName).sortBy(memberKindRank).take(ctx.membersLimit)
         else Nil
+        // Inherited members (only when --inherited)
+        val inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])] = {
+          if !ctx.inherited || !typeKinds.contains(sym.kind) then Nil
+          else
+            val visited = mutable.HashSet.empty[String]
+            visited += sym.name.toLowerCase
+            val ownMembers = extractMembers(sym.file, simpleName).map(m => (name = m.name, kind = m.kind)).toSet
+            val result = mutable.ListBuffer.empty[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])]
+            def walk(parentNames: List[String]): Unit = {
+              parentNames.foreach { pName =>
+                if !visited.contains(pName.toLowerCase) then {
+                  visited += pName.toLowerCase
+                  val parentDefs = ctx.idx.findDefinition(pName).filter(s => typeKinds.contains(s.kind))
+                  parentDefs.headOption.foreach { pd =>
+                    val parentMembers = extractMembers(pd.file, pd.name)
+                    val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
+                    if filtered.nonEmpty then result += ((pd.name, Some(pd.file), pd.packageName, filtered))
+                    walk(pd.parents)
+                  }
+                }
+              }
+            }
+            walk(sym.parents)
+            result.toList
+        }
         // Companion lookup
         val companionKinds: Set[SymbolKind] = sym.kind match
           case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => Set(SymbolKind.Object)
@@ -83,7 +111,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
               }
         if ctx.shallow then
           // Shallow mode: definition + members + companion only
-          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches)
+          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches, inherited = inherited)
         else
           // Implementations
           val allImpls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx)
@@ -96,7 +124,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           // Import refs (apply path/exclude/noTests filters)
           val importRefs = filterRefs(ctx.idx.findImports(simpleName, timeoutMs = 3000), ctx)
           CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls,
-            otherMatches = otherMatches, totalImpls = totalImpls)
+            otherMatches = otherMatches, totalImpls = totalImpls, inherited = inherited)
 
 private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
                         depth: Int, visited: Set[String]): List[ExplainedImpl] =

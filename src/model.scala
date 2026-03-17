@@ -123,7 +123,7 @@ case class CommandContext(
   limit: Int = 20, verbose: Boolean = false, jsonOutput: Boolean = false, batchMode: Boolean = false,
   kindFilter: Option[String] = None, noTests: Boolean = false, pathFilter: Option[String] = None,
   contextLines: Int = 0, categorize: Boolean = true, categoryFilter: Option[String] = None,
-  grepPatterns: List[String] = Nil, countOnly: Boolean = false,
+  grepPatterns: List[String] = Nil, countOnly: Boolean = false, topN: Option[Int] = None,
   searchMode: Option[String] = None, definitionsOnly: Boolean = false,
   inOwner: Option[String] = None, ofTrait: Option[String] = None,
   implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true, maxDepth: Int = -1,
@@ -194,7 +194,8 @@ enum CmdResult:
   case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importRefs: List[Reference],
     companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None,
     expandedImpls: List[ExplainedImpl] = Nil,
-    otherMatches: Int = 0, totalImpls: Int = 0)
+    otherMatches: Int = 0, totalImpls: Int = 0,
+    inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])] = Nil)
   case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
   case Scopes(file: Path, line: Int, scopes: List[ScopeInfo])
   case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])
@@ -204,6 +205,7 @@ enum CmdResult:
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
   case PackageSummary(pkg: String, subPackages: List[(subPkg: String, count: Int)], totalSymbols: Int)
   case ApiSurface(pkg: String, symbols: List[(symbol: SymbolInfo, importerCount: Int)], totalInPackage: Int, internalOnly: List[String])
+  case RefsTop(symbol: String, fileRanking: List[(file: Path, count: Int)], total: Int, timedOut: Boolean)
   case RefsSummary(symbol: String, categoryCounts: List[(category: RefCategory, count: Int)], total: Int, timedOut: Boolean)
   case NotFound(message: String, hint: NotFoundHint)
   case UsageError(message: String)

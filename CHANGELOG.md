@@ -7,6 +7,8 @@
 - `explain` import refs now respect `--path` and `--exclude-path` filters (previously unfiltered) (#133, #134)
 
 ### Added
+- `explain --inherited` — merge parent members into explain output with provenance markers; same as `members --inherited` but in the composite view (#137)
+- `refs --top N` — rank files by reference count descending; shows heaviest users first for impact analysis (#137)
 - `explain` disambiguation hint — when multiple symbols match, prints "(N other matches — use package-qualified name or --path to disambiguate)" to stderr; JSON includes `otherMatches` field (#132, #133, #134)
 - `explain` package fallback — if `explain foo` finds no symbol but `foo` matches a package name, automatically falls back to `summary foo` (#132)
 - `explain --shallow` — skip implementations and import refs; show only definition + members + companion (#134)

@@ -1068,3 +1068,61 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("\"symbolsByKind\""), s"JSON should have symbolsByKind object: $output")
     assert(output.contains("\"total\""), s"JSON should have total field: $output")
   }
+
+  // ── explain --inherited ─────────────────────────────────────────────
+
+  test("explain --inherited shows inherited members from parent type") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserProcessor"),
+        CommandContext(idx = idx, workspace = workspace, inherited = true))
+    }
+    assert(output.contains("Inherited from Processor"), s"Should show inherited section: $output")
+    assert(output.contains("validate"), s"Should show inherited member 'validate': $output")
+  }
+
+  test("explain without --inherited does not show inherited members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserProcessor"),
+        CommandContext(idx = idx, workspace = workspace, inherited = false))
+    }
+    assert(!output.contains("Inherited from"), s"Should not show inherited section: $output")
+  }
+
+  test("explain --inherited --json includes inherited field") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserProcessor"),
+        CommandContext(idx = idx, workspace = workspace, inherited = true, jsonOutput = true))
+    }
+    assert(output.contains("\"inherited\""), s"JSON should have inherited field: $output")
+    assert(output.contains("\"parent\":\"Processor\""), s"JSON should reference parent: $output")
+  }
+
+  // ── refs --top N ────────────────────────────────────────────────────
+
+  test("refs --top N ranks files by reference count") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("refs", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, topN = Some(5)))
+    }
+    assert(output.contains("files referencing 'UserService'"), s"Should show top refs header: $output")
+  }
+
+  test("refs --top N --json outputs structured ranking") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("refs", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, topN = Some(3), jsonOutput = true))
+    }
+    assert(output.contains("\"symbol\":\"UserService\""), s"JSON should have symbol: $output")
+    assert(output.contains("\"files\":["), s"JSON should have files array: $output")
+    assert(output.contains("\"total\":"), s"JSON should have total: $output")
+  }

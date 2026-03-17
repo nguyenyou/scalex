@@ -107,6 +107,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: PackageSymbols   => renderPackageSymbols(r, ctx)
     case r: PackageSummary   => renderPackageSummary(r, ctx)
     case r: ApiSurface       => renderApiSurface(r, ctx)
+    case r: RefsTop          => renderRefsTop(r, ctx)
     case r: RefsSummary      => renderRefsSummary(r, ctx)
     case r: NotFound         => renderNotFound(r, ctx)
     case r: UsageError       => println(r.message)
@@ -636,7 +637,15 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
     else ""
     val otherJson = if r.otherMatches > 0 then s""","otherMatches":${r.otherMatches}""" else ""
     val totalImplJson = if r.totalImpls > r.impls.size then s""","totalImplementations":${r.totalImpls}""" else ""
-    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson$otherJson$totalImplJson}""")
+    val inheritedGroups = r.inherited.map { (parentName, parentFile, parentPackage, members) =>
+      val pRel = parentFile.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
+      val mJson = members.map { m =>
+        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+      }.mkString("[", ",", "]")
+      s"""{"parent":"${jsonEscape(parentName)}","parentFile":$pRel,"parentPackage":"${jsonEscape(parentPackage)}","members":$mJson}"""
+    }.mkString("[", ",", "]")
+    val inheritedJson = s""","inherited":$inheritedGroups"""
+    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson$otherJson$totalImplJson$inheritedJson}""")
   } else {
     println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
     println(s"  Definition: $rel:${sym.line}")
@@ -657,6 +666,15 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
         val label = if ctx.verbose then m.signature else m.name
         println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
       }
+      println()
+    }
+    r.inherited.foreach { (parentName, _, _, pMembers) =>
+      println(s"  Inherited from $parentName:")
+      pMembers.take(ctx.membersLimit).foreach { m =>
+        val label = if ctx.verbose then m.signature else m.name
+        println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
+      }
+      if pMembers.size > ctx.membersLimit then println(s"    ... and ${pMembers.size - ctx.membersLimit} more")
       println()
     }
     r.companion.foreach { (compSym, compMembers) =>
@@ -931,6 +949,24 @@ private def renderApiSurface(r: CmdResult.ApiSurface, ctx: CommandContext): Unit
         val suffix = if r.internalOnly.size > 10 then s", ... and ${r.internalOnly.size - 10} more" else ""
         println(s"\n  Not imported externally (${r.internalOnly.size}): ${shown.mkString(", ")}$suffix")
       }
+    }
+  }
+}
+
+private def renderRefsTop(r: CmdResult.RefsTop, ctx: CommandContext): Unit = {
+  val timedOutSuffix = if r.timedOut then " (timed out — results may be incomplete)" else ""
+  if ctx.jsonOutput then {
+    val filesJson = r.fileRanking.map { (file, count) =>
+      val rel = jsonEscape(ctx.workspace.relativize(file).toString)
+      s"""{"file":"$rel","count":$count}"""
+    }.mkString("[", ",", "]")
+    println(s"""{"symbol":"${jsonEscape(r.symbol)}","files":$filesJson,"total":${r.total},"timedOut":${r.timedOut}}""")
+  } else {
+    val fileCount = r.fileRanking.size
+    println(s"Top $fileCount files referencing '${r.symbol}' (${r.total} total references)$timedOutSuffix:")
+    r.fileRanking.foreach { (file, count) =>
+      val rel = ctx.workspace.relativize(file)
+      println(f"  $count%4d  $rel")
     }
   }
 }

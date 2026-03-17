@@ -13,7 +13,13 @@ def cmdRefs(args: List[String], ctx: CommandContext): CmdResult =
             else
               (grouped.filter((cat, _) => cat.toString.toLowerCase == lower), None)
           case None => (grouped, None)
-      if ctx.countOnly then
+      if ctx.topN.isDefined then
+        val n = ctx.topN.get
+        val allRefs = filterRefs(ctx.idx.findReferences(symbol, strict = ctx.strict), ctx)
+        val byFile = allRefs.groupBy(_.file).toList.map((f, rs) => (file = f, count = rs.size))
+          .sortBy(-_.count).take(n)
+        CmdResult.RefsTop(symbol, byFile, allRefs.size, ctx.idx.timedOut)
+      else if ctx.countOnly then
         val rawGrouped = ctx.idx.categorizeReferences(symbol, strict = ctx.strict).map((cat, refs) => (cat, filterRefs(refs, ctx)))
         val counts = rawGrouped.toList.map((cat, refs) => (category = cat, count = refs.size)).filter(_.count > 0)
           .sortBy { entry =>

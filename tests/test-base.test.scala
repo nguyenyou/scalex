@@ -173,9 +173,14 @@ abstract class ScalexTestBase extends FunSuite:
     writeFile("src/main/scala/com/example/Mixins.scala",
       """package com.example
         |
-        |trait Processor[T]
+        |trait Processor[T] {
+        |  def process(item: T): Unit
+        |  def validate(item: T): Boolean = true
+        |}
         |
-        |class UserProcessor extends Processor[User]
+        |class UserProcessor extends Processor[User] {
+        |  def process(item: User): Unit = ()
+        |}
         |
         |class RoleProcessor extends Processor[Role] with Serializable
         |

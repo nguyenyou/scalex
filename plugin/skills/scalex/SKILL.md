@@ -69,11 +69,11 @@ scalex impl PaymentService --no-tests --path core/src/
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--flat] [--count] [--strict] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
+### `scalex refs <symbol> [--flat] [--count] [--top N] [--strict] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
-Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `--category CAT` to filter to a single category (e.g. `--category ExtendedBy`). Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead. Use `--count` to get category counts without full file lists — fast impact triage.
+Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `--category CAT` to filter to a single category (e.g. `--category ExtendedBy`). Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead. Use `--count` to get category counts without full file lists — fast impact triage. Use `--top N` to rank files by reference count descending — shows the N heaviest users first for impact analysis.
 
 ```bash
 scalex refs PaymentService                        # categorized by default
@@ -82,6 +82,7 @@ scalex refs PaymentService --category ExtendedBy  # only show ExtendedBy
 scalex refs PaymentService --no-tests --path core/src/
 scalex refs PaymentService -C 3                   # show 3 lines of context
 scalex refs PaymentService --flat                 # flat list (old default)
+scalex refs PaymentService --top 10              # top 10 files by reference count
 ```
 ```
   Definition:
@@ -301,11 +302,11 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--verbose] [--shallow] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--shallow] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
 
 One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
-`--verbose` shows member signatures instead of just names. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, a disambiguation hint is shown on stderr.
+`--verbose` shows member signatures instead of just names. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--inherited` merges parent members into the output with provenance markers — shows the full API surface including inherited members. `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, a disambiguation hint is shown on stderr.
 
 ```bash
 scalex explain UserService                  # full summary with companion
@@ -315,6 +316,7 @@ scalex explain com.example.UserService      # package-qualified lookup
 scalex explain UserService.findUser         # Owner.member dotted syntax
 scalex explain UserService --impl-limit 10  # show more implementations
 scalex explain UserService --expand 1       # expand impls with their members
+scalex explain UserService --inherited     # include inherited members from parents
 ```
 ```
 Explanation of trait UserService (com.example):
@@ -562,6 +564,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `-C N` | Show N context lines around each reference (refs, grep) |
 | `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
 | `--count` | Grep/refs: show counts only, no full results |
+| `--top N` | Refs: rank top N files by reference count (impact analysis) |
 | `--exact` | Search: only exact name matches (case-insensitive) |
 | `--prefix` | Search: only exact + prefix matches |
 | `--in OWNER` | Body: restrict to members of the given enclosing type |
@@ -576,7 +579,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--brief` | Members: show names only (default shows signatures) |
 | `--summary` | Symbols: grouped counts by kind instead of full listing |
 | `--strict` | Refs/imports: treat `_` and `$` as word characters (stricter matching) |
-| `--inherited` | Members: include inherited members from parent types |
+| `--inherited` | Members/explain: include inherited members from parent types |
 | `--architecture` | Overview: show package dependency graph and hub types |
 | `--focus-package PKG` | Overview: scope dependency graph to a single package |
 | `--has-method NAME` | AST pattern: match types that have a method with NAME |
@@ -620,6 +623,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"Is this function tested?"** → `scalex coverage extractBody` — refs in test files only, with count + locations
 
 **"How many places reference X?"** → `scalex refs X --count` — category counts without full file lists
+
+**"Which files use X the most?"** → `scalex refs X --top 10` — rank files by reference count for impact analysis
 
 **"Navigate to a specific method"** → `scalex def MyService.findUser` — Owner.member dotted syntax, faster than `body --in`
 

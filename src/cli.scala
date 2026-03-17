@@ -105,13 +105,16 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val excludePath: Option[String] = argList.indexOf("--exclude-path") match
     case -1 => None
     case i => argList.lift(i + 1).map(p => p.stripPrefix("/"))
+  val topN: Option[Int] = argList.indexOf("--top") match
+    case -1 => None
+    case i => argList.lift(i + 1).flatMap(_.toIntOption)
   val summaryMode = argList.contains("--summary")
   val timingsEnabled = argList.contains("--timings")
   Timings.enabled = timingsEnabled
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
                            "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
-                           "--members-limit", "--used-by", "--returns", "--takes")
+                           "--members-limit", "--used-by", "--returns", "--takes", "--top")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -167,6 +170,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  -C N                  Show N context lines around each reference (refs, grep)
         |  -e PATTERN            Grep: additional pattern (combine multiple with |); repeatable
         |  --count               Grep/refs: show counts only, no full results
+        |  --top N               Refs: rank top N files by reference count
         |  --exact               Search: only exact name matches
         |  --prefix              Search: only exact + prefix matches
         |  --json                Output results as JSON (structured output for programmatic use)
@@ -180,7 +184,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --up                  Hierarchy: show only parents (default: both)
         |  --down                Hierarchy: show only children (default: both)
         |  --depth N             Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5)
-        |  --inherited           Members: include inherited members from parent types
+        |  --inherited           Members/explain: include inherited members from parent types
         |  --brief               Members: show names only (default shows signatures)
         |  --summary             Symbols: show grouped counts by kind instead of full listing
         |  --strict              Refs/imports: treat _ and $ as word characters (no boundary matches)
@@ -207,7 +211,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
       val ctx = CommandContext(idx = idx, workspace = workspace, limit = limit, verbose = verbose,
         jsonOutput = jsonOutput, batchMode = true, kindFilter = kindFilter, noTests = noTests,
         pathFilter = pathFilter, contextLines = contextLines, categorize = categorize,
-        categoryFilter = categoryFilter, grepPatterns = grepPatterns, countOnly = countOnly,
+        categoryFilter = categoryFilter, grepPatterns = grepPatterns, countOnly = countOnly, topN = topN,
         searchMode = searchMode, definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait,
         implLimit = implLimit, goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited,
         architecture = architecture, focusPackage = focusPackage,
@@ -253,7 +257,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
       val ctx = CommandContext(idx = idx, workspace = workspace, limit = limit, verbose = verbose,
         jsonOutput = jsonOutput, kindFilter = kindFilter, noTests = effectiveNoTests, pathFilter = pathFilter,
         contextLines = contextLines, categorize = categorize, categoryFilter = categoryFilter,
-        grepPatterns = grepPatterns, countOnly = countOnly, searchMode = searchMode,
+        grepPatterns = grepPatterns, countOnly = countOnly, topN = topN, searchMode = searchMode,
         definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit,
         goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited, architecture = architecture,
         focusPackage = focusPackage,

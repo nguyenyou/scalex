@@ -32,14 +32,14 @@
 
 ### Community feedback: exploration & impact analysis (#137)
 
-- [ ] `explain --inherited` — merge parent members into explain output, marking provenance; `members --inherited` already exists, expose it in the composite view
-- [ ] `refs --top N` — rank files by reference count (descending) instead of flat list; heaviest users surface first for impact analysis
-- [ ] Call-site extraction — Scalameta can parse `expr.method(args)` patterns; cross-reference with imports for high-confidence call sites. Surface as `refs --category CallSite` or `callers <method> --of <Type>`
-- [ ] Directory-level dependency graph — `scalex dir-deps --path src/modules/auth/` aggregates imports by target directory with file counts; more granular than `overview --architecture` package-level graph
+- [x] `explain --inherited` — merge parent members into explain output, marking provenance; `members --inherited` already exists, expose it in the composite view
+- [x] `refs --top N` — rank files by reference count (descending) instead of flat list; heaviest users surface first for impact analysis
+- [ ] Directory-level dependency graph — `scalex dir-deps --path src/modules/auth/` aggregates imports by target directory with file counts; more granular than `overview --architecture` package-level graph (deferred — package→directory mapping adds complexity)
 
 ### Discarded from #137
 
 - ~~Companion member dedup in `explain`~~ — already shipped in #136
+- ~~Call-site extraction~~ — without type resolution, method name matching has high false positives for common names (`get`, `apply`, `map`); grep already does `\.method\(` matching; same reasoning as rejected "Static call graph (#101, #102)" and "Call-site vs override distinction (#103)"
 
 ### Discarded from #132–#135
 

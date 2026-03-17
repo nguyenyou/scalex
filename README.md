@@ -158,12 +158,14 @@ scalex summary com.example                 # Sub-packages with symbol counts
 scalex def UserService --verbose           # Definition with signature
 scalex def UserService.findUser            # Owner.member dotted syntax
 scalex explain UserService --verbose       # One-shot: def + doc + signatures + impls
+scalex explain UserService --inherited    # Include inherited members from parents
 scalex members UserService --inherited     # Full API surface including parents
 scalex hierarchy UserService               # Inheritance tree (parents + children)
 
 # Navigate
 scalex refs UserService                    # Categorized references
 scalex refs UserService --count            # Summary: "12 importers, 4 extensions, ..."
+scalex refs UserService --top 10          # Top 10 files by reference count
 scalex impl UserService                    # Who extends this?
 scalex imports UserService                 # Who imports this?
 scalex grep "def.*process" --no-tests      # Regex content search
@@ -248,6 +250,7 @@ All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-t
 - `api` shows a package's public API surface — `--used-by` filters to a specific consumer package
 - `members` auto-shows companion object/class members alongside the primary type
 - `refs --count` gives category counts in one line — fast impact triage without reading full file lists
+- `refs --top N` ranks files by reference count — surfaces heaviest users first for impact analysis
 - `body` extracts source without a Read call — eliminates ~50% of follow-up file reads
 - `refs` returns categorized results (Definition/ExtendedBy/ImportedBy/UsedAsType) — no post-processing
 - `search` ranks by import popularity; `--returns` / `--takes` filter by signature
