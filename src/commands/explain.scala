@@ -87,7 +87,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
                   parentDefs.headOption.foreach { pd =>
                     val parentMembers = extractMembers(pd.file, pd.name)
                     val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
-                    if filtered.nonEmpty then result += ((pd.name, Some(pd.file), pd.packageName, filtered))
+                    if filtered.nonEmpty then result += ((parentName = pd.name, parentFile = Some(pd.file), parentPackage = pd.packageName, members = filtered))
                     walk(pd.parents)
                   }
                 }
@@ -111,7 +111,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
               }
         if ctx.shallow then
           // Shallow mode: definition + members + companion only
-          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches, inherited = inherited)
+          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches)
         else
           // Implementations
           val allImpls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx)
