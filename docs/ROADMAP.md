@@ -270,7 +270,7 @@ Benchmark data shows every query pays ~770ms baseline just to load+build the ind
 - [ ] Parallel index-build — partition `indexedFiles` into chunks, build sub-maps in parallel via `parallelStream`, merge. Expected: ~2x speedup on index-build phase (~130ms savings)
 
 **Lower priority:**
-- [ ] Memory-mapped I/O — replace `DataInputStream(BufferedInputStream(...))` with `MappedByteBuffer` for cache-load; eliminates kernel→user copy, lets OS page in only needed data
+- [x] ~~Memory-mapped I/O~~ — **won't do.** The bottleneck is 269K `readUTF` string constructions, not I/O. Mmap eliminates kernel→user copy but doesn't reduce CPU work of decoding UTF-8 into String objects. The 23MB file is already OS page-cached after first read, and `BufferedInputStream(64KB)` prefetches sequential reads well. Would also require rewriting all deserialization (no `DataInputStream` helpers with `MappedByteBuffer`)
 
 ### Warm-load optimization round 2 — TRIED, NO GAIN
 
@@ -293,7 +293,7 @@ Hyperfine v6 vs v7 (7 runs each, warmup 2): `file` 361→371ms, `def` 591→580m
 **Remaining ideas:**
 - [ ] Lazy symbol deserialization — deserialize `IndexedFile.symbols` on demand; `grep`/`file` never access symbols, skip deserialization entirely. The 269K-string readUTF loop is the true cache-load bottleneck
 - [ ] Pre-grouped symbol storage — store symbols pre-grouped by `name.toLowerCase` in binary index; skip the `groupBy` over 203K symbols entirely (the hash map building, not toLowerCase, is the ~230ms cost)
-- [ ] Memory-mapped I/O — `MappedByteBuffer` instead of `DataInputStream`; eliminates kernel→user copy, OS pages in only needed data
+- [x] ~~Memory-mapped I/O~~ — **won't do.** See "Warm-load optimization" section above — bottleneck is string construction, not I/O
 
 ### Exploration & UX improvements (#93, #94, #95, #96)
 
