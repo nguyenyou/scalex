@@ -630,6 +630,84 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   private def isIdentChar(c: Char): Boolean =
     c.isLetterOrDigit || c == '_' || c == '$'
 
+  def findApiSurface(targetPkg: String): List[(symbol: SymbolInfo, importerCount: Int)] =
+    Timings.phase("api-surface") {
+      val targetSymNames = packageToSymbols.getOrElse(targetPkg, Set.empty)
+      if targetSymNames.isEmpty then Nil
+      else {
+
+      // Count external importers per symbol name
+      val importerCounts = mutable.HashMap.empty[String, mutable.HashSet[String]]
+      targetSymNames.foreach(n => importerCounts(n) = mutable.HashSet.empty)
+
+      indexedFiles.foreach { idxFile =>
+        val filePkg = filePackage(idxFile)
+        if filePkg != targetPkg then
+          idxFile.imports.foreach { imp =>
+            parseImportTarget(imp).foreach { (pkg, names, isWildcard) =>
+              if pkg == targetPkg then {
+                if isWildcard then
+                  // Credit all symbols in the package
+                  targetSymNames.foreach { symName =>
+                    importerCounts(symName).add(idxFile.relativePath)
+                  }
+                else
+                  names.foreach { name =>
+                    if importerCounts.contains(name) then
+                      importerCounts(name).add(idxFile.relativePath)
+                  }
+              }
+            }
+          }
+      }
+
+      // Build result with SymbolInfo objects
+      val symsByName = allSymbols.filter(_.packageName == targetPkg).groupBy(_.name)
+      targetSymNames.toList.flatMap { name =>
+        symsByName.getOrElse(name, Nil).headOption.map { sym =>
+          (symbol = sym, importerCount = importerCounts.getOrElse(name, mutable.HashSet.empty).size)
+        }
+      }
+      }
+    }
+
+  private def parseImportTarget(imp: String): Option[(pkg: String, names: List[String], isWildcard: Boolean)] =
+    val trimmed = imp.trim.stripPrefix("import ")
+    if trimmed.isEmpty then None
+    else {
+
+    // Handle brace-enclosed imports: import pkg.{A, B, C as D, _}
+    val braceStart = trimmed.indexOf('{')
+    if braceStart >= 0 then
+      val pkg = trimmed.substring(0, braceStart).stripSuffix(".")
+      val braceEnd = trimmed.indexOf('}', braceStart)
+      val inner = if braceEnd >= 0 then trimmed.substring(braceStart + 1, braceEnd) else trimmed.substring(braceStart + 1)
+      val parts = inner.split(',').map(_.trim).filter(_.nonEmpty)
+      var isWildcard = false
+      val names = mutable.ListBuffer.empty[String]
+      parts.foreach { part =>
+        if part == "_" || part == "*" then isWildcard = true
+        else
+          // Handle "Foo as Bar" or "Foo => Bar" — we want the original name (Foo)
+          val asIdx = part.indexOf(" as ")
+          val arrowIdx = part.indexOf(" => ")
+          val name = if asIdx >= 0 then part.substring(0, asIdx).trim
+                     else if arrowIdx >= 0 then part.substring(0, arrowIdx).trim
+                     else part.trim
+          if name.nonEmpty && name != "_" && name != "*" then names += name
+      }
+      Some((pkg, names.toList, isWildcard))
+    else
+      // Simple import: import pkg.Name or import pkg._ or import pkg.*
+      val lastDot = trimmed.lastIndexOf('.')
+      if lastDot < 0 then None
+      else
+        val pkg = trimmed.substring(0, lastDot)
+        val name = trimmed.substring(lastDot + 1)
+        if name == "_" || name == "*" then Some((pkg, Nil, true))
+        else Some((pkg, List(name), false))
+    }
+
   private def containsWordStrict(line: String, word: String): Boolean =
     var i = line.indexOf(word)
     while i >= 0 do

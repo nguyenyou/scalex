@@ -193,5 +193,6 @@ enum CmdResult:
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
   case Packages(packages: List[String])
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
+  case ApiSurface(pkg: String, symbols: List[(symbol: SymbolInfo, importerCount: Int)], totalInPackage: Int, internalOnly: List[String])
   case NotFound(message: String, hint: NotFoundHint)
   case UsageError(message: String)

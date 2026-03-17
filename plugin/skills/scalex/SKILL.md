@@ -1,6 +1,6 @@
 ---
 name: scalex
-description: "Scala code intelligence CLI for navigating Scala 2/3 codebases. Use when working with .scala files to find definitions (class/trait/object/def/val/type/enum/given), who extends a trait, usages/imports of a symbol, class members, scaladoc, codebase overview, files by name, annotated symbols, or file contents. Triggers: \"where is X defined\", \"who implements Y\", \"find usages of Z\", \"what methods does X have\", \"show source of X\", \"inheritance tree\", \"explain this type\", \"what changed since last commit\", \"find types extending X with method Y\", or before renaming/refactoring. Test navigation: \"what tests exist\", \"is X tested\", \"show test for Y\", \"find tests covering Z\". Use proactively exploring unfamiliar Scala code — faster than grep. Supports fuzzy camelCase search (e.g. \"hms\" finds HttpMessageService). Always prefer scalex over grep/glob for Scala symbol lookups. Use `scalex grep` for .scala content search — integrates with --path and --no-tests filters."
+description: "Scala code intelligence CLI for Scala 2/3 codebases. Find definitions, implementations, usages, imports, members, scaladoc, codebase overview, package API surface, files, annotated symbols, file contents. Triggers: \"where is X defined\", \"who implements Y\", \"find usages of Z\", \"what methods does X have\", \"show source of X\", \"inheritance tree\", \"explain this type\", \"what changed since commit\", \"find types extending X with method Y\", \"what does this package export\", or before renaming. Test navigation: \"what tests exist\", \"is X tested\", \"show test for Y\", \"find tests covering Z\". Use proactively exploring unfamiliar Scala code. Supports fuzzy camelCase search (e.g. \"hms\" finds HttpMessageService). Prefer scalex over grep/glob for Scala symbol lookups. Use `scalex grep` for .scala content search — integrates with --path and --no-tests filters."
 ---
 
 You have access to `scalex`, a Scala code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals). It parses source files via Scalameta — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
@@ -420,6 +420,29 @@ Package com.example (45 symbols):
     ...
 ```
 
+### `scalex api <package> [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — public API surface
+
+Shows which symbols in a package are actually imported by other packages — the public API surface. Cross-references stored import data with the package's symbol list. Symbols sorted by external importer count (descending). Internal-only symbols (never imported externally) listed at the bottom.
+
+Package name is fuzzy matched (same as `package` command): exact → suffix → substring. Zero index change — pure in-memory query.
+
+```bash
+scalex api com.example                  # public API surface of com.example
+scalex api example                      # fuzzy match on package name
+scalex api com.example --kind trait     # only traits in the API surface
+scalex api com.example --no-tests       # exclude test symbols
+scalex api com.example --json           # structured JSON output
+```
+```
+API surface of com.example (8 of 15 symbols imported externally):
+
+  UserServiceLive           class     12 importers  src/.../UserServiceLive.scala:8
+  User                      class      9 importers  src/.../Model.scala:3
+  UserService               trait      8 importers  src/.../UserService.scala:7
+
+  Not imported externally (7): Role, UserId, userOrdering, ...
+```
+
 ### `scalex symbols <file> [--verbose]` / `scalex packages` — file symbols / list packages
 
 `symbols` lists everything defined in a file (`--verbose` for signatures). `packages` lists all packages in the index.
@@ -519,6 +542,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"What's the impact of renaming X?"** → `scalex refs X` (categorized by default — groups by Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment)
 
 **"What's in this package?"** → `scalex package com.example` — all symbols grouped by kind; fuzzy match on package name
+
+**"What does this package export?"** → `scalex api com.example` — shows symbols imported by other packages, sorted by importer count
 
 **"Too many results / noisy output"** → combine `--no-tests`, `--path compiler/src/`, `--kind class`, or `search --prefix`/`--exact`
 

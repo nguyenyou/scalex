@@ -8,6 +8,7 @@ val commands: Map[String, (List[String], CommandContext) => CmdResult] = Map(
   "body" -> cmdBody, "tests" -> cmdTests, "coverage" -> cmdCoverage,
   "hierarchy" -> cmdHierarchy, "overrides" -> cmdOverrides, "explain" -> cmdExplain,
   "deps" -> cmdDeps, "context" -> cmdContext, "diff" -> cmdDiff, "ast-pattern" -> cmdAstPattern,
+  "api" -> cmdApi,
 )
 
 def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =

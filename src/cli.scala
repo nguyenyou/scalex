@@ -129,6 +129,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  scalex ast-pattern              Structural AST search           (aka: pattern search)
         |  scalex tests                    List test cases structurally    (aka: find tests)
         |  scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
+        |  scalex api <package>            Public API surface of a package (aka: exported symbols)
         |
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
