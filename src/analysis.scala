@@ -243,7 +243,6 @@ def extractSymbolsFromSource(source: String, filePath: String): List[DiffSymbol]
         input.parse[Source].get
       } catch {
         case _: Exception =>
-          System.err.println(s"scalex: parse failed: $filePath")
           return Nil
       }
   }

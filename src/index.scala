@@ -373,6 +373,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       case f if f.parseFailed => f.relativePath
     }
     parseFailures = parseFailedFiles.size
+    if parseFailures > 0 then
+      System.err.println(s"scalex: $parseFailures file(s) failed to parse (run `scalex index --verbose` to list them)")
     indexTimeMs = (System.nanoTime() - t0) / 1_000_000
 
     if parsedCount > 0 then

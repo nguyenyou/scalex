@@ -4,6 +4,11 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Parse failure warning noise (#163)
+
+- [x] Replace per-file `scalex: parse failed:` stderr messages with single summary line
+- [x] `scalex index --verbose` still lists individual failed files
+
 ### Community feedback: fuzzy not-found suggestions (#156)
 
 - [x] `search` reverse-suffix matching — queries like `ScalaJSClassEmitter` suggest `ClassEmitter`

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Parse failure warnings no longer flood stderr — replaced per-file `scalex: parse failed: <path>` messages with a single summary line; use `scalex index --verbose` to list individual files (#163)
+
 ## [1.21.0] — 2026-03-17
 
 ### Added

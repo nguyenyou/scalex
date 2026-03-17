@@ -187,7 +187,6 @@ def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomF
         input.parse[Source].get
       catch
         case _: Exception =>
-          System.err.println(s"scalex: parse failed: $file")
           return (Nil, Some(bloom), Nil, Map.empty, true)
 
   val (imports, aliases) = extractImports(tree)
@@ -211,7 +210,6 @@ def parseFile(path: Path): Option[Source] =
         Some(input.parse[Source].get)
       catch
         case _: Exception =>
-          System.err.println(s"scalex: parse failed: $path")
           None
 
 // ── Member extraction ───────────────────────────────────────────────────────
