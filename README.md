@@ -181,14 +181,15 @@ scalex entrypoints                         # Find @main, def main, extends App, 
 scalex def UserService --verbose           # Definition with signature
 scalex def UserService.findUser            # Owner.member dotted syntax
 scalex explain UserService --verbose       # One-shot: def + doc + signatures + impls
-scalex explain UserService --inherited    # Include inherited members from parents
+scalex explain UserService --inherited     # Include inherited members from parents
+scalex explain UserService --no-doc       # Skip Scaladoc section
 scalex members UserService --inherited     # Full API surface including parents
 scalex hierarchy UserService               # Inheritance tree (parents + children)
 
 # Navigate
 scalex refs UserService                    # Categorized references
 scalex refs UserService --count            # Summary: "12 importers, 4 extensions, ..."
-scalex refs UserService --top 10          # Top 10 files by reference count
+scalex refs UserService --top 10           # Top 10 files by reference count
 scalex impl UserService                    # Who extends this?
 scalex imports UserService                 # Who imports this?
 scalex grep "def.*process" --no-tests      # Regex content search

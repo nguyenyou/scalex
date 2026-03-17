@@ -21,6 +21,7 @@
 - [x] `explain` disambiguation hints — "(N other matches — use package-qualified name or --path to disambiguate)"
 - [x] `explain` package fallback — falls back to `summary` when symbol matches a package
 - [x] `explain --shallow` — skip implementations and import refs
+- [x] `explain --no-doc` — suppress Scaladoc section (#157)
 
 **Overview quality (#132, #133, #135):**
 - [x] Hub type casing — PascalCase preserved via `symbolsByName` lookup

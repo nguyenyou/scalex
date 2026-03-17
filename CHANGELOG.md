@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- `explain --no-doc` flag to suppress Scaladoc section — useful when exploring many types rapidly and doc dominates output (#157)
+
 ### Fixed
 - `search` now returns reverse-suffix matches — querying `ScalaJSClassEmitter` suggests `ClassEmitter` when no exact match exists (#156)
 - `explain` fuzzy auto-resolve now checks suffix matches — `explain ScalaJSClassEmitter` auto-shows `ClassEmitter` (#156)

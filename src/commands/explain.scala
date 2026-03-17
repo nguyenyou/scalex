@@ -21,7 +21,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         resolveDottedMember(symbol, ctx) match
           case Some(memberResults) =>
             val msym = memberResults.head
-            val doc = extractScaladoc(msym.file, msym.line)
+            val doc = if ctx.noDoc then None else extractScaladoc(msym.file, msym.line)
             return CmdResult.Explanation(msym, doc, Nil, Nil, Nil)
           case None => ()
       if defs.isEmpty then
@@ -65,7 +65,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc
-        val doc = extractScaladoc(sym.file, sym.line)
+        val doc = if ctx.noDoc then None else extractScaladoc(sym.file, sym.line)
         // Members (for types)
         val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
         val inheritResult = if typeKinds.contains(sym.kind) then collectInheritedMembers(sym, ctx)

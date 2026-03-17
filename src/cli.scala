@@ -102,6 +102,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
     case -1 => None
     case i => argList.lift(i + 1)
   val shallow = argList.contains("--shallow")
+  val noDoc = argList.contains("--no-doc")
   val excludePath: Option[String] = argList.indexOf("--exclude-path") match
     case -1 => None
     case i => argList.lift(i + 1).map(p => p.stripPrefix("/"))
@@ -179,6 +180,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --in OWNER            Body: restrict to members of the given enclosing type
         |  --of TRAIT            Overrides: restrict to implementations of the given trait
         |  --shallow              Explain: skip implementations and import refs (definition + members only)
+        |  --no-doc               Explain: suppress Scaladoc section
         |  --impl-limit N        Explain: max implementations to show (default: 5)
         |  --members-limit N    Explain: max members to show per type (default: 10)
         |  --expand N            Explain: recursively expand implementations N levels deep
@@ -220,7 +222,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
         membersLimit = membersLimit, brief = brief, strict = strict,
         usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter,
-        shallow = shallow, excludePath = excludePath, summaryMode = summaryMode)
+        shallow = shallow, noDoc = noDoc, excludePath = excludePath, summaryMode = summaryMode)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
       while line != null do
@@ -266,6 +268,6 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
         membersLimit = membersLimit, brief = brief, strict = strict,
         usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter,
-        shallow = shallow, excludePath = excludePath, summaryMode = summaryMode)
+        shallow = shallow, noDoc = noDoc, excludePath = excludePath, summaryMode = summaryMode)
       runCommand(cmd, cmdRest, ctx)
       Timings.report()

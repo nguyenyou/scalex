@@ -302,11 +302,11 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--verbose] [--shallow] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--shallow] [--no-doc] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
 
 One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
-`--verbose` shows member signatures instead of just names. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--inherited` merges parent members into the output with provenance markers — shows the full API surface including inherited members. `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, a disambiguation hint is shown on stderr.
+`--verbose` shows member signatures instead of just names. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--no-doc` suppresses the Scaladoc section — useful when exploring many types rapidly and doc dominates output. `--inherited` merges parent members into the output with provenance markers — shows the full API surface including inherited members. `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, a disambiguation hint is shown on stderr.
 
 ```bash
 scalex explain UserService                  # full summary with companion
@@ -317,6 +317,7 @@ scalex explain UserService.findUser         # Owner.member dotted syntax
 scalex explain UserService --impl-limit 10  # show more implementations
 scalex explain UserService --expand 1       # expand impls with their members
 scalex explain UserService --inherited     # include inherited members from parents
+scalex explain UserService --no-doc       # skip Scaladoc section
 ```
 ```
 Explanation of trait UserService (com.example):
@@ -606,6 +607,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--brief` | Members: show names only (default shows signatures) |
 | `--summary` | Symbols: grouped counts by kind instead of full listing |
 | `--strict` | Refs/imports: treat `_` and `$` as word characters (stricter matching) |
+| `--no-doc` | Explain: suppress Scaladoc section |
 | `--inherited` | Members/explain: include inherited members from parent types |
 | `--architecture` | Overview: show package dependency graph and hub types |
 | `--focus-package PKG` | Overview: scope dependency graph to a single package |

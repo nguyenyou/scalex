@@ -145,6 +145,7 @@ case class CommandContext(
   returnsFilter: Option[String] = None,
   takesFilter: Option[String] = None,
   shallow: Boolean = false,
+  noDoc: Boolean = false,
   excludePath: Option[String] = None,
   summaryMode: Boolean = false,
 ):
