@@ -1271,6 +1271,33 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("No body found"), s"Should not find body when --in is set with dotted symbol: $output")
   }
 
+  test("body dotted syntax respects --no-tests filter") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserServiceSpec is in src/test/ and has testFindUser — should be found without --no-tests
+    val withTests = captureOut {
+      runCommand("body", List("UserServiceSpec.testFindUser"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(withTests.contains("testFindUser"), s"Should find testFindUser without --no-tests: $withTests")
+    // With --no-tests, the test file owner should be excluded
+    val noTests = captureOut {
+      runCommand("body", List("UserServiceSpec.testFindUser"),
+        CommandContext(idx = idx, workspace = workspace, noTests = true))
+    }
+    assert(noTests.contains("No body found"), s"Should NOT find testFindUser with --no-tests: $noTests")
+  }
+
+  test("body dotted syntax respects --exclude-path filter") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("UserServiceLive.findUser"),
+        CommandContext(idx = idx, workspace = workspace, excludePath = Some("src/main")))
+    }
+    assert(output.contains("No body found"), s"Should NOT find body when path is excluded: $output")
+  }
+
   test("entrypoints --no-tests excludes test suites from results") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
