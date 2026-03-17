@@ -167,8 +167,7 @@ def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: Strin
 def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
   val source = try Files.readString(file) catch
     case _: java.io.IOException =>
-      val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
-      return (Nil, Some(bloom), Nil, Map.empty, true)
+      return (Nil, None, Nil, Map.empty, true)
 
   val bloom = buildBloomFilterFromSource(source)
 
@@ -525,8 +524,7 @@ def extractScopes(file: Path, targetLine: Int): List[ScopeInfo] = {
 def extractJavaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
   val source = try Files.readString(file) catch
     case _: java.io.IOException =>
-      val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
-      return (Nil, Some(bloom), Nil, Map.empty, true)
+      return (Nil, None, Nil, Map.empty, true)
 
   val bloom = buildBloomFilterFromSource(source)
   val lines = source.split("\n")
