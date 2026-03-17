@@ -41,7 +41,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     val deps = mutable.HashMap.empty[String, mutable.HashSet[String]]
     allSymbols.groupBy(_.file).foreach { (file, syms) =>
       val filePkg = syms.headOption.map(_.packageName).getOrElse("")
-      if filePkg.nonEmpty then {
+      if filePkg.nonEmpty && !isJavaFile(file) then {
         parseFile(file).foreach { tree =>
           val (imports, _) = extractImports(tree)
           imports.foreach { imp =>

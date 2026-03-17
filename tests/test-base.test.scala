@@ -225,6 +225,64 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/main/java/com/example/GenericRepository.java",
+      """package com.example;
+        |
+        |import java.util.List;
+        |import java.util.Optional;
+        |
+        |@SuppressWarnings("unchecked")
+        |public abstract class GenericRepository<T> {
+        |    private final String tableName;
+        |    protected int maxResults = 100;
+        |
+        |    public GenericRepository(String tableName) {
+        |        this.tableName = tableName;
+        |    }
+        |
+        |    public abstract Optional<T> findById(String id);
+        |
+        |    public List<T> findAll() {
+        |        return List.of();
+        |    }
+        |
+        |    public void delete(String id) {}
+        |
+        |    public enum Status {
+        |        ACTIVE,
+        |        INACTIVE,
+        |        DELETED
+        |    }
+        |}
+        |""".stripMargin)
+
+    writeFile("src/main/java/com/example/UserRepository.java",
+      """package com.example;
+        |
+        |import java.util.Optional;
+        |
+        |public class UserRepository extends GenericRepository<String> implements EventBus {
+        |    public UserRepository() {
+        |        super("users");
+        |    }
+        |
+        |    @Override
+        |    public Optional<String> findById(String id) {
+        |        return Optional.of(id);
+        |    }
+        |
+        |    @Override
+        |    public void publish(String event) {}
+        |
+        |    @Override
+        |    public void subscribe(String topic) {}
+        |
+        |    public String findByName(String name) {
+        |        return name;
+        |    }
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
