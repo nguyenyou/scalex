@@ -509,6 +509,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--extends TRAIT` | AST pattern: match types that extend TRAIT |
 | `--body-contains PAT` | AST pattern: match types whose body contains PAT |
 | `--json` | Output results as JSON — structured output for programmatic parsing |
+| `--timings` | Print per-phase timing breakdown to stderr |
+| `--version` | Print version and exit |
 
 ## Common workflows
 
