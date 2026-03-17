@@ -8,7 +8,7 @@ class IndexSuite extends ScalexTestBase:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 12)
+    assertEquals(files.size, 13)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
@@ -19,6 +19,7 @@ class IndexSuite extends ScalexTestBase:
     assert(files.exists(_.path.toString.contains("NoImportClient.scala")))
     assert(files.exists(_.path.toString.contains("AliasClient.scala")))
     assert(files.exists(_.path.toString.contains("Annotated.scala")))
+    assert(files.exists(_.path.toString.contains("Mixins.scala")))
   }
 
   test("gitLsFiles returns valid OIDs") {
@@ -35,7 +36,7 @@ class IndexSuite extends ScalexTestBase:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 12)
+    assert(idx.fileCount == 13)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -207,13 +208,13 @@ class IndexSuite extends ScalexTestBase:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 12, s"Cold index should parse all 12 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 13, s"Cold index should parse all 13 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 12, s"Warm index should skip all 12 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 13, s"Warm index should skip all 13 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -237,7 +238,7 @@ class IndexSuite extends ScalexTestBase:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 11, s"Should skip 11 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 12, s"Should skip 12 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────
@@ -619,4 +620,77 @@ class IndexSuite extends ScalexTestBase:
       assert(exts.exists(_.contextLine.contains("extends UserService")),
         s"ExtendedBy should contain 'extends UserService': ${exts.map(_.contextLine)}")
     }
+  }
+
+  // ── Package-qualified lookup ────────────────────────────────────────
+
+  test("findDefinition with full package qualification") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findDefinition("com.example.UserService")
+    assert(results.nonEmpty, "Should find UserService by FQN")
+    assert(results.forall(_.packageName == "com.example"))
+  }
+
+  test("findDefinition with partial package qualification") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findDefinition("example.UserService")
+    assert(results.nonEmpty, "Should find UserService by partial qualification")
+    assert(results.forall(_.packageName == "com.example"))
+  }
+
+  test("findDefinition with nonexistent package returns empty") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findDefinition("nonexist.Foo")
+    assert(results.isEmpty)
+  }
+
+  // ── Type-param parent indexing ──────────────────────────────────────
+
+  test("findImplementations finds types via type parameter parents") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findImplementations("User")
+    val names = results.map(_.name)
+    assert(names.contains("UserProcessor"),
+      s"Should find UserProcessor via Processor[User]: $names")
+  }
+
+  test("findImplementations still finds direct parents") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.findImplementations("Processor")
+    val names = results.map(_.name)
+    assert(names.contains("UserProcessor"), s"Should find UserProcessor: $names")
+    assert(names.contains("RoleProcessor"), s"Should find RoleProcessor: $names")
+    assert(names.contains("GenericProcessor"), s"Should find GenericProcessor: $names")
+  }
+
+  test("single-letter type params are filtered out") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // GenericProcessor extends Processor[A] — A should be filtered
+    val results = idx.findImplementations("A")
+    val names = results.map(_.name)
+    assert(!names.contains("GenericProcessor"),
+      s"Single-letter type param A should be filtered: $names")
+  }
+
+  test("typeParamParents survive persistence roundtrip") {
+    val cacheDir = workspace.resolve(".scalex")
+    if Files.exists(cacheDir) then
+      Files.list(cacheDir).iterator().asScala.foreach(Files.delete)
+
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+
+    val loaded = IndexPersistence.load(workspace)
+    assert(loaded.isDefined)
+    val cachedFiles = loaded.get
+    val mixinFile = cachedFiles.values.find(_.relativePath.contains("Mixins.scala")).get
+    val userProc = mixinFile.symbols.find(_.name == "UserProcessor").get
+    assert(userProc.typeParamParents.contains("User"),
+      s"typeParamParents should survive roundtrip: ${userProc.typeParamParents}")
   }

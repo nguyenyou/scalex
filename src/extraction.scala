@@ -21,15 +21,35 @@ def buildBloomFilterFromSource(source: String): BloomFilter[CharSequence] =
       i += 1
   bloom
 
-private def extractParents(templ: Template): List[String] =
-  templ.inits.flatMap { init =>
+private def extractParents(templ: Template): (parents: List[String], typeParamParents: List[String]) =
+  val directParents = mutable.ListBuffer.empty[String]
+  val tpParents = mutable.ListBuffer.empty[String]
+
+  def extractTypeArgNames(tpe: scala.meta.Type): List[String] = tpe match
+    case Type.Name(name) => List(name)
+    case Type.Select(_, Type.Name(name)) => List(name)
+    case Type.Apply.After_4_6_0(inner, argClause) =>
+      extractTypeArgNames(inner) ++ argClause.values.flatMap(extractTypeArgNames)
+    case _ => Nil
+
+  templ.inits.foreach { init =>
     init.tpe match
-      case Type.Name(name) => Some(name)
-      case Type.Select(_, Type.Name(name)) => Some(name)
-      case Type.Apply.After_4_6_0(Type.Name(name), _) => Some(name)
-      case Type.Apply.After_4_6_0(Type.Select(_, Type.Name(name)), _) => Some(name)
-      case _ => None
+      case Type.Name(name) => directParents += name
+      case Type.Select(_, Type.Name(name)) => directParents += name
+      case Type.Apply.After_4_6_0(Type.Name(name), argClause) =>
+        directParents += name
+        argClause.values.flatMap(extractTypeArgNames).foreach(tpParents += _)
+      case Type.Apply.After_4_6_0(Type.Select(_, Type.Name(name)), argClause) =>
+        directParents += name
+        argClause.values.flatMap(extractTypeArgNames).foreach(tpParents += _)
+      case _ =>
   }
+
+  val directSet = directParents.map(_.toLowerCase).toSet
+  val filtered = tpParents.toList.distinct
+    .filterNot(n => directSet.contains(n.toLowerCase))
+    .filterNot(n => n.length == 1 && n.head.isUpper) // filter T, A, F etc.
+  (directParents.toList, filtered)
 
 private def buildSignature(name: String, kind: String, parents: List[String], tparams: List[String] = Nil): String =
   val tps = if tparams.nonEmpty then tparams.mkString("[", ", ", "]") else ""
@@ -88,64 +108,64 @@ def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[C
 
   def visit(t: Tree): Unit = t match
     case d: Defn.Class =>
-      val parents = extractParents(d.templ)
+      val (parents, tpParents) = extractParents(d.templ)
       val tparams = d.tparamClause.values.map(_.name.value)
       val sig = buildSignature(d.name.value, "class", parents, tparams)
       val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
     case d: Defn.Trait =>
-      val parents = extractParents(d.templ)
+      val (parents, tpParents) = extractParents(d.templ)
       val tparams = d.tparamClause.values.map(_.name.value)
       val sig = buildSignature(d.name.value, "trait", parents, tparams)
       val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
     case d: Defn.Object =>
-      val parents = extractParents(d.templ)
+      val (parents, tpParents) = extractParents(d.templ)
       val sig = buildSignature(d.name.value, "object", parents)
       val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
     case d: Pkg.Object =>
-      val parents = extractParents(d.templ)
+      val (parents, tpParents) = extractParents(d.templ)
       val sig = buildSignature(d.name.value, "object", parents)
-      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, sig)
+      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, tpParents, sig)
     case d: Defn.Enum =>
-      val parents = extractParents(d.templ)
+      val (parents, tpParents) = extractParents(d.templ)
       val tparams = d.tparamClause.values.map(_.name.value)
       val sig = buildSignature(d.name.value, "enum", parents, tparams)
       val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, sig, annots)
+      buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
     case d: Defn.Given =>
       if d.name.value.nonEmpty then
         val annots = extractAnnotations(d.mods)
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, s"given ${d.name.value}", annots)
+        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, Nil, s"given ${d.name.value}", annots)
     case d: Defn.GivenAlias =>
       if d.name.value.nonEmpty then
         val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
         val annots = extractAnnotations(d.mods)
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
+        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, Nil, sig, annots)
     case d: Defn.Type =>
       val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
       val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
+      buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, Nil, sig, annots)
     case d: Defn.Def =>
       val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
       val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
       val sig = s"def ${d.name.value}$params$ret"
       val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, sig, annots)
+      buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, Nil, sig, annots)
     case d: Defn.Val =>
       val annots = extractAnnotations(d.mods)
       d.pats.foreach {
         case Pat.Var(name) =>
           val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-          buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, s"val ${name.value}$tpe", annots)
+          buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, Nil, s"val ${name.value}$tpe", annots)
         case _ =>
       }
     case d: Defn.ExtensionGroup =>
       val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
         s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})"
       ).getOrElse("")
-      buf += SymbolInfo("<extension>", SymbolKind.Extension, file, d.pos.startLine + 1, pkg, Nil, s"extension $recv")
+      buf += SymbolInfo("<extension>", SymbolKind.Extension, file, d.pos.startLine + 1, pkg, Nil, Nil, s"extension $recv")
     case _ =>
 
   def traverse(t: Tree): Unit =

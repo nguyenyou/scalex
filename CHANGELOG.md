@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Added
+- Package-qualified symbol lookup — `scalex def coursier.cache.Cache` resolves by fully-qualified name; partial qualification also works (`cache.Cache` matches `coursier.cache.Cache`); benefits all commands that use `findDefinition` (#101)
+- Companion merging in `explain` — auto-shows companion object/class members alongside the primary symbol; eliminates the most common follow-up query after `explain` (#102, #103)
+- `--expand N` flag for `explain` — recursively expand implementations N levels deep with cycle detection; `explain Trait --expand 1` shows each implementation's members in one call (#102)
+- Type-param parent indexing — `impl Foo` now finds `class Bar extends Mixin[Foo]`; type arguments in extends clauses are indexed as `typeParamParents`; single-letter type params (T, A, F) filtered out; index format bumped v6→v7 (#101)
 - `scalex package <pkg>` command — list all symbols in a package grouped by kind; supports `--verbose`, `--kind`, `--no-tests`, `--path`; fuzzy match on package name (exact → suffix → substring) (#95)
 - `--focus-package PKG` flag for `overview` — scopes `--architecture` dependency graph to a single package, showing direct dependencies and dependents; auto-enables `--architecture` when used (#96)
 - Fuzzy "did you mean?" suggestions on not-found — when `def`, `explain`, `members`, `doc`, `body`, `hierarchy`, `overrides`, `deps`, `impl` return zero results, suggests close matches from the index; shown in text, batch, and JSON output (#94)

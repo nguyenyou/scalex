@@ -83,11 +83,14 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val focusPackage: Option[String] = argList.indexOf("--focus-package") match
     case -1 => None
     case i => argList.lift(i + 1)
+  val expandDepth: Int = argList.indexOf("--expand") match
+    case -1 => 0
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(1)
   val timingsEnabled = argList.contains("--timings")
   Timings.enabled = timingsEnabled
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
-                           "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package")
+                           "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || a == "--flat" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -146,6 +149,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --in OWNER            Body: restrict to members of the given enclosing type
         |  --of TRAIT            Overrides: restrict to implementations of the given trait
         |  --impl-limit N        Explain: max implementations to show (default: 5)
+        |  --expand N            Explain: recursively expand implementations N levels deep
         |  --up                  Hierarchy: show only parents (default: both)
         |  --down                Hierarchy: show only children (default: both)
         |  --depth N             Hierarchy: max tree depth (default: 5)
@@ -174,7 +178,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         implLimit = implLimit, goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited,
         architecture = architecture, focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
-        bodyContainsFilter = bodyContainsFilter)
+        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
       while line != null do
@@ -214,6 +218,6 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited, architecture = architecture,
         focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
-        bodyContainsFilter = bodyContainsFilter)
+        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth)
       runCommand(cmd, cmdRest, ctx)
       Timings.report()

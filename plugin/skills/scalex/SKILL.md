@@ -39,10 +39,12 @@ All commands default to current directory. You can set the workspace with `-w` /
 
 ### `scalex def <symbol> [--verbose] [--kind K] [--no-tests] [--path PREFIX]` — find definition
 
-Returns where a symbol is defined, including given instances that grep would miss. Use `--verbose` to see the full signature inline — saves a follow-up Read call. Results are ranked: class/trait/object/enum first, non-test before test, shorter paths first.
+Returns where a symbol is defined, including given instances that grep would miss. Use `--verbose` to see the full signature inline — saves a follow-up Read call. Results are ranked: class/trait/object/enum first, non-test before test, shorter paths first. Supports **package-qualified names** — `def com.example.Cache` or partial `def cache.Cache` disambiguates by package.
 
 ```bash
 scalex def PaymentService --verbose
+scalex def com.example.payment.PaymentService  # fully-qualified lookup
+scalex def payment.PaymentService              # partial qualification
 scalex def Driver --kind class              # only class definitions
 scalex def Driver --no-tests --path compiler/src/  # exclude tests, restrict to subtree
 ```
@@ -55,7 +57,7 @@ scalex def Driver --no-tests --path compiler/src/  # exclude tests, restrict to 
 
 ### `scalex impl <trait> [--verbose] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — find implementations
 
-Finds all classes/objects/enums that extend or mix in a trait. Uses the index directly — much faster and more targeted than `refs` when you specifically need concrete implementations.
+Finds all classes/objects/enums that extend or mix in a trait. Also finds types that use the symbol as a type argument in extends clauses (e.g. `impl Foo` finds `class Bar extends Mixin[Foo]`). Uses the index directly — much faster and more targeted than `refs` when you specifically need concrete implementations.
 
 ```bash
 scalex impl PaymentService --verbose
@@ -285,15 +287,17 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--impl-limit N] [--no-tests] [--path PREFIX]` — composite summary
+### `scalex explain <symbol> [--impl-limit N] [--expand N] [--no-tests] [--path PREFIX]` — composite summary
 
-One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + implementations (top N) + import count.
+One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import count. Supports **package-qualified names** (e.g. `explain com.example.Cache`).
 
-`--impl-limit N` controls how many implementations to show (default: 5).
+`--impl-limit N` controls how many implementations to show (default: 5). `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable.
 
 ```bash
-scalex explain UserService                  # full summary
+scalex explain UserService                  # full summary with companion
+scalex explain com.example.UserService      # package-qualified lookup
 scalex explain UserService --impl-limit 10  # show more implementations
+scalex explain UserService --expand 1       # expand impls with their members
 ```
 ```
 Explanation of trait UserService (com.example):
@@ -306,6 +310,9 @@ Explanation of trait UserService (com.example):
   Members (top 2):
     def   findUser
     def   createUser
+
+  Companion object UserService — src/.../UserService.scala:13
+    val   default
 
   Implementations (top 2):
     class     UserServiceLive (com.example) — .../UserService.scala:8
@@ -487,6 +494,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--in OWNER` | Body: restrict to members of the given enclosing type |
 | `--of TRAIT` | Overrides: restrict to implementations of the given trait |
 | `--impl-limit N` | Explain: max implementations to show (default: 5) |
+| `--expand N` | Explain: recursively expand implementations N levels deep |
 | `--up` | Hierarchy: show only parents (default: both) |
 | `--down` | Hierarchy: show only children (default: both) |
 | `--depth N` | Hierarchy: max tree depth (default: 5) |
@@ -514,7 +522,11 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"Show me the source code of method X"** → `scalex body X --in MyClass` — use `--in` when the name exists in multiple classes
 
-**"Give me everything about this type"** → `scalex explain MyTrait` — one-shot composite: def + doc + members + impls + import count (saves 4-5 round-trips)
+**"Give me everything about this type"** → `scalex explain MyTrait` — one-shot composite: def + doc + members + companion + impls + import count (saves 4-5 round-trips). Use `--expand 1` to also see each implementation's members
+
+**"Disambiguate a common name"** → `scalex def com.example.cache.Cache` — package-qualified lookup; partial qualification also works: `scalex def cache.Cache`
+
+**"Find types using Foo in extends clause"** → `scalex impl Foo` — also finds `class Bar extends Mixin[Foo]` via type-param parent indexing
 
 **"Find tests for X / show me tests about X"** → `scalex tests extractBody` — filter by name + show bodies inline in one command
 

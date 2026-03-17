@@ -21,13 +21,47 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           mkNotFoundWithSuggestions(symbol, ctx, "explain"))
       else
         val sym = defs.head
+        // For qualified lookups, use the simple name for member/impl queries
+        val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc
         val doc = extractScaladoc(sym.file, sym.line)
         // Members (for types)
         val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
-        val members = if typeKinds.contains(sym.kind) then extractMembers(sym.file, symbol).take(10) else Nil
+        val members = if typeKinds.contains(sym.kind) then extractMembers(sym.file, simpleName).take(10) else Nil
+        // Companion lookup
+        val companionKinds: Set[SymbolKind] = sym.kind match
+          case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => Set(SymbolKind.Object)
+          case SymbolKind.Object => Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Enum)
+          case _ => Set.empty
+        val companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] =
+          if companionKinds.isEmpty then None
+          else
+            defs.find(d => companionKinds.contains(d.kind) && d.packageName == sym.packageName && d.file == sym.file)
+              .map { compSym =>
+                val compMembers = extractMembers(compSym.file, simpleName).take(10)
+                (sym = compSym, members = compMembers)
+              }
         // Implementations
-        val impls = ctx.idx.findImplementations(symbol).take(ctx.implLimit)
+        val impls = ctx.idx.findImplementations(simpleName).take(ctx.implLimit)
+        // Expanded implementations
+        val expandedImpls =
+          if ctx.expandDepth > 0 then expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
+          else Nil
         // Import count
-        val importCount = ctx.idx.findImports(symbol, timeoutMs = 3000).size
-        CmdResult.Explanation(sym, doc, members, impls, importCount)
+        val importCount = ctx.idx.findImports(simpleName, timeoutMs = 3000).size
+        CmdResult.Explanation(sym, doc, members, impls, importCount, companion, expandedImpls)
+
+private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
+                        depth: Int, visited: Set[String]): List[ExplainedImpl] =
+  if depth > ctx.expandDepth then Nil
+  else
+    val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+    impls.filter(s => typeKinds.contains(s.kind)).take(ctx.implLimit).map { impl =>
+      val key = s"${impl.packageName}.${impl.name}".toLowerCase
+      if visited.contains(key) then ExplainedImpl(impl, Nil, Nil)
+      else
+        val members = extractMembers(impl.file, impl.name).take(10)
+        val subImpls = ctx.idx.findImplementations(impl.name).take(ctx.implLimit)
+        val expanded = expandImpls(subImpls, ctx, depth + 1, visited + key)
+        ExplainedImpl(impl, members, expanded)
+    }

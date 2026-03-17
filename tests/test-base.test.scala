@@ -170,6 +170,18 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/main/scala/com/example/Mixins.scala",
+      """package com.example
+        |
+        |trait Processor[T]
+        |
+        |class UserProcessor extends Processor[User]
+        |
+        |class RoleProcessor extends Processor[Role] with Serializable
+        |
+        |class GenericProcessor[A] extends Processor[A]
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")

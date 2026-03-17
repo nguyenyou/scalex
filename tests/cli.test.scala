@@ -22,7 +22,7 @@ class CliSuite extends ScalexTestBase:
 
   test("jsonSymbol produces valid JSON structure") {
     val s = SymbolInfo("Foo", SymbolKind.Class, workspace.resolve("Foo.scala"), 10, "com.example",
-      List("Bar"), "class Foo extends Bar", List("deprecated"))
+      List("Bar"), Nil, "class Foo extends Bar", List("deprecated"))
     val json = jsonSymbol(s, workspace)
     assert(json.startsWith("{"), s"Should start with {: $json")
     assert(json.endsWith("}"), s"Should end with }: $json")
@@ -444,7 +444,7 @@ class CliSuite extends ScalexTestBase:
 
   test("formatSymbolVerbose includes signature") {
     val s = SymbolInfo("Foo", SymbolKind.Trait, workspace.resolve("Foo.scala"), 1, "com.example",
-      List("Bar", "Baz"), "trait Foo extends Bar with Baz")
+      List("Bar", "Baz"), Nil, "trait Foo extends Bar with Baz")
     val result = formatSymbolVerbose(s, workspace)
     assert(result.contains("trait Foo extends Bar with Baz"), s"Verbose: $result")
   }
@@ -784,4 +784,88 @@ class CliSuite extends ScalexTestBase:
     assert(output.startsWith("["), s"JSON should start with [: $output")
     assert(output.contains("\"suite\":\"UserServiceTest\""), s"Should contain suite name: $output")
     assert(output.contains("\"name\":\"findUser returns None for unknown id\""), s"Should contain test name: $output")
+  }
+
+  // ── explain companion merging ────────────────────────────────────────
+
+  test("explain shows companion object") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10))
+    }
+    val output = out.toString
+    assert(output.contains("Companion object UserService"),
+      s"Should show companion object: $output")
+    assert(output.contains("default"),
+      s"Companion should show val default: $output")
+  }
+
+  test("explain for non-type has no companion") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("explain", List("findUser"), CommandContext(idx = idx, workspace = workspace))
+    }
+    val output = out.toString
+    assert(!output.contains("Companion"),
+      s"Non-type should not show companion: $output")
+  }
+
+  test("explain --json includes companion field") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
+    }
+    val output = out.toString
+    assert(output.contains("\"companion\""),
+      s"JSON should include companion field: $output")
+  }
+
+  // ── explain --expand N ────────────────────────────────────────────────
+
+  test("explain --expand 1 shows expanded implementations") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10, expandDepth = 1))
+    }
+    val output = out.toString
+    assert(output.contains("Expanded implementations"),
+      s"Should show expanded impls: $output")
+    assert(output.contains("UserServiceLive"),
+      s"Should show UserServiceLive in expanded: $output")
+  }
+
+  test("explain without --expand shows no expanded section") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10))
+    }
+    val output = out.toString
+    assert(!output.contains("Expanded implementations"),
+      s"Should NOT show expanded impls without flag: $output")
+  }
+
+  // ── explain with package-qualified name ────────────────────────────────
+
+  test("explain with qualified name works") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("explain", List("com.example.UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10))
+    }
+    val output = out.toString
+    assert(output.contains("Explanation of"),
+      s"Should show explanation: $output")
+    assert(output.contains("UserService"),
+      s"Should contain UserService: $output")
   }
