@@ -1020,8 +1020,8 @@ private def renderEntrypoints(r: CmdResult.Entrypoints, ctx: CommandContext): Un
       val entries = byCategory.getOrElse(cat, Nil).take(ctx.limit)
       val arr = entries.map { e =>
         val rel = jsonEscape(ctx.workspace.relativize(e.sym.file).toString)
-        val enclosing = e.enclosingObject.map(o => s""","enclosingObject":"${jsonEscape(o)}"""").getOrElse("")
-        s"""{"name":"${jsonEscape(e.sym.name)}","kind":"${e.sym.kind.toString.toLowerCase}","file":"$rel","line":${e.sym.line},"package":"${jsonEscape(e.sym.packageName)}"$enclosing}"""
+        val line = e.memberLine.getOrElse(e.sym.line)
+        s"""{"name":"${jsonEscape(e.sym.name)}","kind":"${e.sym.kind.toString.toLowerCase}","file":"$rel","line":$line,"package":"${jsonEscape(e.sym.packageName)}"}"""
       }.mkString("[", ",", "]")
       s""""${categoryJsonKeys(cat)}":$arr"""
     }.mkString(",")
@@ -1037,8 +1037,8 @@ private def renderEntrypoints(r: CmdResult.Entrypoints, ctx: CommandContext): Un
           println(s"  ${categoryLabels(cat)} (${entries.size}):")
           entries.take(ctx.limit).foreach { e =>
             val rel = ctx.workspace.relativize(e.sym.file)
-            val label = e.enclosingObject.getOrElse(e.sym.name)
-            println(s"    ${e.sym.kind.toString.toLowerCase.padTo(9, ' ')} $label — $rel:${e.sym.line}")
+            val line = e.memberLine.getOrElse(e.sym.line)
+            println(s"    ${e.sym.kind.toString.toLowerCase.padTo(9, ' ')} ${e.sym.name} — $rel:$line")
           }
           if entries.size > ctx.limit then println(s"    ... and ${entries.size - ctx.limit} more")
           println()

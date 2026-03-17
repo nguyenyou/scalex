@@ -116,7 +116,9 @@ case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int
 
 case class ExplainedImpl(sym: SymbolInfo, members: List[MemberInfo], subImpls: List[ExplainedImpl] = Nil)
 
-case class EntrypointInfo(sym: SymbolInfo, category: EntrypointCategory, enclosingObject: Option[String] = None)
+// ── Entrypoint types ───────────────────────────────────────────────────────
+
+case class EntrypointInfo(sym: SymbolInfo, category: EntrypointCategory, memberLine: Option[Int] = None)
 
 enum EntrypointCategory:
   case MainAnnotation, MainMethod, ExtendsApp, TestSuite

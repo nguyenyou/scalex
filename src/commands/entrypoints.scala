@@ -3,11 +3,11 @@ def cmdEntrypoints(args: List[String], ctx: CommandContext): CmdResult =
   val seen = scala.collection.mutable.HashSet.empty[(name: String, file: String, line: Int)]
   val results = scala.collection.mutable.ListBuffer.empty[EntrypointInfo]
 
-  def addIfNew(sym: SymbolInfo, cat: EntrypointCategory, enclosing: Option[String] = None): Unit = {
+  def addIfNew(sym: SymbolInfo, cat: EntrypointCategory, memberLine: Option[Int] = None): Unit = {
     val key = (name = sym.name, file = sym.file.toString, line = sym.line)
     if !seen.contains(key) then {
       seen += key
-      results += EntrypointInfo(sym, cat, enclosing)
+      results += EntrypointInfo(sym, cat, memberLine)
     }
   }
 
@@ -21,8 +21,9 @@ def cmdEntrypoints(args: List[String], ctx: CommandContext): CmdResult =
   val objectSymbols = filterSymbols(ctx.idx.symbols.filter(_.kind == SymbolKind.Object), ctx)
   objectSymbols.foreach { obj =>
     val members = extractMembers(obj.file, obj.name)
-    if members.exists(m => m.name == "main" && m.kind == SymbolKind.Def) then
-      addIfNew(obj, MainMethod, Some(obj.name))
+    members.find(m => m.name == "main" && m.kind == SymbolKind.Def).foreach { mainMember =>
+      addIfNew(obj, MainMethod, Some(mainMember.line))
+    }
   }
 
   // 4. Test suites
