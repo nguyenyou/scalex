@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.24.0] — 2026-03-18
+
+### Improved
+- Not-found hints now explain that scalex indexes top-level declarations only (local defs, parameters, and pattern bindings are not indexed) (#176)
+- Fallback suggestion now recommends `scalex grep` alongside Grep/Glob/Read tools (#176)
+- Batch mode not-found output includes "top-level only" note (#176)
+
 ## [1.23.0] — 2026-03-18
 
 ### Fixed
