@@ -15,6 +15,14 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val pathLen = ctx.workspace.relativize(s.file).toString.length
         (kindRank, testRank, pathLen)
       }
+      // If no results and symbol contains ".", try Owner.member resolution
+      if defs.isEmpty && symbol.contains(".") then
+        resolveDottedMember(symbol, ctx) match
+          case Some(memberResults) =>
+            val msym = memberResults.head
+            val doc = extractScaladoc(msym.file, msym.line)
+            return CmdResult.Explanation(msym, doc, Nil, Nil, Nil)
+          case None => ()
       if defs.isEmpty then
         CmdResult.NotFound(
           s"""No definition of "$symbol" found""",
@@ -47,9 +55,9 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val expandedImpls =
           if ctx.expandDepth > 0 then expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
           else Nil
-        // Import count
-        val importCount = ctx.idx.findImports(simpleName, timeoutMs = 3000).size
-        CmdResult.Explanation(sym, doc, members, impls, importCount, companion, expandedImpls)
+        // Import refs
+        val importRefs = ctx.idx.findImports(simpleName, timeoutMs = 3000)
+        CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls)
 
 private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
                         depth: Int, visited: Set[String]): List[ExplainedImpl] =

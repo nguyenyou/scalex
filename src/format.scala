@@ -106,6 +106,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: Packages         => renderPackages(r, ctx)
     case r: PackageSymbols   => renderPackageSymbols(r, ctx)
     case r: ApiSurface       => renderApiSurface(r, ctx)
+    case r: RefsSummary      => renderRefsSummary(r, ctx)
     case r: NotFound         => renderNotFound(r, ctx)
     case r: UsageError       => println(r.message)
   }
@@ -293,7 +294,13 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
           s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(parentName)}","ownerKind":"inherited","package":"${jsonEscape(parentPackage)}","inherited":true}"""
         }
       }
-      ownMembers ++ inheritedMembers
+      val companionMembers = sec.companion.toList.flatMap { (compSym, compMembers) =>
+        val rel = jsonEscape(ctx.workspace.relativize(compSym.file).toString)
+        compMembers.map { m =>
+          s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(compSym.name)}","ownerKind":"companion","package":"${jsonEscape(compSym.packageName)}","inherited":false}"""
+        }
+      }
+      ownMembers ++ inheritedMembers ++ companionMembers
     }
     println(allMembers.take(ctx.limit).mkString("[", ",", "]"))
   } else {
@@ -324,6 +331,20 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
           }
           if pMembers.size > ctx.limit then println(s"    ... and ${pMembers.size - ctx.limit} more")
+        }
+        sec.companion.foreach { (compSym, compMembers) =>
+          val compRel = ctx.workspace.relativize(compSym.file)
+          println(s"\n  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}:")
+          if compMembers.isEmpty then println("    (no members)")
+          else {
+            compMembers.take(ctx.limit).foreach { m =>
+              if !ctx.brief then
+                println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
+              else
+                println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+            }
+            if compMembers.size > ctx.limit then println(s"    ... and ${compMembers.size - ctx.limit} more")
+          }
         }
       }
     }
@@ -598,7 +619,12 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       s"""{"definition":${jsonSymbol(ei.sym, ctx.workspace)},"members":$mJson,"subImplementations":$subJson}"""
     }
     val expandedJson = r.expandedImpls.map(explainedImplJson).mkString("[", ",", "]")
-    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":${r.importCount},"companion":$companionJson,"expandedImplementations":$expandedJson}""")
+    val importCount = r.importRefs.size
+    val importRefsJson = if importCount <= 10 then
+      val arr = r.importRefs.map(ref => jsonRef(ref, ctx.workspace)).mkString("[", ",", "]")
+      s""","importFiles":$arr"""
+    else ""
+    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson}""")
   } else {
     println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
     println(s"  Definition: $rel:${sym.line}")
@@ -615,14 +641,20 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
     }
     if r.members.nonEmpty then {
       println(s"  Members (top ${r.members.size}):")
-      r.members.foreach(m => println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
+      r.members.foreach { m =>
+        val label = if ctx.verbose then m.signature else m.name
+        println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
+      }
       println()
     }
     r.companion.foreach { (compSym, compMembers) =>
       val compRel = ctx.workspace.relativize(compSym.file)
       println(s"  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}")
       if compMembers.nonEmpty then
-        compMembers.foreach(m => println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
+        compMembers.foreach { m =>
+          val label = if ctx.verbose then m.signature else m.name
+          println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
+        }
       println()
     }
     if r.impls.nonEmpty then {
@@ -635,14 +667,24 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       def printExpanded(impls: List[ExplainedImpl], indent: String): Unit = {
         impls.foreach { ei =>
           println(s"$indent${ei.sym.kind.toString.toLowerCase} ${ei.sym.name} — ${ctx.workspace.relativize(ei.sym.file)}:${ei.sym.line}")
-          ei.members.foreach(m => println(s"$indent  ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
+          ei.members.foreach { m =>
+            val label = if ctx.verbose then m.signature else m.name
+            println(s"$indent  ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
+          }
           if ei.subImpls.nonEmpty then printExpanded(ei.subImpls, indent + "  ")
         }
       }
       printExpanded(r.expandedImpls, "    ")
       println()
     }
-    println(s"  Imported by: ${r.importCount} files")
+    val importCount = r.importRefs.size
+    if importCount == 0 then
+      println("  Imported by: 0 files")
+    else if importCount <= 10 then
+      println(s"  Imported by ($importCount files):")
+      r.importRefs.foreach(ref => println(s"    ${ctx.workspace.relativize(ref.file)}:${ref.line}"))
+    else
+      println(s"  Imported by: $importCount files (use `scalex imports ${sym.name}` for full list)")
   }
 }
 
@@ -844,6 +886,27 @@ private def renderApiSurface(r: CmdResult.ApiSurface, ctx: CommandContext): Unit
         println(s"\n  Not imported externally (${r.internalOnly.size}): ${shown.mkString(", ")}$suffix")
       }
     }
+  }
+}
+
+private def renderRefsSummary(r: CmdResult.RefsSummary, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val counts = r.categoryCounts.map((cat, count) => s""""${cat.toString}":$count""").mkString("{", ",", "}")
+    println(s"""{"symbol":"${jsonEscape(r.symbol)}","counts":$counts,"total":${r.total},"timedOut":${r.timedOut}}""")
+  } else {
+    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    val parts = r.categoryCounts.map { (cat, count) =>
+      val label = cat match {
+        case RefCategory.Definition => "definitions"
+        case RefCategory.ExtendedBy => "extensions"
+        case RefCategory.ImportedBy => "importers"
+        case RefCategory.UsedAsType => "type usages"
+        case RefCategory.Usage => "usages"
+        case RefCategory.Comment => "comments"
+      }
+      s"$count $label"
+    }
+    println(s"""References to "${r.symbol}" — ${r.total} total: ${parts.mkString(", ")}$suffix""")
   }
 }
 

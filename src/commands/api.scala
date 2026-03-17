@@ -23,7 +23,7 @@ def cmdApi(args: List[String], ctx: CommandContext): CmdResult =
             s"""Package "$pkg" not found""",
             NotFoundHint(pkg, ctx.idx.fileCount, ctx.idx.parseFailures, "api", ctx.batchMode, false, pkgSuggestions))
         case Some(resolvedPkg) =>
-          val surface = ctx.idx.findApiSurface(resolvedPkg)
+          val surface = ctx.idx.findApiSurface(resolvedPkg, ctx.usedByFilter)
           // Apply kind/test/path filters to the symbols
           val filteredSymbols = filterSymbols(surface.map(_.symbol), ctx).toSet
           val filtered = surface.filter(e => filteredSymbols.contains(e.symbol))

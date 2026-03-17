@@ -13,7 +13,17 @@ def cmdRefs(args: List[String], ctx: CommandContext): CmdResult =
             else
               (grouped.filter((cat, _) => cat.toString.toLowerCase == lower), None)
           case None => (grouped, None)
-      if ctx.categorize then
+      if ctx.countOnly then
+        val rawGrouped = ctx.idx.categorizeReferences(symbol, strict = ctx.strict).map((cat, refs) => (cat, filterRefs(refs, ctx)))
+        val counts = rawGrouped.toList.map((cat, refs) => (category = cat, count = refs.size)).filter(_.count > 0)
+          .sortBy { entry =>
+            val order = List(RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
+                             RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
+            order.indexOf(entry.category)
+          }
+        val total = counts.map(_.count).sum
+        CmdResult.RefsSummary(symbol, counts, total, ctx.idx.timedOut)
+      else if ctx.categorize then
         val rawGrouped = ctx.idx.categorizeReferences(symbol, strict = ctx.strict).map((cat, refs) => (cat, filterRefs(refs, ctx)))
         val (grouped, stderrHint) = filterByCategory(rawGrouped)
         CmdResult.CategorizedRefs(symbol, grouped, targetPkgs, ctx.idx.timedOut, stderrHint)
