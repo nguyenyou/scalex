@@ -120,7 +120,7 @@ private def renderHint(h: NotFoundHint): Unit = {
     if h.suggestions.nonEmpty then
       println(s"  not found (0 matches in ${h.fileCount} files). Did you mean: ${h.suggestions.take(3).mkString(", ")}?")
     else
-      println(s"  not found (0 matches in ${h.fileCount} files)")
+      println(s"  not found (0 matches in ${h.fileCount} files, top-level only)")
   else {
     if h.looksLikePath then
       println(s"""  Note: "${h.symbol}" looks like a path. Did you mean: scalex ${h.cmd} -w <workspace> ${h.symbol}?""")
@@ -128,10 +128,10 @@ private def renderHint(h: NotFoundHint): Unit = {
       println(s"  Did you mean:")
       h.suggestions.foreach(s => println(s"    $s"))
     }
-    println(s"  Hint: scalex indexes ${h.fileCount} git-tracked .scala/.java files.")
+    println(s"  Hint: scalex indexes top-level declarations in ${h.fileCount} files (local defs, parameters, and pattern bindings are not indexed).")
     if h.parseFailures > 0 then
       println(s"  ${h.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
-    println(s"  Fallback: use Grep, Glob, or Read tools to search manually.")
+    println(s"""  Fallback: try `scalex grep "${h.symbol}"` or use Grep, Glob, Read tools to search manually.""")
   }
 }
 
