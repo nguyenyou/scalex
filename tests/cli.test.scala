@@ -970,11 +970,11 @@ class CliSuite extends ScalexTestBase:
 
   // ── #164: explain --brief ────────────────────────────────────────────────
 
-  test("explain --brief shows definition and top 3 members only") {
+  test("explain --brief text: shows definition and top 3 members only") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
     val output = captureOut {
-      runCommand("explain", List("UserService"),
+      runCommand("explain", List("PaymentService"),
         CommandContext(idx = idx, workspace = workspace, brief = true))
     }
     assert(output.contains("Explanation of"), s"Should show explanation: $output")
@@ -982,9 +982,38 @@ class CliSuite extends ScalexTestBase:
     assert(!output.contains("Implementations"), s"Brief should not show implementations: $output")
     assert(!output.contains("Imported by"), s"Brief should not show import refs: $output")
     assert(!output.contains("Companion"), s"Brief should not show companion: $output")
+    assert(!output.contains("Inherited"), s"Brief should not show inherited: $output")
   }
 
-  test("explain --brief JSON omits doc and impls") {
+  test("explain --brief text: caps members at 3") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    // PaymentServiceLive has 5 members (2 defs + 1 val + 1 var + 1 type) — brief caps at 3
+    val output = captureOut {
+      runCommand("explain", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, brief = true))
+    }
+    assert(output.contains("Members (top 3)"), s"Should cap at 3 members: $output")
+    // com.example.Registry has 4 members — brief caps at 3
+    val regOutput = captureOut {
+      runCommand("explain", List("com.example.Registry"),
+        CommandContext(idx = idx, workspace = workspace, brief = true))
+    }
+    assert(regOutput.contains("Members (top 3)"), s"Should cap Registry at 3 members: $regOutput")
+  }
+
+  test("explain --brief text: non-type symbol has no members") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("userOrdering"),
+        CommandContext(idx = idx, workspace = workspace, brief = true))
+    }
+    assert(output.contains("Explanation of"), s"Should show explanation: $output")
+    assert(!output.contains("Members"), s"Non-type should not show members in brief: $output")
+  }
+
+  test("explain --brief JSON: omits doc, impls, companion") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
     val output = captureOut {
@@ -994,22 +1023,104 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("\"definition\""), s"Should have definition: $output")
     assert(output.contains("\"doc\":null"), s"Brief should have null doc: $output")
     assert(output.contains("\"implementations\":[]"), s"Brief should have empty implementations: $output")
+    assert(output.contains("\"companion\":null"), s"Brief should have null companion: $output")
+    assert(output.contains("\"importCount\":0"), s"Brief should have zero import count: $output")
+  }
+
+  test("explain --brief JSON: members capped at 3") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, brief = true, jsonOutput = true))
+    }
+    // Count member entries in JSON — PaymentServiceLive has 5 members, brief caps at 3
+    val memberCount = """"name":""".r.findAllIn(output).size - 1 // subtract 1 for definition.name
+    assert(memberCount == 3, s"Brief JSON should cap at 3 members, got $memberCount: $output")
   }
 
   // ── #164: disambiguation copy-paste commands ────────────────────────────
 
-  test("explain otherMatches produces string array in JSON") {
+  test("explain disambiguation: companion (same name+pkg) produces no otherMatches") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    // This test uses the existing fixture — if UserService only has one name+package combo,
-    // otherMatches should be Nil (no "otherMatches" key in JSON)
+    // Database has trait + companion object in com.example — same (name, package)
     val output = captureOut {
-      runCommand("explain", List("UserService"),
+      runCommand("explain", List("Database"),
         CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
     }
-    // Companion (same name) should NOT produce otherMatches
     assert(!output.contains("\"otherMatches\""),
-      s"Companion with same name should not produce otherMatches: $output")
+      s"Companion with same name+pkg should not produce otherMatches: $output")
+  }
+
+  test("explain disambiguation: cross-package match produces string array in JSON") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    // Registry exists in com.example and com.other — should produce otherMatches
+    val output = captureOut {
+      runCommand("explain", List("Registry"),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
+    }
+    assert(output.contains("\"otherMatches\""), s"Cross-package should produce otherMatches: $output")
+    assert(output.contains("\"otherMatches\":["), s"otherMatches should be an array: $output")
+    // Should contain package-qualified name of the non-chosen match
+    assert(output.contains("com.other.Registry") || output.contains("com.example.Registry"),
+      s"otherMatches should contain package-qualified names: $output")
+  }
+
+  test("explain disambiguation: stderr prints copy-paste commands") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val (stdout, stderr) = captureOutErr {
+      runCommand("explain", List("Registry"),
+        CommandContext(idx = idx, workspace = workspace, implLimit = 10))
+    }
+    assert(stderr.contains("other match"), s"Should show disambiguation hint on stderr: $stderr")
+    assert(stderr.contains("scalex explain"), s"Should print copy-paste command: $stderr")
+    // The command should be package-qualified
+    assert(stderr.contains("com.other.Registry") || stderr.contains("com.example.Registry"),
+      s"Command should use package-qualified name: $stderr")
+  }
+
+  test("explain disambiguation: --brief still shows disambiguation on stderr") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val (stdout, stderr) = captureOutErr {
+      runCommand("explain", List("Registry"),
+        CommandContext(idx = idx, workspace = workspace, brief = true))
+    }
+    assert(stdout.contains("Explanation of"), s"Should show explanation: $stdout")
+    assert(stderr.contains("scalex explain"), s"Brief should still show disambiguation: $stderr")
+  }
+
+  test("explain disambiguation: package-qualified lookup produces no otherMatches") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("com.other.Registry"),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true))
+    }
+    assert(output.contains("\"definition\""), s"Should resolve via package qualification: $output")
+    assert(!output.contains("\"otherMatches\""),
+      s"Package-qualified lookup should not produce otherMatches: $output")
+  }
+
+  test("explain disambiguation: otherMatches count matches stderr count") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val (stdout, stderr) = captureOutErr {
+      runCommand("explain", List("Registry"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(stderr.contains("1 other match"), s"Should show 1 other match: $stderr")
+    // JSON output should have exactly 1 element in the array
+    val jsonOut = captureOut {
+      runCommand("explain", List("Registry"),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true))
+    }
+    val arrayContent = """"otherMatches":\[([^\]]*)\]""".r.findFirstMatchIn(jsonOut).map(_.group(1)).getOrElse("")
+    val elements = arrayContent.split(",").filter(_.nonEmpty)
+    assertEquals(elements.size, 1, s"JSON otherMatches should have 1 element: $jsonOut")
   }
 
   // ── #132-135: overview preserves PascalCase in hub types ────────────────

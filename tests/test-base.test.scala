@@ -283,6 +283,26 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    // Cross-package duplicate for disambiguation tests (#164)
+    writeFile("src/main/scala/com/other/Registry.scala",
+      """package com.other
+        |
+        |trait Registry {
+        |  def lookup(id: Int): String
+        |  def register(name: String): Unit
+        |}
+        |""".stripMargin)
+    writeFile("src/main/scala/com/example/Registry.scala",
+      """package com.example
+        |
+        |trait Registry {
+        |  def lookup(id: Int): String
+        |  def register(name: String): Unit
+        |  def unregister(id: Int): Unit
+        |  def list(): List[String]
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
