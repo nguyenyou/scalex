@@ -637,14 +637,16 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
     else ""
     val otherJson = if r.otherMatches > 0 then s""","otherMatches":${r.otherMatches}""" else ""
     val totalImplJson = if r.totalImpls > r.impls.size then s""","totalImplementations":${r.totalImpls}""" else ""
-    val inheritedGroups = r.inherited.map { (parentName, parentFile, parentPackage, members) =>
-      val pRel = parentFile.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
-      val mJson = members.map { m =>
-        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+    val inheritedJson = if r.inherited.nonEmpty then
+      val groups = r.inherited.map { (parentName, parentFile, parentPackage, members) =>
+        val pRel = parentFile.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
+        val mJson = members.map { m =>
+          s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+        }.mkString("[", ",", "]")
+        s"""{"parent":"${jsonEscape(parentName)}","parentFile":$pRel,"parentPackage":"${jsonEscape(parentPackage)}","members":$mJson}"""
       }.mkString("[", ",", "]")
-      s"""{"parent":"${jsonEscape(parentName)}","parentFile":$pRel,"parentPackage":"${jsonEscape(parentPackage)}","members":$mJson}"""
-    }.mkString("[", ",", "]")
-    val inheritedJson = s""","inherited":$inheritedGroups"""
+      s""","inherited":$groups"""
+    else ""
     println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson$otherJson$totalImplJson$inheritedJson}""")
   } else {
     println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
