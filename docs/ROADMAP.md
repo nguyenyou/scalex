@@ -307,6 +307,31 @@ Feedback from real-world usage on large codebases (1,000+ files) — improving c
 - [x] `overview --no-tests` filtering (#93) — wire existing `--no-tests` flag into `overview` command; exclude test files from symbol counts, exclude test-only types from "Most extended" / "Hub types" lists; currently test fixtures dominate the architecture view on projects with extensive test suites
 - [x] `overview --focus-package <pkg>` (#96) — scope `--architecture` dependency graph to a single package: show direct dependencies + direct dependents; makes architecture output practical for targeted exploration instead of full-project dumps
 
+### Community feedback (#101, #102, #103)
+
+Consolidated feedback from real-world usage on coursier (603 files), Mill (1,415 files), and zinc (809 files). All suggestions are within the Scalameta-only constraint.
+
+**High priority — biggest wins with lowest effort:** — DONE
+- [x] Package-qualified symbol lookup (#101) — `scalex def coursier.cache.Cache` resolves by full qualified name; partial qualification also works (e.g. `cache.Cache`); eliminates the most common disambiguation friction
+- [x] Extends clause type parameter indexing (#101) — `impl Foo` now finds `class Bar extends SomeMixin[Foo]`; type args in extends clauses are indexed as `typeParamParents`; single-letter type params (T, A, F) are filtered out; index format bumped to v7
+- [x] Companion object merging in `explain` (#102, #103) — auto-include companion object/class members when explaining a trait/class (and vice versa); eliminates the most common follow-up query after `explain`
+- [x] `explain --expand N` for recursive expansion (#102) — expand implementations N levels deep with cycle detection; `explain Task --expand 2` shows Task + all subtypes' members in one call; eliminates N follow-up explains
+
+**Medium priority — solid improvements:**
+- [ ] Smarter refs/search ranking (#101, #102) — weight results by: symbol kind (class/trait > def/val), import count, number of referencing files, distance from definition (same package > distant package); data already in index
+- [ ] Lightweight Java file awareness (#103) — regex-based extraction of Java interface/class/method declarations; many Scala projects (zinc, sbt, akka) have Java interfaces at their boundaries; doesn't need full Java parsing
+- [ ] `deps --depth N` (#103) — follow dependency chains N levels deep; helps understand initialization order and spot circular dependency risks; low effort extension of existing `deps`
+- [ ] `members --verbose` as default (#102) — show parameter types by default; current default omits params making overloads indistinguishable; `--brief` flag for old behavior
+- [ ] `refs --strict` exact identifier matching (#101) — `refs Cache --strict` matches only `Cache`, not `FileCache`/`CachePolicy`; opt-in stricter word-boundary matching for short/common names
+
+**Lower priority — ambitious features:**
+- [ ] Static call graph from method bodies (#101, #102) — `scalex callgraph <method> --in <Class>`; walk Scalameta AST to extract call sites + type refs; cross-reference with index; not compiler-accurate but useful for understanding execution flow. Must pass the "better than grep" gate
+- [ ] `scalex path <A> <B>` — shortest dependency path between two types (#102); BFS over extends + import graph edges; helps understand how distant parts of a codebase connect
+- [ ] Module/subproject awareness (#103) — detect `build.sbt`/`build.mill`/`build.sc`, group symbols by module in `overview`; "zinc-core: 396 symbols, zinc-persist: 197 symbols" gives better architectural view than flat package counts
+- [ ] `scalex api <package>` / `entrypoints` (#102, #103) — show symbols imported by other packages (the public API surface); cross-reference import data to find what a package exports
+- [ ] Call-site vs override distinction in refs (#103) — for method refs, distinguish "calls this" vs "overrides this" vs "passes as value" using surrounding AST context (Apply node = call, def with same name = override)
+- [ ] Structural pattern detection (#103) — detect companion+trait (smart constructor), `trait Foo` + `class FooLive` (service pattern), sealed ADTs, factory objects; one-liner annotations like "Analysis: sealed ADT with 1 impl (MAnalysis)". Extends existing `scalex pattern` roadmap item
+
 ### Other
 - [x] `scalex file <query>` — fuzzy search file names (camelCase-aware, like IntelliJ's "search files")
 - [ ] `scalex imports <file>` — show what a file imports (its dependencies)

@@ -241,6 +241,7 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 | `--in OWNER` | Body: restrict to enclosing type |
 | `--of TRAIT` | Overrides: restrict to trait |
 | `--impl-limit N` | Explain: max implementations (default: 5) |
+| `--expand N` | Explain: recursively expand implementations N levels |
 | `--up` / `--down` | Hierarchy: limit direction |
 | `--depth N` | Hierarchy: max tree depth (default: 5) |
 | `--inherited` | Members: include inherited members |
@@ -255,7 +256,10 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 
 **Fewer round-trips.** The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space.
 
-- `explain` replaces 4-5 calls (def + doc + members + impl + imports) with one
+- `explain` replaces 4-5 calls (def + doc + members + impl + imports) with one; auto-shows companion object/class members
+- `explain --expand N` recursively expands implementations — shows each subtype's members in one call
+- `def pkg.Name` resolves by package-qualified name — no ambiguity, no follow-up disambiguation
+- `impl Foo` finds `class Bar extends Mixin[Foo]` — type-param parent indexing discovers parametric inheritance
 - `body` extracts source without a Read call — eliminates ~50% of follow-up file reads
 - `refs` returns categorized results (Definition/ExtendedBy/ImportedBy/UsedAsType) — no post-processing
 - `hierarchy` shows the full inheritance tree in one call — parents up, children down

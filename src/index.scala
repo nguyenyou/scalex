@@ -30,7 +30,7 @@ def gitLsFiles(workspace: Path): List[GitFile] =
 
 object IndexPersistence:
   private val MAGIC = 0x53584458
-  private val VERSION: Byte = 6
+  private val VERSION: Byte = 7
 
   def indexPath(workspace: Path): Path = workspace.resolve(".scalex").resolve("index.bin")
 
@@ -50,6 +50,7 @@ object IndexPersistence:
         intern(s.packageName)
         intern(s.signature)
         s.parents.foreach(intern)
+        s.typeParamParents.foreach(intern)
         s.annotations.foreach(intern)
       }
       f.imports.foreach(intern)
@@ -79,6 +80,8 @@ object IndexPersistence:
           out.writeInt(intern(s.signature))
           out.writeShort(s.parents.size)
           s.parents.foreach(p => out.writeInt(intern(p)))
+          out.writeShort(s.typeParamParents.size)
+          s.typeParamParents.foreach(p => out.writeInt(intern(p)))
           out.writeShort(s.annotations.size)
           s.annotations.foreach(a => out.writeInt(intern(a)))
         }
@@ -140,9 +143,11 @@ object IndexPersistence:
             val sig = strings(in.readInt())
             val parentCount = in.readShort()
             val parents = (0 until parentCount).map(_ => strings(in.readInt())).toList
+            val tpParentCount = in.readShort()
+            val tpParents = (0 until tpParentCount).map(_ => strings(in.readInt())).toList
             val annotCount = in.readShort()
             val annots = (0 until annotCount).map(_ => strings(in.readInt())).toList
-            syms += SymbolInfo(name, kind, workspace.resolve(relPath), line, pkg, parents, sig, annots)
+            syms += SymbolInfo(name, kind, workspace.resolve(relPath), line, pkg, parents, tpParents, sig, annots)
             si += 1
 
           // Imports
@@ -204,6 +209,12 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       allSymbols.groupBy(_.name.toLowerCase)
     }
 
+  lazy val symbolsByQName: Map[String, List[SymbolInfo]] =
+    Timings.phase("build-symbolsByQName") {
+      allSymbols.filter(_.packageName.nonEmpty)
+        .groupBy(s => s"${s.packageName}.${s.name}".toLowerCase)
+    }
+
   lazy val packages: Set[String] =
     Timings.phase("build-packages") {
       allSymbols.iterator.map(_.packageName).filter(_.nonEmpty).toSet
@@ -218,6 +229,17 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         }
       }
       pIdx.map((k, v) => k -> v.toList).toMap
+    }
+
+  lazy val typeParamParentIndex: Map[String, List[SymbolInfo]] =
+    Timings.phase("build-typeParamParentIndex") {
+      val idx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
+      allSymbols.foreach { s =>
+        s.typeParamParents.foreach { p =>
+          idx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
+        }
+      }
+      idx.map((k, v) => k -> v.toList).toMap
     }
 
   private lazy val distinctSymbols: List[SymbolInfo] =
@@ -338,10 +360,23 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       Timings.phase("cache-save") { IndexPersistence.save(workspace, indexedFiles) }
 
   def findDefinition(name: String): List[SymbolInfo] =
-    symbolsByName.getOrElse(name.toLowerCase, Nil)
+    if name.contains(".") then
+      val qResult = symbolsByQName.getOrElse(name.toLowerCase, Nil)
+      if qResult.nonEmpty then qResult
+      else
+        // Partial qualification: "cache.Cache" matches "coursier.cache.Cache"
+        val lastDot = name.lastIndexOf('.')
+        val simpleName = name.substring(lastDot + 1)
+        val pkgSuffix = name.substring(0, lastDot).toLowerCase
+        symbolsByName.getOrElse(simpleName.toLowerCase, Nil)
+          .filter(_.packageName.toLowerCase.endsWith(pkgSuffix))
+    else
+      symbolsByName.getOrElse(name.toLowerCase, Nil)
 
   def findImplementations(name: String): List[SymbolInfo] =
-    parentIndex.getOrElse(name.toLowerCase, Nil)
+    val direct = parentIndex.getOrElse(name.toLowerCase, Nil)
+    val viaTp = typeParamParentIndex.getOrElse(name.toLowerCase, Nil)
+    (direct ++ viaTp).distinctBy(s => (s.name, s.file, s.line))
 
   def findAnnotated(annotation: String): List[SymbolInfo] =
     annotationIndex.getOrElse(annotation.toLowerCase, Nil)

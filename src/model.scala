@@ -62,6 +62,7 @@ case class SymbolInfo(
     line: Int,
     packageName: String,
     parents: List[String] = Nil,
+    typeParamParents: List[String] = Nil,
     signature: String = "",
     annotations: List[String] = Nil
 )
@@ -113,6 +114,8 @@ case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[
 
 case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int, packageName: String, signature: String)
 
+case class ExplainedImpl(sym: SymbolInfo, members: List[MemberInfo], subImpls: List[ExplainedImpl] = Nil)
+
 // ── Command context ────────────────────────────────────────────────────────
 
 case class CommandContext(
@@ -128,6 +131,7 @@ case class CommandContext(
   focusPackage: Option[String] = None,
   hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
   bodyContainsFilter: Option[String] = None,
+  expandDepth: Int = 0,
 ):
   val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
@@ -178,7 +182,9 @@ enum CmdResult:
   case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String])
   case HierarchyResult(symbol: String, tree: HierarchyTree)
   case OverrideList(header: String, results: List[OverrideInfo])
-  case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importCount: Int)
+  case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importCount: Int,
+    companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None,
+    expandedImpls: List[ExplainedImpl] = Nil)
   case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
   case Scopes(file: Path, line: Int, scopes: List[ScopeInfo])
   case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])

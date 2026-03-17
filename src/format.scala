@@ -21,8 +21,9 @@ def jsonEscape(s: String): String =
 def jsonSymbol(s: SymbolInfo, workspace: Path): String =
   val rel = jsonEscape(workspace.relativize(s.file).toString)
   val parents = s.parents.map(p => s""""${jsonEscape(p)}"""").mkString("[", ",", "]")
+  val tpParents = s.typeParamParents.map(p => s""""${jsonEscape(p)}"""").mkString("[", ",", "]")
   val annots = s.annotations.map(a => s""""${jsonEscape(a)}"""").mkString("[", ",", "]")
-  s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"$rel","line":${s.line},"package":"${jsonEscape(s.packageName)}","parents":$parents,"signature":"${jsonEscape(s.signature)}","annotations":$annots}"""
+  s"""{"name":"${jsonEscape(s.name)}","kind":"${s.kind.toString.toLowerCase}","file":"$rel","line":${s.line},"package":"${jsonEscape(s.packageName)}","parents":$parents,"typeParamParents":$tpParents,"signature":"${jsonEscape(s.signature)}","annotations":$annots}"""
 
 def jsonRef(r: Reference, workspace: Path): String =
   val rel = jsonEscape(workspace.relativize(r.file).toString)
@@ -581,7 +582,21 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
     }.mkString("[", ",", "]")
     val implsJson = r.impls.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
-    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":${r.importCount}}""")
+    val companionJson = r.companion.map { (compSym, compMembers) =>
+      val cMembers = compMembers.map { m =>
+        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+      }.mkString("[", ",", "]")
+      s"""{"definition":${jsonSymbol(compSym, ctx.workspace)},"members":$cMembers}"""
+    }.getOrElse("null")
+    def explainedImplJson(ei: ExplainedImpl): String = {
+      val mJson = ei.members.map { m =>
+        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+      }.mkString("[", ",", "]")
+      val subJson = ei.subImpls.map(explainedImplJson).mkString("[", ",", "]")
+      s"""{"definition":${jsonSymbol(ei.sym, ctx.workspace)},"members":$mJson,"subImplementations":$subJson}"""
+    }
+    val expandedJson = if r.expandedImpls.isEmpty then "" else s""","expandedImplementations":${r.expandedImpls.map(explainedImplJson).mkString("[", ",", "]")}"""
+    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":${r.importCount},"companion":$companionJson$expandedJson}""")
   } else {
     println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
     println(s"  Definition: $rel:${sym.line}")
@@ -601,9 +616,28 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       r.members.foreach(m => println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
       println()
     }
+    r.companion.foreach { (compSym, compMembers) =>
+      val compRel = ctx.workspace.relativize(compSym.file)
+      println(s"  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}")
+      if compMembers.nonEmpty then
+        compMembers.foreach(m => println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
+      println()
+    }
     if r.impls.nonEmpty then {
       println(s"  Implementations (top ${r.impls.size}):")
       r.impls.foreach(s => println(formatSymbol(s, ctx.workspace)))
+      println()
+    }
+    if r.expandedImpls.nonEmpty then {
+      println("  Expanded implementations:")
+      def printExpanded(impls: List[ExplainedImpl], indent: String): Unit = {
+        impls.foreach { ei =>
+          println(s"$indent${ei.sym.kind.toString.toLowerCase} ${ei.sym.name} — ${ctx.workspace.relativize(ei.sym.file)}:${ei.sym.line}")
+          ei.members.foreach(m => println(s"$indent  ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}"))
+          if ei.subImpls.nonEmpty then printExpanded(ei.subImpls, indent + "  ")
+        }
+      }
+      printExpanded(r.expandedImpls, "    ")
       println()
     }
     println(s"  Imported by: ${r.importCount} files")
