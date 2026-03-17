@@ -183,6 +183,7 @@ scalex def UserService.findUser            # Owner.member dotted syntax
 scalex explain UserService --verbose       # One-shot: def + doc + signatures + impls
 scalex explain UserService --inherited     # Include inherited members from parents
 scalex explain UserService --no-doc       # Skip Scaladoc section
+scalex explain UserService --brief        # Definition + top 3 members only
 scalex members UserService --inherited     # Full API surface including parents
 scalex hierarchy UserService               # Inheritance tree (parents + children)
 
@@ -268,7 +269,9 @@ All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-t
 **Fewer round-trips.** The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space.
 
 - `explain` replaces 4-5 calls (def + doc + members + impl + imports) with one; auto-shows companion object/class members; `--verbose` shows full signatures
+- `explain --brief` gives definition + top 3 members — pairs with `batch` for lightweight multi-explore
 - `explain --expand N` recursively expands implementations — shows each subtype's members in one call
+- `explain` disambiguation prints copy-paste `scalex explain pkg.Name` commands — no guessing alternatives
 - `def pkg.Name` resolves by package-qualified name — no ambiguity, no follow-up disambiguation
 - `def Owner.member` navigates directly to a member — `def MyService.findUser` resolves without `body --in`
 - `impl Foo` finds `class Bar extends Mixin[Foo]` — type-param parent indexing discovers parametric inheritance

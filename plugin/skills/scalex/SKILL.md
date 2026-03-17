@@ -302,11 +302,11 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--verbose] [--shallow] [--no-doc] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--brief] [--shallow] [--no-doc] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
 
 One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
-`--verbose` shows member signatures instead of just names. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--no-doc` suppresses the Scaladoc section — useful when exploring many types rapidly and doc dominates output. `--inherited` merges parent members into the output with provenance markers — shows the full API surface including inherited members. `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, a disambiguation hint is shown on stderr.
+`--verbose` shows member signatures instead of just names. `--brief` gives the most condensed output: definition + top 3 members only — no doc, companion, inherited, impls, or imports; pairs with `batch` for lightweight multi-explore. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--no-doc` suppresses the Scaladoc section — useful when exploring many types rapidly and doc dominates output. `--inherited` merges parent members into the output with provenance markers — shows the full API surface including inherited members. `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, disambiguation prints ready-to-run `scalex explain pkg.Name` commands on stderr — copy-paste to resolve.
 
 ```bash
 scalex explain UserService                  # full summary with companion
@@ -318,6 +318,7 @@ scalex explain UserService --impl-limit 10  # show more implementations
 scalex explain UserService --expand 1       # expand impls with their members
 scalex explain UserService --inherited     # include inherited members from parents
 scalex explain UserService --no-doc       # skip Scaladoc section
+scalex explain UserService --brief        # definition + top 3 members only
 ```
 ```
 Explanation of trait UserService (com.example):
@@ -604,7 +605,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--up` | Hierarchy: show only parents (default: both) |
 | `--down` | Hierarchy: show only children (default: both) |
 | `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5) |
-| `--brief` | Members: show names only (default shows signatures) |
+| `--brief` | Members: names only; Explain: definition + top 3 members only |
 | `--summary` | Symbols: grouped counts by kind instead of full listing |
 | `--strict` | Refs/imports: treat `_` and `$` as word characters (stricter matching) |
 | `--no-doc` | Explain: suppress Scaladoc section |
@@ -641,9 +642,11 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"Show me the source code of method X"** → `scalex body X --in MyClass` — use `--in` when the name exists in multiple classes
 
-**"Give me everything about this type"** → `scalex explain MyTrait` — one-shot composite: def + doc + members + companion + impls + import count (saves 4-5 round-trips). Use `--expand 1` to also see each implementation's members
+**"Give me everything about this type"** → `scalex explain MyTrait` — one-shot composite: def + doc + members + companion + impls + import count (saves 4-5 round-trips). Use `--expand 1` to also see each implementation's members. Use `--brief` for condensed output (definition + top 3 members)
 
-**"Disambiguate a common name"** → `scalex def com.example.cache.Cache` — package-qualified lookup; partial qualification also works: `scalex def cache.Cache`
+**"Quick-explore 3-5 types"** → `echo -e "explain Foo --brief\nexplain Bar --brief\nexplain Baz --brief" | scalex batch` — lightweight multi-explain in one call
+
+**"Disambiguate a common name"** → `scalex def com.example.cache.Cache` — package-qualified lookup; partial qualification also works: `scalex def cache.Cache`. When `explain` hits multiple matches, it prints ready-to-run `scalex explain pkg.Name` commands on stderr — just copy-paste
 
 **"Find types using Foo in extends clause"** → `scalex impl Foo` — also finds `class Bar extends Mixin[Foo]` via type-param parent indexing
 

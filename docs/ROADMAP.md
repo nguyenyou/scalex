@@ -4,6 +4,11 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Community feedback: agent UX improvements (#164)
+
+- [x] Copy-paste disambiguation commands — when `explain` hits multiple matches, print ready-to-run `scalex explain pkg.Name` commands instead of just a count + generic hint. Saves one round-trip per disambiguation.
+- [x] `explain --brief` — condensed output: definition + top 3 members only. No doc, companion, inherited, impls, imports. Pairs with `batch` for lightweight multi-explain.
+
 ### Community feedback: fuzzy not-found suggestions (#156)
 
 - [x] `search` reverse-suffix matching — queries like `ScalaJSClassEmitter` suggest `ClassEmitter`

@@ -44,8 +44,11 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
       else
         val sym = defs.head
         // Deduplicate by (name, package): trait+companion = 1 match, cross-package = distinct (see #8bd6b57)
-        val distinctByNamePkg = defs.map(s => (name = s.name.toLowerCase, pkg = s.packageName)).distinct.size
-        val otherMatches = distinctByNamePkg - 1
+        val chosenKey = (name = sym.name.toLowerCase, pkg = sym.packageName)
+        val otherMatches = defs
+          .map(s => (name = s.name.toLowerCase, pkg = s.packageName)).distinct
+          .filterNot(_ == chosenKey)
+          .map(t => if t.pkg.nonEmpty then s"${t.pkg}.${sym.name}" else sym.name)
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc
@@ -63,7 +66,13 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         // Companion lookup
         val companion = findCompanion(sym, simpleName, defs)
           .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.membersLimit)))
-        if ctx.shallow then
+        if ctx.brief then
+          // Brief mode: definition + top 3 members only
+          val briefMembers = if typeKinds.contains(sym.kind) then
+            extractMembers(sym.file, simpleName).sortBy(memberKindRank).take(3)
+          else Nil
+          CmdResult.Explanation(sym, None, briefMembers, Nil, Nil, otherMatches = otherMatches)
+        else if ctx.shallow then
           // Shallow mode: definition + members + companion only
           CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches)
         else

@@ -968,6 +968,50 @@ class CliSuite extends ScalexTestBase:
     assert(!output.contains("com/client"), s"Import refs should be path-filtered: $output")
   }
 
+  // ── #164: explain --brief ────────────────────────────────────────────────
+
+  test("explain --brief shows definition and top 3 members only") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, brief = true))
+    }
+    assert(output.contains("Explanation of"), s"Should show explanation: $output")
+    assert(!output.contains("Scaladoc"), s"Brief should not show Scaladoc: $output")
+    assert(!output.contains("Implementations"), s"Brief should not show implementations: $output")
+    assert(!output.contains("Imported by"), s"Brief should not show import refs: $output")
+    assert(!output.contains("Companion"), s"Brief should not show companion: $output")
+  }
+
+  test("explain --brief JSON omits doc and impls") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, brief = true, jsonOutput = true))
+    }
+    assert(output.contains("\"definition\""), s"Should have definition: $output")
+    assert(output.contains("\"doc\":null"), s"Brief should have null doc: $output")
+    assert(output.contains("\"implementations\":[]"), s"Brief should have empty implementations: $output")
+  }
+
+  // ── #164: disambiguation copy-paste commands ────────────────────────────
+
+  test("explain otherMatches produces string array in JSON") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    // This test uses the existing fixture — if UserService only has one name+package combo,
+    // otherMatches should be Nil (no "otherMatches" key in JSON)
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
+    }
+    // Companion (same name) should NOT produce otherMatches
+    assert(!output.contains("\"otherMatches\""),
+      s"Companion with same name should not produce otherMatches: $output")
+  }
+
   // ── #132-135: overview preserves PascalCase in hub types ────────────────
 
   test("overview hub types preserve PascalCase names") {

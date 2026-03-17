@@ -188,7 +188,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --down                Hierarchy: show only children (default: both)
         |  --depth N             Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5)
         |  --inherited           Members/explain: include inherited members from parent types
-        |  --brief               Members: show names only (default shows signatures)
+        |  --brief               Members: names only; Explain: definition + top 3 members only
         |  --summary             Symbols: show grouped counts by kind instead of full listing
         |  --strict              Refs/imports: treat _ and $ as word characters (no boundary matches)
         |  --architecture        Overview: show package dependency graph and hub types

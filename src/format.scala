@@ -637,7 +637,10 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       val arr = r.importRefs.map(ref => jsonRef(ref, ctx.workspace)).mkString("[", ",", "]")
       s""","importFiles":$arr"""
     else ""
-    val otherJson = if r.otherMatches > 0 then s""","otherMatches":${r.otherMatches}""" else ""
+    val otherJson = if r.otherMatches.nonEmpty then
+      val arr = r.otherMatches.map(s => s""""${jsonEscape(s)}"""").mkString("[", ",", "]")
+      s""","otherMatches":$arr"""
+    else ""
     val totalImplJson = if r.totalImpls > r.impls.size then s""","totalImplementations":${r.totalImpls}""" else ""
     val inheritedJson = if r.inherited.nonEmpty then
       val groups = r.inherited.map { (parentName, parentFile, parentPackage, members) =>
@@ -662,7 +665,7 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
         d.split("\n").foreach(l => println(s"    $l"))
         println()
       case None =>
-        println("  Scaladoc: (none)\n")
+        if !ctx.brief then println("  Scaladoc: (none)\n")
     }
     if r.members.nonEmpty then {
       println(s"  Members (top ${r.members.size}):")
@@ -723,7 +726,7 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       printExpanded(r.expandedImpls, "    ")
       println()
     }
-    if !ctx.shallow then
+    if !ctx.shallow && !ctx.brief then
       val importCount = r.importRefs.size
       if importCount == 0 then
         println("  Imported by: 0 files")
@@ -732,8 +735,9 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
         r.importRefs.foreach(ref => println(s"    ${ctx.workspace.relativize(ref.file)}:${ref.line}"))
       else
         println(s"  Imported by: $importCount files (use `scalex imports ${sym.name}` for full list)")
-    if r.otherMatches > 0 then
-      Console.err.println(s"(${r.otherMatches} other match${if r.otherMatches > 1 then "es" else ""} — use package-qualified name or --path to disambiguate)")
+    if r.otherMatches.nonEmpty then
+      Console.err.println(s"(${r.otherMatches.size} other match${if r.otherMatches.size > 1 then "es" else ""}:)")
+      r.otherMatches.foreach(m => Console.err.println(s"  scalex explain $m"))
   }
 }
 
