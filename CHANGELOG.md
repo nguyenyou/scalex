@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.21.0] — 2026-03-17
+
 ### Added
 - `explain --no-doc` flag to suppress Scaladoc section — useful when exploring many types rapidly and doc dominates output (#157)
 
