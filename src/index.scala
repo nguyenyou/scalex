@@ -468,7 +468,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       val importRank = -symbolImportRank.getOrElse(s.name.toLowerCase, 0)
       val pathLen = s.file.toString.length
       (kindRank, testRank, importRank, pathLen)
-    exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ reverseContains.toList.sortBy(s => -s.name.length) ++ fuzzy.sortBy(_.name.length).toList
+    exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ reverseContains.toList.sortBy(searchRank) ++ fuzzy.sortBy(_.name.length).toList
 
   def fileSymbols(path: String): List[SymbolInfo] =
     val resolved = if Path.of(path).isAbsolute then Path.of(path)

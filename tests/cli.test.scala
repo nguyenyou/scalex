@@ -700,14 +700,15 @@ class CliSuite extends ScalexTestBase:
   test("search not-found shows suggestions (#156)") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
+    // Use --mode exact so "MyUserService" finds no exact match, but suggestions are generated
     val out = new java.io.ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("search", List("zxqwNothing"), CommandContext(idx = idx, workspace = workspace))
+      runCommand("search", List("MyUserService"), CommandContext(idx = idx, workspace = workspace, searchMode = Some("exact")))
     }
     val output = out.toString
     assert(output.contains("Found 0"), s"Should find 0: $output")
-    // search now uses mkNotFoundWithSuggestions, so even with no matches it renders the hint
-    assert(output.contains("Hint:") || output.contains("Did you mean"), s"Should show hint: $output")
+    assert(output.contains("Did you mean"), s"Should show suggestions: $output")
+    assert(output.contains("UserService"), s"Should suggest UserService: $output")
   }
 
   // ── #95: package command ──────────────────────────────────────────────
