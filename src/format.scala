@@ -244,8 +244,9 @@ private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
 
 private def renderStringList(r: CmdResult.StringList, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
-    val arr = r.items.take(ctx.limit).map(f => s""""${jsonEscape(f)}"""").mkString("[", ",", "]")
-    println(arr)
+    if r.items.nonEmpty then
+      val arr = r.items.take(ctx.limit).map(f => s""""${jsonEscape(f)}"""").mkString("[", ",", "]")
+      println(arr)
   } else {
     if r.items.isEmpty then {
       if r.emptyMessage.nonEmpty then println(r.emptyMessage)
@@ -401,7 +402,7 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     d.topPackages.foreach { (pkg, count) =>
       println(s"  ${pkg.padTo(50, ' ')} $count")
     }
-    println(s"\nMost extended (by implementation count):")
+    println(s"\nMost extended (by package spread, then implementation count):")
     d.mostExtended.foreach { (name, count, sig) =>
       val sigHint = if sig.nonEmpty then s"  $sig" else ""
       println(s"  ${name.padTo(30, ' ')} $count impl$sigHint")
@@ -425,7 +426,7 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
             println(s"  $pkg → ${deps.toList.sorted.mkString(", ")}")
           }
       }
-      println(s"\nHub types (by extension count):")
+      println(s"\nHub types (by package spread, then extension count):")
       if d.hubTypes.isEmpty then println("  (none)")
       else d.hubTypes.foreach { (name, count, sig) =>
         val sigHint = if sig.nonEmpty then s"  $sig" else ""
@@ -611,8 +612,10 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
     }.mkString("[", ",", "]")
     val implsJson = r.impls.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
+    val primaryKeys = r.members.map(m => (name = m.name, kind = m.kind)).toSet
     val companionJson = r.companion.map { (compSym, compMembers) =>
-      val cMembers = compMembers.map { m =>
+      val uniqueCompMembers = compMembers.filter(m => !primaryKeys.contains((name = m.name, kind = m.kind)))
+      val cMembers = uniqueCompMembers.map { m =>
         s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
       }.mkString("[", ",", "]")
       s"""{"definition":${jsonSymbol(compSym, ctx.workspace)},"members":$cMembers}"""
@@ -660,8 +663,8 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       println(s"  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}")
       if compMembers.nonEmpty then
         // Deduplicate: skip companion members that are identical to primary members
-        val primaryKeys = r.members.map(m => (m.name, m.kind)).toSet
-        val uniqueCompMembers = compMembers.filter(m => !primaryKeys.contains((m.name, m.kind)))
+        val primaryKeys = r.members.map(m => (name = m.name, kind = m.kind)).toSet
+        val uniqueCompMembers = compMembers.filter(m => !primaryKeys.contains((name = m.name, kind = m.kind)))
         val dupeCount = compMembers.size - uniqueCompMembers.size
         if uniqueCompMembers.nonEmpty then
           uniqueCompMembers.foreach { m =>

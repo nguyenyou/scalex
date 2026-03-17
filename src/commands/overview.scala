@@ -94,7 +94,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
           refCounts(name) = (count = filtered.size, distinctPkgs = filtered.map(_.packageName).distinct.size)
     }
     refCounts.toList
-      .sortBy(t => (-t._2.distinctPkgs, -t._2.count))
+      .sortBy((_, data) => (-data.distinctPkgs, -data.count))
       .take(ctx.limit)
       .map((name, data) => (
         name = recoverName(name, ctx.idx.symbolsByName),
