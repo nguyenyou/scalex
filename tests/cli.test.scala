@@ -685,6 +685,31 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("Did you mean"), s"Should show suggestions in batch: $output")
   }
 
+  test("def not-found suggests reverse-suffix matches (#156)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("def", List("MyUserService"), CommandContext(idx = idx, workspace = workspace))
+    }
+    val output = out.toString
+    assert(output.contains("Did you mean"), s"Should show suggestions: $output")
+    assert(output.contains("UserService"), s"Should suggest UserService via reverse-suffix: $output")
+  }
+
+  test("search not-found shows suggestions (#156)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("search", List("zxqwNothing"), CommandContext(idx = idx, workspace = workspace))
+    }
+    val output = out.toString
+    assert(output.contains("Found 0"), s"Should find 0: $output")
+    // search now uses mkNotFoundWithSuggestions, so even with no matches it renders the hint
+    assert(output.contains("Hint:") || output.contains("Did you mean"), s"Should show hint: $output")
+  }
+
   // ── #95: package command ──────────────────────────────────────────────
 
   test("package command lists symbols grouped by kind") {
