@@ -26,7 +26,7 @@ Clone a project and ask Claude to explore it:
 | **Scala 3 compiler** | `git clone --depth 1 https://github.com/scala/scala3.git` | *"Use scalex to explain how the Scala 3 compiler works. Start with an overview, find the main compilation phases, and trace how a source file gets transformed into bytecode."* |
 | **Scala.js** | `git clone --depth 1 https://github.com/scala-js/scala-js.git` | *"Use scalex to explore how Scala.js turns Scala code into JavaScript. Find the IR generation phases, trace how a Scala class becomes a JS object, and explain the linker pipeline."* |
 
-Claude will index the codebase in seconds, then navigate definitions, trace implementations, and explore the architecture — all without a build server or compilation. See [Quick Start](#quick-start) for installation details.
+Scalex will index the codebase in seconds, then navigate definitions, trace implementations, and explore the architecture — all without a build server or compilation. See [Quick Start](#quick-start) for installation details.
 
 ---
 
