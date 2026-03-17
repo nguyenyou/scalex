@@ -5,7 +5,7 @@ description: "Scala code intelligence CLI for navigating Scala 2/3 codebases. Us
 
 You have access to `scalex`, a Scala code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals). It parses source files via Scalameta — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
 
-First run on a project indexes all git-tracked `.scala` files (~3s for 14k files). Subsequent runs use OID-based caching and only re-parse changed files (~400-500ms).
+First run on a project indexes all git-tracked `.scala` and `.java` files (~3s for 14k files). Subsequent runs use OID-based caching and only re-parse changed files (~400-500ms). Java files are indexed via regex (class/interface/enum/record).
 
 ## Setup
 
@@ -29,7 +29,7 @@ Replace `/absolute/path/to/skills/scalex` with the absolute path to the director
 
 ## What scalex indexes
 
-Scalex extracts **top-level declarations** from every git-tracked `.scala` file: classes, traits, objects, enums, defs, vals, types, givens (named only — anonymous givens are skipped), and extension groups. It also extracts **annotations** on these declarations (e.g. `@deprecated`, `@main`, `@tailrec`). It does NOT index local definitions inside method bodies, method parameters, or pattern bindings.
+Scalex extracts **top-level declarations** from every git-tracked `.scala` file: classes, traits, objects, enums, defs, vals, types, givens (named only — anonymous givens are skipped), and extension groups. It also extracts **annotations** on these declarations (e.g. `@deprecated`, `@main`, `@tailrec`). Java files (`.java`) are also indexed — classes, interfaces, enums, and records are extracted via regex. Scalex does NOT index local definitions inside method bodies, method parameters, or pattern bindings.
 
 The `refs`, `imports`, `grep`, and `categorize` features work differently — they do text search across files, so they find ALL textual occurrences regardless of whether the symbol is in the index.
 
@@ -103,14 +103,15 @@ scalex imports PaymentService
 scalex imports PaymentService --no-tests
 ```
 
-### `scalex members <symbol> [--verbose] [--inherited] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — list members
+### `scalex members <symbol> [--verbose] [--brief] [--inherited] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — list members
 
-Lists member declarations (def, val, var, type) inside a class, trait, object, or enum body. Parses source on-the-fly — NOT stored in the index, so no index bloat. Single file parse is <50ms. Use `--verbose` to see full signatures.
+Lists member declarations (def, val, var, type) inside a class, trait, object, or enum body. Parses source on-the-fly — NOT stored in the index, so no index bloat. Single file parse is <50ms. Shows full signatures by default; use `--brief` for names only.
 
 Use `--inherited` to walk the extends chain and include members from parent types — gives the full API surface in one call. Child overrides win when the same member exists in both parent and child.
 
 ```bash
-scalex members PaymentService --verbose          # show all defs/vals with signatures
+scalex members PaymentService                    # show all defs/vals with signatures (default)
+scalex members PaymentService --brief            # names only, no signatures
 scalex members PaymentService --no-tests         # exclude test definitions
 scalex members PaymentServiceLive --inherited    # own members + inherited from parents
 ```
@@ -253,7 +254,7 @@ Body of findUser returns None — UserServiceTest — src/.../UserServiceTest.sc
 
 Full inheritance tree using extends clauses. Shows parents (walking up the extends chain) and children (walking down to implementors). External/unknown parents shown as `[external]`.
 
-Flags: `--up` (parents only), `--down` (children only), `--depth N` (max tree depth, default 5). Default: both directions. Tree-formatted output with `├──`/`└──` prefixes.
+Flags: `--up` (parents only), `--down` (children only), `--depth N` (max tree depth; hierarchy default: 5, deps default: 1, max: 5). Default: both directions. Tree-formatted output with `├──`/`└──` prefixes.
 
 ```bash
 scalex hierarchy UserServiceLive           # both parents and children
@@ -321,12 +322,13 @@ Explanation of trait UserService (com.example):
   Imported by: 3 files
 ```
 
-### `scalex deps <symbol>` — dependency graph
+### `scalex deps <symbol> [--depth N]` — dependency graph
 
-Shows what a symbol depends on: file-level imports (cross-referenced with index) and body-level type/term references. Reverse of `refs` — instead of "who uses X", shows "what does X use".
+Shows what a symbol depends on: file-level imports (cross-referenced with index) and body-level type/term references. Reverse of `refs` — instead of "who uses X", shows "what does X use". Use `--depth N` to enable transitive dependency expansion (default: 1 = direct only, max: 5).
 
 ```bash
-scalex deps ExplicitClient                 # imports + body references
+scalex deps ExplicitClient                 # imports + body references (direct only)
+scalex deps ExplicitClient --depth 2       # transitive deps up to 2 levels deep
 ```
 ```
 Dependencies of "ExplicitClient":
@@ -497,7 +499,9 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--expand N` | Explain: recursively expand implementations N levels deep |
 | `--up` | Hierarchy: show only parents (default: both) |
 | `--down` | Hierarchy: show only children (default: both) |
-| `--depth N` | Hierarchy: max tree depth (default: 5) |
+| `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, deps default: 1, max: 5) |
+| `--brief` | Members: show names only (default shows signatures) |
+| `--strict` | Refs/imports: treat `_` and `$` as word characters (stricter matching) |
 | `--inherited` | Members: include inherited members from parent types |
 | `--architecture` | Overview: show package dependency graph and hub types |
 | `--focus-package PKG` | Overview: scope dependency graph to a single package |

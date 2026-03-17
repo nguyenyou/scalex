@@ -184,6 +184,24 @@ abstract class ScalexTestBase extends FunSuite:
         |class NestedTypeArgProcessor extends Processor[Map[String, User]]
         |""".stripMargin)
 
+    writeFile("src/main/java/com/example/EventBus.java",
+      """package com.example;
+        |
+        |public interface EventBus {
+        |    void publish(String event);
+        |    void subscribe(String topic);
+        |}
+        |""".stripMargin)
+
+    writeFile("src/main/java/com/example/SimpleEventBus.java",
+      """package com.example;
+        |
+        |public class SimpleEventBus implements EventBus {
+        |    public void publish(String event) {}
+        |    public void subscribe(String topic) {}
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")

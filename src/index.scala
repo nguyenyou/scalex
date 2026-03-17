@@ -19,7 +19,7 @@ def gitLsFiles(workspace: Path): List[GitFile] =
     else
       val parts = line.substring(0, tabIdx).split("\\s+")
       val path = line.substring(tabIdx + 1)
-      if parts.length >= 2 && path.endsWith(".scala") then
+      if parts.length >= 2 && (path.endsWith(".scala") || path.endsWith(".java")) then
         Some(GitFile(workspace.resolve(path), parts(1)))
       else None
   }.toList
@@ -321,7 +321,9 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         Timings.phase("parse") {
           toParse.asJava.parallelStream().forEach { gf =>
             val rel = workspace.relativize(gf.path).toString
-            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+            val (syms, bloom, imports, aliases, failed) =
+              if rel.endsWith(".java") then extractJavaSymbols(gf.path)
+              else extractSymbols(gf.path)
             toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
           }
         }
@@ -333,7 +335,9 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         Timings.phase("parse") {
           gitFiles.asJava.parallelStream().forEach { gf =>
             val rel = workspace.relativize(gf.path).toString
-            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+            val (syms, bloom, imports, aliases, failed) =
+              if rel.endsWith(".java") then extractJavaSymbols(gf.path)
+              else extractSymbols(gf.path)
             queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
           }
         }
@@ -423,7 +427,16 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       else if n.contains(lower) then contains += s
       else if camelCaseMatch(lower, s.name) then fuzzy += s
     }
-    exact.toList ++ prefix.toList ++ contains.toList ++ fuzzy.sortBy(_.name.length).toList
+    def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, pathLen: Int) =
+      val kindRank = s.kind match
+        case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => 0
+        case SymbolKind.Object => 1
+        case SymbolKind.Def | SymbolKind.Val | SymbolKind.Type => 2
+        case _ => 3
+      val testRank = if isTestFile(s.file, workspace) then 1 else 0
+      val pathLen = s.file.toString.length
+      (kindRank, testRank, pathLen)
+    exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ fuzzy.sortBy(_.name.length).toList
 
   def fileSymbols(path: String): List[SymbolInfo] =
     val resolved = if Path.of(path).isAbsolute then Path.of(path)
@@ -438,7 +451,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val fuzzy = mutable.ListBuffer.empty[String]
 
     indexedFiles.foreach { f =>
-      val fileName = f.relativePath.substring(f.relativePath.lastIndexOf('/') + 1).stripSuffix(".scala")
+      val fileName = f.relativePath.substring(f.relativePath.lastIndexOf('/') + 1).stripSuffix(".scala").stripSuffix(".java")
       val n = fileName.toLowerCase
       if n == lower then exact += f.relativePath
       else if n.startsWith(lower) then prefix += f.relativePath
@@ -450,7 +463,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   private val defaultTimeoutMs = 20_000L
   var timedOut: Boolean = false
 
-  def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs): List[Reference] =
+  def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): List[Reference] =
+    val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
     val (candidates, allCandidates, fileAliasMap) = Timings.phase("bloom-screen") {
       val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
       val aliasFiles = aliasIndex.getOrElse(name, Nil)
@@ -477,10 +491,10 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
           lines.zipWithIndex.foreach {
             case (line, idx) if System.nanoTime() < deadline =>
               val key = s"${idxFile.relativePath}:${idx + 1}"
-              if containsWord(line, name) && seen.add(key) then
+              if wordMatch(line, name) && seen.add(key) then
                 results.add(Reference(path, idx + 1, line.trim))
               else aliasName match
-                case Some(alias) if containsWord(line, alias) && seen.add(key) =>
+                case Some(alias) if wordMatch(line, alias) && seen.add(key) =>
                   results.add(Reference(path, idx + 1, line.trim, Some(s"via alias $alias")))
                 case _ =>
             case _ =>
@@ -490,8 +504,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     }
     results.asScala.toList
 
-  def categorizeReferences(name: String): Map[RefCategory, List[Reference]] =
-    val refs = findReferences(name)
+  def categorizeReferences(name: String, strict: Boolean = false): Map[RefCategory, List[Reference]] =
+    val refs = findReferences(name, strict = strict)
     refs.groupBy { r =>
       val line = r.contextLine
       if line.matches("""^\s*(trait|class|object|enum|given|type|def|val|var)\s+.*""") && containsWord(line, name) &&
@@ -511,7 +525,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         RefCategory.Usage
     }
 
-  def findImports(name: String, timeoutMs: Long = defaultTimeoutMs): List[Reference] =
+  def findImports(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): List[Reference] =
+    val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
     val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
@@ -523,7 +538,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         val lines = try Files.readAllLines(path).asScala catch
           case _: Exception => Seq.empty
         lines.zipWithIndex.foreach {
-          case (line, idx) if System.nanoTime() < deadline && line.trim.startsWith("import ") && containsWord(line, name) =>
+          case (line, idx) if System.nanoTime() < deadline && line.trim.startsWith("import ") && wordMatch(line, name) =>
             results.add(Reference(path, idx + 1, line.trim))
             resultPaths.add(s"${idxFile.relativePath}:${idx + 1}")
           case _ =>
@@ -612,6 +627,18 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       i = line.indexOf(word, i + 1)
     false
 
+  private def isIdentChar(c: Char): Boolean =
+    c.isLetterOrDigit || c == '_' || c == '$'
+
+  private def containsWordStrict(line: String, word: String): Boolean =
+    var i = line.indexOf(word)
+    while i >= 0 do
+      val before = i == 0 || !isIdentChar(line(i - 1))
+      val after = i + word.length >= line.length || !isIdentChar(line(i + word.length))
+      if before && after then return true
+      i = line.indexOf(word, i + 1)
+    false
+
 // ── Filtering helpers ────────────────────────────────────────────────────────
 
 def isTestFile(path: Path, workspace: Path): Boolean =
@@ -619,7 +646,8 @@ def isTestFile(path: Path, workspace: Path): Boolean =
   rel.contains("/test/") || rel.contains("/tests/") || rel.contains("/testing/") ||
   rel.startsWith("bench-") || rel.contains("/bench-") ||
   rel.endsWith("Test.scala") || rel.endsWith("Spec.scala") || rel.endsWith("Suite.scala") ||
-  rel.endsWith(".test.scala")
+  rel.endsWith(".test.scala") ||
+  rel.endsWith("Test.java") || rel.endsWith("Spec.java") || rel.endsWith("Suite.java")
 
 def matchesPath(file: Path, prefix: String, workspace: Path): Boolean =
   val rel = workspace.relativize(file).toString

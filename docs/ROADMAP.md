@@ -317,12 +317,12 @@ Consolidated feedback from real-world usage on coursier (603 files), Mill (1,415
 - [x] Companion object merging in `explain` (#102, #103) — auto-include companion object/class members when explaining a trait/class (and vice versa); eliminates the most common follow-up query after `explain`
 - [x] `explain --expand N` for recursive expansion (#102) — expand implementations N levels deep with cycle detection; `explain Task --expand 2` shows Task + all subtypes' members in one call; eliminates N follow-up explains
 
-**Medium priority — solid improvements:**
-- [ ] Smarter refs/search ranking (#101, #102) — weight results by: symbol kind (class/trait > def/val), import count, number of referencing files, distance from definition (same package > distant package); data already in index
-- [ ] Lightweight Java file awareness (#103) — regex-based extraction of Java interface/class/method declarations; many Scala projects (zinc, sbt, akka) have Java interfaces at their boundaries; doesn't need full Java parsing
-- [ ] `deps --depth N` (#103) — follow dependency chains N levels deep; helps understand initialization order and spot circular dependency risks; low effort extension of existing `deps`
-- [ ] `members --verbose` as default (#102) — show parameter types by default; current default omits params making overloads indistinguishable; `--brief` flag for old behavior
-- [ ] `refs --strict` exact identifier matching (#101) — `refs Cache --strict` matches only `Cache`, not `FileCache`/`CachePolicy`; opt-in stricter word-boundary matching for short/common names
+**Medium priority — solid improvements:** — DONE
+- [x] Smarter refs/search ranking (#101, #102) — search has secondary sort within tiers by (kindRank, testRank, pathLen); refs sort within confidence groups by (path, line)
+- [x] Lightweight Java file awareness (#103) — regex-based extraction of class/interface/enum/record from .java files; many Scala projects (zinc, sbt, akka) have Java interfaces at their boundaries
+- [x] `deps --depth N` (#103) — transitive dependency expansion with cycle detection, indented output, hard cap at 5; helps understand initialization order and spot circular dependency risks
+- [x] `members --verbose` as default with `--brief` flag (#102) — members now show signatures by default; `--brief` flag for names-only
+- [x] `refs --strict` exact identifier matching (#101) — treats `_` and `$` as word characters (stricter word boundary matching); opt-in for short/common names
 
 **Lower priority — ambitious features:**
 - [ ] Static call graph from method bodies (#101, #102) — `scalex callgraph <method> --in <Class>`; walk Scalameta AST to extract call sites + type refs; cross-reference with index; not compiler-accurate but useful for understanding execution flow. Must pass the "better than grep" gate

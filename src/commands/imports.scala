@@ -2,7 +2,7 @@ def cmdImports(args: List[String], ctx: CommandContext): CmdResult =
   args.headOption match
     case None => CmdResult.UsageError("Usage: scalex imports <symbol>")
     case Some(symbol) =>
-      val results = filterRefs(ctx.idx.findImports(symbol), ctx)
+      val results = filterRefs(ctx.idx.findImports(symbol, strict = ctx.strict), ctx)
       if results.isEmpty then
         CmdResult.NotFound(
           s"""No imports of "$symbol" found""",

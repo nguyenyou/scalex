@@ -490,3 +490,41 @@ def extractScopes(file: Path, targetLine: Int): List[ScopeInfo] = {
       visit(tree)
       buf.toList
 }
+
+// ── Java symbol extraction (regex-based) ────────────────────────────────────
+
+def extractJavaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[CharSequence], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
+  val source = try Files.readString(file) catch
+    case _: Exception =>
+      val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
+      return (Nil, bloom, Nil, Map.empty, true)
+
+  val bloom = buildBloomFilterFromSource(source)
+  val lines = source.split("\n")
+  val buf = mutable.ListBuffer.empty[SymbolInfo]
+  val imports = mutable.ListBuffer.empty[String]
+
+  // Extract package
+  var pkg = ""
+  val pkgPattern = """^\s*package\s+([\w.]+)\s*;?\s*$""".r
+  val importPattern = """^\s*(import\s+[\w.*]+)\s*;?\s*$""".r
+  val typePattern = """^\s*(?:(?:public|protected|private|abstract|static|final|sealed|non-sealed)\s+)*(class|interface|enum|record)\s+(\w+)(?:\s*<[^>]*>)?(?:\s+(?:extends|implements)\s+(.+?))?(?:\s*\{|\s*$)""".r
+
+  lines.zipWithIndex.foreach { case (line, idx) =>
+    line match
+      case pkgPattern(p) => pkg = p
+      case importPattern(imp) => imports += imp
+      case typePattern(kind, name, extendsClause) =>
+        val symbolKind = kind match
+          case "interface" => SymbolKind.Trait
+          case "enum"      => SymbolKind.Enum
+          case _           => SymbolKind.Class
+        val parents = Option(extendsClause).toList.flatMap { clause =>
+          clause.split("""\s*,\s*|\s+implements\s+""").map(_.trim.replaceAll("<.*", "").trim).filter(_.nonEmpty)
+        }
+        val sig = s"$kind $name" + (if parents.nonEmpty then s" extends ${parents.mkString(", ")}" else "")
+        buf += SymbolInfo(name, symbolKind, file, idx + 1, pkg, parents, Nil, sig)
+      case _ =>
+  }
+
+  (buf.toList, bloom, imports.toList, Map.empty, false)

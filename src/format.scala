@@ -123,7 +123,7 @@ private def renderHint(h: NotFoundHint): Unit = {
       println(s"  Did you mean:")
       h.suggestions.foreach(s => println(s"    $s"))
     }
-    println(s"  Hint: scalex indexes ${h.fileCount} git-tracked .scala files.")
+    println(s"  Hint: scalex indexes ${h.fileCount} git-tracked .scala/.java files.")
     if h.parseFailures > 0 then
       println(s"  ${h.parseFailures} files had parse errors (run `scalex index --verbose` to list them).")
     println(s"  Fallback: use Grep, Glob, or Read tools to search manually.")
@@ -198,9 +198,10 @@ private def renderCategorizedRefs(r: CmdResult.CategorizedRefs, ctx: CommandCont
                          RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
         order.foreach { cat =>
           byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
+            val sorted = entries.sortBy((_, ref, _) => (ctx.workspace.relativize(ref.file).toString, ref.line))
             println(s"\n    ${cat.toString}:")
-            entries.take(ctx.limit).foreach((_, ref, _) => println(s"    ${ctx.fmtRef(ref)}"))
-            if entries.size > ctx.limit then println(s"      ... and ${entries.size - ctx.limit} more")
+            sorted.take(ctx.limit).foreach((_, ref, _) => println(s"    ${ctx.fmtRef(ref)}"))
+            if sorted.size > ctx.limit then println(s"      ... and ${sorted.size - ctx.limit} more")
           }
         }
       }
@@ -216,7 +217,7 @@ private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
     val suffix = if r.timedOut then " (timed out — partial results)" else ""
     println(s"""References to "${r.symbol}" — ${r.refs.size} found:$suffix""")
     val annotated = r.refs.map(ref => (ref, ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
-    val sorted = annotated.sortBy { case (_, c) => c.ordinal }
+    val sorted = annotated.sortBy { case (ref, c) => (c.ordinal, ctx.workspace.relativize(ref.file).toString, ref.line) }
     var lastConf: Option[Confidence] = None
     var shown = 0
     sorted.foreach { case (ref, conf) =>
@@ -306,7 +307,7 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
         else {
           println(s"  Defined in ${r.symbol}:")
           sec.ownMembers.take(ctx.limit).foreach { m =>
-            if ctx.verbose then
+            if !ctx.brief then
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
             else
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
@@ -316,7 +317,7 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
         sec.inherited.foreach { (parentName, _, _, pMembers) =>
           println(s"  Inherited from $parentName:")
           pMembers.take(ctx.limit).foreach { m =>
-            if ctx.verbose then
+            if !ctx.brief then
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
             else
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
@@ -645,33 +646,32 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
 }
 
 private def renderDependencies(r: CmdResult.Dependencies, ctx: CommandContext): Unit = {
+  def depJson(d: DepInfo): String = {
+    val file = d.file.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
+    val line = d.line.map(_.toString).getOrElse("null")
+    s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}","depth":${d.depth}}"""
+  }
   if ctx.jsonOutput then {
-    val iArr = r.importDeps.map { d =>
-      val file = d.file.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
-      val line = d.line.map(_.toString).getOrElse("null")
-      s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
-    }.mkString("[", ",", "]")
-    val bArr = r.bodyDeps.map { d =>
-      val file = d.file.map(f => s""""${jsonEscape(ctx.workspace.relativize(f).toString)}"""").getOrElse("null")
-      val line = d.line.map(_.toString).getOrElse("null")
-      s"""{"name":"${jsonEscape(d.name)}","kind":"${jsonEscape(d.kind)}","file":$file,"line":$line,"package":"${jsonEscape(d.packageName)}"}"""
-    }.mkString("[", ",", "]")
+    val iArr = r.importDeps.map(depJson).mkString("[", ",", "]")
+    val bArr = r.bodyDeps.map(depJson).mkString("[", ",", "]")
     println(s"""{"imports":$iArr,"bodyReferences":$bArr}""")
   } else {
     println(s"""Dependencies of "${r.symbol}":""")
     if r.importDeps.nonEmpty then {
       println(s"\n  Imports:")
       r.importDeps.take(ctx.limit).foreach { d =>
+        val indent = "  " * d.depth
         val loc = d.file.map(f => s" — ${ctx.workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
-        println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
+        println(s"    $indent${d.kind.padTo(9, ' ')} ${d.name}$loc")
       }
       if r.importDeps.size > ctx.limit then println(s"    ... and ${r.importDeps.size - ctx.limit} more")
     }
     if r.bodyDeps.nonEmpty then {
       println(s"\n  Body references:")
       r.bodyDeps.take(ctx.limit).foreach { d =>
+        val indent = "  " * d.depth
         val loc = d.file.map(f => s" — ${ctx.workspace.relativize(f)}:${d.line.getOrElse(0)}").getOrElse("")
-        println(s"    ${d.kind.padTo(9, ' ')} ${d.name}$loc")
+        println(s"    $indent${d.kind.padTo(9, ' ')} ${d.name}$loc")
       }
       if r.bodyDeps.size > ctx.limit then println(s"    ... and ${r.bodyDeps.size - ctx.limit} more")
     }

@@ -1,8 +1,9 @@
 def cmdDeps(args: List[String], ctx: CommandContext): CmdResult =
   args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex deps <symbol>")
+    case None => CmdResult.UsageError("Usage: scalex deps <symbol> [--depth N]")
     case Some(symbol) =>
-      val (importDeps, bodyDeps) = extractDeps(ctx.idx, symbol, ctx.workspace)
+      val depth = (if ctx.maxDepth < 0 then 1 else ctx.maxDepth).min(5)
+      val (importDeps, bodyDeps) = extractDeps(ctx.idx, symbol, ctx.workspace, maxDepth = depth)
       if importDeps.isEmpty && bodyDeps.isEmpty then
         CmdResult.NotFound(
           s"""No dependencies found for "$symbol"""",

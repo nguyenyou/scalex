@@ -14,9 +14,9 @@ def cmdRefs(args: List[String], ctx: CommandContext): CmdResult =
               (grouped.filter((cat, _) => cat.toString.toLowerCase == lower), None)
           case None => (grouped, None)
       if ctx.categorize then
-        val rawGrouped = ctx.idx.categorizeReferences(symbol).map((cat, refs) => (cat, filterRefs(refs, ctx)))
+        val rawGrouped = ctx.idx.categorizeReferences(symbol, strict = ctx.strict).map((cat, refs) => (cat, filterRefs(refs, ctx)))
         val (grouped, stderrHint) = filterByCategory(rawGrouped)
         CmdResult.CategorizedRefs(symbol, grouped, targetPkgs, ctx.idx.timedOut, stderrHint)
       else
-        val results = filterRefs(ctx.idx.findReferences(symbol), ctx)
+        val results = filterRefs(ctx.idx.findReferences(symbol, strict = ctx.strict), ctx)
         CmdResult.FlatRefs(symbol, results, targetPkgs, ctx.idx.timedOut)

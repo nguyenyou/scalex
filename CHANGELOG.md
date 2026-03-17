@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Added
+- `--brief` flag for `members` command — show names only instead of signatures (signatures are now the default) (#102)
+- `--strict` flag for `refs` and `imports` commands — treats `_` and `$` as word characters for stricter boundary matching (#101)
+- `deps --depth N` — transitive dependency expansion with cycle detection and depth indentation; hard-capped at 5 (#103)
+- Lightweight Java file awareness — regex-based extraction of class/interface/enum/record declarations from `.java` files (#103)
+- Java files are included in `searchFiles`, `findDefinition`, `findImplementations`, and `isTestFile`
 - Package-qualified symbol lookup — `scalex def coursier.cache.Cache` resolves by fully-qualified name; partial qualification also works (`cache.Cache` matches `coursier.cache.Cache`); benefits all commands that use `findDefinition` (#101)
 - Companion merging in `explain` — auto-shows companion object/class members alongside the primary symbol; eliminates the most common follow-up query after `explain` (#102, #103)
 - `--expand N` flag for `explain` — recursively expand implementations N levels deep with cycle detection; `explain Trait --expand 1` shows each implementation's members in one call (#102)
@@ -13,6 +18,12 @@
 - `overview --no-tests` filtering — excludes test files from symbol counts, top packages, most-extended lists, and hub types (#93)
 
 ### Changed
+- `members` command now shows signatures by default (previously required `--verbose`); use `--brief` for names-only output (#102)
+- `search` results now have secondary sort within each tier by (kind rank, test rank, path length) for more deterministic output (#101, #102)
+- `refs` categorized output now sorts within each confidence group by (file path, line number) for stable output (#101, #102)
+- `refs` flat output now sorts by (confidence, file path, line number) (#101, #102)
+- `--depth` flag now uses sentinel -1 for "not specified", defaulting to 5 for hierarchy and 1 for deps
+- `deps` JSON output now includes `"depth"` field; text output indents by depth level
 - Move tests from `src/` to dedicated `tests/` directory — cleaner separation of production code and test suite; run with `scala-cli test src/ tests/`
 - Move benchmark scala3 clone from repo root `scala3/` to `benchmark/scala3/` — prevents 17.7k benchmark files from polluting grep/search results; `benchmark-results/` consolidated to `benchmark/results/`
 - Add search scope guidance to CLAUDE.md — directs agents to search `src/` and `tests/` instead of repo-wide

@@ -108,7 +108,7 @@ case class TestSuiteInfo(name: String, file: Path, line: Int, tests: List[TestCa
 
 // ── Dependency extraction types ─────────────────────────────────────────────
 
-case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[Int], packageName: String)
+case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[Int], packageName: String, depth: Int = 0)
 
 // ── AST pattern matching types ──────────────────────────────────────────────
 
@@ -126,8 +126,9 @@ case class CommandContext(
   grepPatterns: List[String] = Nil, countOnly: Boolean = false,
   searchMode: Option[String] = None, definitionsOnly: Boolean = false,
   inOwner: Option[String] = None, ofTrait: Option[String] = None,
-  implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true, maxDepth: Int = 5,
+  implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true, maxDepth: Int = -1,
   inherited: Boolean = false, architecture: Boolean = false,
+  brief: Boolean = false, strict: Boolean = false,
   focusPackage: Option[String] = None,
   hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
   bodyContainsFilter: Option[String] = None,

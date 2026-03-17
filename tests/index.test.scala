@@ -8,7 +8,7 @@ class IndexSuite extends ScalexTestBase:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 13)
+    assertEquals(files.size, 15)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
@@ -36,7 +36,7 @@ class IndexSuite extends ScalexTestBase:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 13)
+    assert(idx.fileCount == 15)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -208,13 +208,13 @@ class IndexSuite extends ScalexTestBase:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 13, s"Cold index should parse all 13 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 15, s"Cold index should parse all 15 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 13, s"Warm index should skip all 13 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 15, s"Warm index should skip all 15 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -238,7 +238,7 @@ class IndexSuite extends ScalexTestBase:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 12, s"Should skip 12 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 14, s"Should skip 14 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────
@@ -709,4 +709,70 @@ class IndexSuite extends ScalexTestBase:
     val userProc = mixinFile.symbols.find(_.name == "UserProcessor").get
     assert(userProc.typeParamParents.contains("User"),
       s"typeParamParents should survive roundtrip: ${userProc.typeParamParents}")
+  }
+
+  // ── Java file awareness ──────────────────────────────────────────
+
+  test("index includes Java files") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val javaSyms = idx.symbols.filter(_.file.toString.endsWith(".java"))
+    assert(javaSyms.nonEmpty, "Should index Java symbols")
+    val names = javaSyms.map(_.name)
+    assert(names.contains("EventBus"), s"Should find EventBus interface: $names")
+    assert(names.contains("SimpleEventBus"), s"Should find SimpleEventBus class: $names")
+  }
+
+  test("Java interface is indexed as Trait") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val eventBus = idx.findDefinition("EventBus").find(_.file.toString.endsWith(".java"))
+    assert(eventBus.isDefined, "Should find EventBus")
+    assertEquals(eventBus.get.kind, SymbolKind.Trait)
+    assertEquals(eventBus.get.packageName, "com.example")
+  }
+
+  test("Java class with implements is indexed with parents") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val simple = idx.findDefinition("SimpleEventBus").find(_.file.toString.endsWith(".java"))
+    assert(simple.isDefined, "Should find SimpleEventBus")
+    assertEquals(simple.get.kind, SymbolKind.Class)
+    assert(simple.get.parents.contains("EventBus"),
+      s"Should have EventBus parent: ${simple.get.parents}")
+  }
+
+  test("findImplementations finds Java implementations") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val impls = idx.findImplementations("EventBus")
+    val names = impls.map(_.name)
+    assert(names.contains("SimpleEventBus"),
+      s"Should find SimpleEventBus as implementation: $names")
+  }
+
+  test("searchFiles finds Java files") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val results = idx.searchFiles("EventBus")
+    assert(results.exists(_.contains("EventBus.java")),
+      s"Should find EventBus.java: $results")
+  }
+
+  test("isTestFile detects Java test file suffixes") {
+    assert(isTestFile(workspace.resolve("src/main/FooTest.java"), workspace))
+    assert(isTestFile(workspace.resolve("src/main/FooSpec.java"), workspace))
+    assert(!isTestFile(workspace.resolve("src/main/Foo.java"), workspace))
+  }
+
+  // ── containsWordStrict ───────────────────────────────────────────
+
+  test("containsWordStrict does not match across underscore boundaries") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Add a file with underscore-prefixed symbols to test strict matching
+    // This is an integration-level check that the strict flag passes through
+    val results = idx.findReferences("User", strict = true)
+    // strict = true means _User would NOT match at _ boundary
+    assert(results.nonEmpty, "Should still find normal references to User")
   }

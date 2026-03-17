@@ -487,7 +487,7 @@
   <!-- Commands -->
   <section class="reveal">
     <h2>26 commands. <span class="red">Zero config.</span></h2>
-    <p class="section-sub">Point it at any git repo with Scala files. Works on Scala 2 and 3, auto-detects dialect per file.</p>
+    <p class="section-sub">Point it at any git repo with Scala files. Works on Scala 2 and 3, auto-detects dialect per file. Java-aware — tracks .java files for cross-language references.</p>
 
     <div class="cmd-grid">
       <div class="cmd-card">
@@ -504,7 +504,7 @@
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex refs</div>
-        <div class="cmd-desc">Who uses this symbol? Categorized by default: grouped by definition, extends, import, type, comment. Use --flat for plain list.</div>
+        <div class="cmd-desc">Who uses this symbol? Categorized by default: grouped by definition, extends, import, type, comment. Use --flat for plain list, --strict for stricter matching.</div>
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex imports</div>
@@ -512,7 +512,7 @@
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex members</div>
-        <div class="cmd-desc">What's inside this class/trait? Lists defs, vals, vars, types — without reading the file.</div>
+        <div class="cmd-desc">What's inside this class/trait? Shows signatures by default. Use --brief for names-only.</div>
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex doc</div>
@@ -572,7 +572,7 @@
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex deps</div>
-        <div class="cmd-desc">What does this symbol depend on? File imports + body references to indexed symbols.</div>
+        <div class="cmd-desc">What does this symbol depend on? File imports + body references. Use --depth N for transitive dependencies.</div>
       </div>
       <div class="cmd-card">
         <div class="cmd-name">scalex context</div>

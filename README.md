@@ -24,7 +24,7 @@ What if we took the fast parts of a language server — source-level indexing �
 
 - **One command = one answer.** No multi-step reasoning, no regex construction.
 - **Structured output.** Symbol kind, package, file path, line number. Not raw text.
-- **Scala 2 and 3.** Enums, givens, extensions, implicit classes, procedure syntax — auto-detected per file.
+- **Scala 2 and 3.** Enums, givens, extensions, implicit classes, procedure syntax — auto-detected per file. Java files (`.java`) are also indexed with lightweight regex extraction (class/interface/enum/record).
 - **Zero setup.** Point it at a git repo. No build files, no config, no compilation.
 - **Honest about limits.** When it can't find something, it tells the agent what to try next.
 
@@ -162,6 +162,12 @@ scalex impl UserService                    # Who extends this?
 scalex imports UserService                 # Who imports this?
 scalex grep "def.*process" --no-tests      # Regex content search
 scalex body findUser --in UserServiceLive  # Extract method body without Read
+
+# Refine
+scalex members Signal                      # Signatures by default
+scalex members Signal --brief              # Names only
+scalex refs Cache --strict                 # No underscore/dollar false positives
+scalex deps Phase --depth 2                # Transitive dependencies
 ```
 
 All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`.
@@ -243,7 +249,9 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 | `--impl-limit N` | Explain: max implementations (default: 5) |
 | `--expand N` | Explain: recursively expand implementations N levels |
 | `--up` / `--down` | Hierarchy: limit direction |
-| `--depth N` | Hierarchy: max tree depth (default: 5) |
+| `--brief` | Members: show names only (default shows signatures) |
+| `--strict` | Refs/imports: treat `_` and `$` as word characters (no boundary matches) |
+| `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, deps default: 1, max: 5) |
 | `--inherited` | Members: include inherited members |
 | `--architecture` | Overview: package deps + hub types |
 | `--focus-package PKG` | Overview: scope dependency graph to one package |

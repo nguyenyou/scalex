@@ -67,8 +67,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val goUp = !argList.contains("--down") || argList.contains("--up")
   val goDown = !argList.contains("--up") || argList.contains("--down")
   val maxDepth: Int = argList.indexOf("--depth") match
-    case -1 => 5
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
+    case -1 => -1
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(-1)
   val inherited = argList.contains("--inherited")
   val architecture = argList.contains("--architecture")
   val hasMethodFilter: Option[String] = argList.indexOf("--has-method") match
@@ -86,12 +86,14 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val expandDepth: Int = argList.indexOf("--expand") match
     case -1 => 0
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(1)
+  val brief = argList.contains("--brief")
+  val strict = argList.contains("--strict")
   val timingsEnabled = argList.contains("--timings")
   Timings.enabled = timingsEnabled
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
                            "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand")
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || a == "--flat" || {
+  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
   })
@@ -152,8 +154,10 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --expand N            Explain: recursively expand implementations N levels deep
         |  --up                  Hierarchy: show only parents (default: both)
         |  --down                Hierarchy: show only children (default: both)
-        |  --depth N             Hierarchy: max tree depth (default: 5)
+        |  --depth N             Hierarchy/deps: max tree depth (hierarchy default: 5, deps default: 1, max: 5)
         |  --inherited           Members: include inherited members from parent types
+        |  --brief               Members: show names only (default shows signatures)
+        |  --strict              Refs/imports: treat _ and $ as word characters (no boundary matches)
         |  --architecture        Overview: show package dependency graph and hub types
         |  --focus-package PKG   Overview: scope dependency graph to a single package
         |  --has-method NAME     AST pattern: match types that have a method with NAME
@@ -163,6 +167,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
         |First run indexes the project (~3s for 14k files). Subsequent runs use cache (~300ms).
+        |Java files (.java) are indexed with lightweight regex extraction (class/interface/enum/record).
         |""".stripMargin)
 
     case "batch" :: rest =>
@@ -178,7 +183,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         implLimit = implLimit, goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited,
         architecture = architecture, focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
-        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth)
+        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
+        brief = brief, strict = strict)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
       while line != null do
@@ -218,6 +224,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited, architecture = architecture,
         focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
-        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth)
+        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
+        brief = brief, strict = strict)
       runCommand(cmd, cmdRest, ctx)
       Timings.report()
