@@ -29,7 +29,7 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
         if lastDot > 0 then
           val ownerName = symbol.substring(0, lastDot)
           val memberName = symbol.substring(lastDot + 1)
-          val ownerFiles = ctx.idx.findDefinition(ownerName)
+          val ownerFiles = filterSymbols(ctx.idx.findDefinition(ownerName), ctx)
             .filter(s => typeKinds.contains(s.kind))
             .map(_.file).distinct
           val dottedBlocks = ownerFiles.flatMap { f =>
