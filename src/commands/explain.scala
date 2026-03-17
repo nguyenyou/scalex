@@ -49,12 +49,12 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           .map(s => (name = s.name.toLowerCase, pkg = s.packageName)).distinct
           .filterNot(_ == chosenKey)
           .map { t =>
-            if t.pkg.nonEmpty then s"${t.pkg}.${sym.name}"
+            val otherSym = defs.find(s => s.name.toLowerCase == t.name && s.packageName == t.pkg).get
+            if t.pkg.nonEmpty then s"${t.pkg}.${otherSym.name}"
             else
               // No package — use --path with the file's parent dir for disambiguation
-              val otherSym = defs.find(s => s.name.toLowerCase == t.name && s.packageName == t.pkg).get
               val rel = ctx.workspace.relativize(otherSym.file).getParent
-              s"${sym.name} --path ${rel}/"
+              s"${otherSym.name} --path ${rel}/"
           }
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
