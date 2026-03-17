@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+### Fixed
+- `isTestFile` now detects root-level `test/`, `tests/`, and `testing/` directories (previously required a leading `/`) (#132–#135)
+- `explain` import refs now respect `--path` and `--exclude-path` filters (previously unfiltered) (#133, #134)
+
+### Added
+- `explain` disambiguation hint — when multiple symbols match, prints "(N other matches — use package-qualified name or --path to disambiguate)" to stderr; JSON includes `otherMatches` field (#132, #133, #134)
+- `explain` package fallback — if `explain foo` finds no symbol but `foo` matches a package name, automatically falls back to `summary foo` (#132)
+- `explain --shallow` — skip implementations and import refs; show only definition + members + companion (#134)
+- `explain` totalImpls hint — when more implementations exist than `--impl-limit`, shows "(showing N of M — use --impl-limit to adjust)" (#134)
+- `explain` companion members deduplication — when companion shares members with primary type, collapses duplicates with a note (#134)
+- `overview` hub type PascalCase — "most extended" and "hub types" now preserve original name casing instead of lowercased keys (#132, #133)
+- `overview` hub type noise filter — single-character names excluded; sorted by distinct-extending-package count (secondary: impl count) (#133, #135)
+- `overview` hub type signatures — one-line signature shown next to each hub type name (#132)
+- `overview --path` — scope entire architecture view (hub types, package deps, counts) to a path prefix (#133, #135)
+- `--exclude-path PREFIX` — negative path filter available on all commands; exclude files under a directory (#135)
+- `symbols --summary` — grouped counts by kind (e.g. "12 classes, 3 traits, 45 defs") instead of full listing (#133)
+
 ## [1.17.0] — 2026-03-17
 
 ### Fixed

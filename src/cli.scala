@@ -101,10 +101,15 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
   val takesFilter: Option[String] = argList.indexOf("--takes") match
     case -1 => None
     case i => argList.lift(i + 1)
+  val shallow = argList.contains("--shallow")
+  val excludePath: Option[String] = argList.indexOf("--exclude-path") match
+    case -1 => None
+    case i => argList.lift(i + 1).map(p => p.stripPrefix("/"))
+  val summaryMode = argList.contains("--summary")
   val timingsEnabled = argList.contains("--timings")
   Timings.enabled = timingsEnabled
 
-  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
+  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
                            "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
                            "--members-limit", "--used-by", "--returns", "--takes")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
@@ -158,6 +163,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
         |  --include-tests       Override --no-tests default for overview command
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
+        |  --exclude-path PREFIX Exclude files under PREFIX (e.g. --exclude-path sbt-test/)
         |  -C N                  Show N context lines around each reference (refs, grep)
         |  -e PATTERN            Grep: additional pattern (combine multiple with |); repeatable
         |  --count               Grep/refs: show counts only, no full results
@@ -167,6 +173,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --version             Print version and exit
         |  --in OWNER            Body: restrict to members of the given enclosing type
         |  --of TRAIT            Overrides: restrict to implementations of the given trait
+        |  --shallow              Explain: skip implementations and import refs (definition + members only)
         |  --impl-limit N        Explain: max implementations to show (default: 5)
         |  --members-limit N    Explain: max members to show per type (default: 10)
         |  --expand N            Explain: recursively expand implementations N levels deep
@@ -175,6 +182,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --depth N             Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5)
         |  --inherited           Members: include inherited members from parent types
         |  --brief               Members: show names only (default shows signatures)
+        |  --summary             Symbols: show grouped counts by kind instead of full listing
         |  --strict              Refs/imports: treat _ and $ as word characters (no boundary matches)
         |  --architecture        Overview: show package dependency graph and hub types
         |  --focus-package PKG   Overview: scope dependency graph to a single package
@@ -206,7 +214,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
         membersLimit = membersLimit, brief = brief, strict = strict,
-        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter)
+        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter,
+        shallow = shallow, excludePath = excludePath, summaryMode = summaryMode)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
       while line != null do
@@ -251,6 +260,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
         membersLimit = membersLimit, brief = brief, strict = strict,
-        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter)
+        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter,
+        shallow = shallow, excludePath = excludePath, summaryMode = summaryMode)
       runCommand(cmd, cmdRest, ctx)
       Timings.report()

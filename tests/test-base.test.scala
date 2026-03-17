@@ -224,6 +224,12 @@ abstract class ScalexTestBase extends FunSuite:
     val exit = proc.waitFor()
     assert(exit == 0, s"Command failed: ${cmd.mkString(" ")}")
 
+  protected def captureOut(body: => Unit): String =
+    val out = new java.io.ByteArrayOutputStream()
+    val err = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) { Console.withErr(err) { body } }
+    out.toString
+
   private def deleteRecursive(path: Path): Unit =
     if Files.isDirectory(path) then
       Files.list(path).iterator().asScala.foreach(deleteRecursive)

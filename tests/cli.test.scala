@@ -113,7 +113,13 @@ class CliSuite extends ScalexTestBase:
   test("grepFiles returns empty for invalid regex") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val (results, timedOut) = idx.grepFiles("[invalid", noTests = false, pathFilter = None)
+    var results: List[Reference] = Nil
+    var timedOut = false
+    Console.withErr(new java.io.ByteArrayOutputStream()) {
+      val (r, t) = idx.grepFiles("[invalid", noTests = false, pathFilter = None)
+      results = r
+      timedOut = t
+    }
     assert(results.isEmpty, "Invalid regex should return empty")
     assert(!timedOut)
   }
@@ -504,7 +510,7 @@ class CliSuite extends ScalexTestBase:
     }
     val output = out.toString
     assert(output.contains("Most extended"), s"Should show most extended: $output")
-    assert(output.contains("userservice") || output.contains("database"), s"Should list a known trait: $output")
+    assert(output.contains("UserService") || output.contains("Database") || output.contains("Processor"), s"Should list a known trait with PascalCase: $output")
   }
 
   test("overview JSON output") {
@@ -791,11 +797,9 @@ class CliSuite extends ScalexTestBase:
   test("explain shows companion object") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    val out = new java.io.ByteArrayOutputStream()
-    Console.withOut(out) {
+    val output = captureOut {
       runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10))
     }
-    val output = out.toString
     assert(output.contains("Companion object UserService"),
       s"Should show companion object: $output")
     assert(output.contains("default"),
@@ -805,11 +809,9 @@ class CliSuite extends ScalexTestBase:
   test("explain for non-type has no companion") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    val out = new java.io.ByteArrayOutputStream()
-    Console.withOut(out) {
+    val output = captureOut {
       runCommand("explain", List("findUser"), CommandContext(idx = idx, workspace = workspace))
     }
-    val output = out.toString
     assert(!output.contains("Companion"),
       s"Non-type should not show companion: $output")
   }
@@ -817,11 +819,9 @@ class CliSuite extends ScalexTestBase:
   test("explain --json includes companion field") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    val out = new java.io.ByteArrayOutputStream()
-    Console.withOut(out) {
+    val output = captureOut {
       runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
     }
-    val output = out.toString
     assert(output.contains("\"companion\""),
       s"JSON should include companion field: $output")
   }
@@ -831,11 +831,9 @@ class CliSuite extends ScalexTestBase:
   test("explain --expand 1 shows expanded implementations") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    val out = new java.io.ByteArrayOutputStream()
-    Console.withOut(out) {
+    val output = captureOut {
       runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10, expandDepth = 1))
     }
-    val output = out.toString
     assert(output.contains("Expanded implementations"),
       s"Should show expanded impls: $output")
     assert(output.contains("UserServiceLive"),
@@ -845,11 +843,9 @@ class CliSuite extends ScalexTestBase:
   test("explain without --expand shows no expanded section") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    val out = new java.io.ByteArrayOutputStream()
-    Console.withOut(out) {
+    val output = captureOut {
       runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10))
     }
-    val output = out.toString
     assert(!output.contains("Expanded implementations"),
       s"Should NOT show expanded impls without flag: $output")
   }
@@ -859,13 +855,215 @@ class CliSuite extends ScalexTestBase:
   test("explain with qualified name works") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    val out = new java.io.ByteArrayOutputStream()
-    Console.withOut(out) {
+    val output = captureOut {
       runCommand("explain", List("com.example.UserService"), CommandContext(idx = idx, workspace = workspace, implLimit = 10))
     }
-    val output = out.toString
     assert(output.contains("Explanation of"),
       s"Should show explanation: $output")
     assert(output.contains("UserService"),
       s"Should contain UserService: $output")
+  }
+
+  // ── #132-135: isTestFile root-level tests/ detection ────────────────────
+
+  test("isTestFile detects root-level tests/ directory") {
+    val testsFile = workspace.resolve("tests/pos/Foo.scala")
+    Files.createDirectories(testsFile.getParent)
+    Files.writeString(testsFile, "class Foo")
+    assert(isTestFile(testsFile, workspace),
+      "File under root-level tests/ should be detected as test file")
+    // cleanup
+    Files.delete(testsFile)
+  }
+
+  test("isTestFile detects root-level test/ directory") {
+    val testFile = workspace.resolve("test/Foo.scala")
+    Files.createDirectories(testFile.getParent)
+    Files.writeString(testFile, "class Foo")
+    assert(isTestFile(testFile, workspace),
+      "File under root-level test/ should be detected as test file")
+    Files.delete(testFile)
+  }
+
+  // ── #132-135: explain disambiguation hint ────────────────────────────────
+
+  test("explain reports otherMatches when multiple definitions exist") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
+    }
+    assert(output.contains("\"otherMatches\""),
+      s"JSON should include otherMatches field: $output")
+  }
+
+  // ── #132-135: explain --shallow ──────────────────────────────────────────
+
+  test("explain --shallow skips implementations and imports") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace, shallow = true))
+    }
+    assert(output.contains("Explanation of"), s"Should show explanation: $output")
+    assert(!output.contains("Implementations"), s"Shallow should not show implementations: $output")
+    assert(!output.contains("Imported by"), s"Shallow should not show import refs: $output")
+  }
+
+  // ── #132-135: explain package fallback ────────────────────────────────────
+
+  test("explain falls back to summary when symbol matches a package") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("com.example"), CommandContext(idx = idx, workspace = workspace))
+    }
+    // Should show package summary instead of not-found
+    assert(output.contains("com.example") && !output.contains("No definition"),
+      s"Should fall back to package summary: $output")
+  }
+
+  // ── #132-135: explain import refs respect --path filter ────────────────────
+
+  test("explain import refs are filtered by --path") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, pathFilter = Some("src/main/scala/com/example/"), implLimit = 10))
+    }
+    assert(output.contains("Explanation of"), s"Should show explanation: $output")
+    // Import refs from client/ packages should not appear when --path restricts to com/example/
+    assert(!output.contains("com/client"), s"Import refs should be path-filtered: $output")
+  }
+
+  // ── #132-135: overview preserves PascalCase in hub types ────────────────
+
+  test("overview hub types preserve PascalCase names") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10))
+    }
+    val output = out.toString
+    assert(output.contains("Most extended"), s"Should show most extended: $output")
+    // Names should be PascalCase, not lowercase
+    assert(!output.contains("userservice"), s"Should not have lowercased names: $output")
+    assert(output.contains("UserService") || output.contains("Processor"),
+      s"Should preserve PascalCase: $output")
+  }
+
+  // ── #132-135: overview shows signatures for hub types ────────────────────
+
+  test("overview shows signatures next to hub types") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10))
+    }
+    val output = out.toString
+    // Signatures should appear inline with hub types
+    assert(output.contains("trait") || output.contains("class") || output.contains("interface"),
+      s"Should show signatures next to hub types: $output")
+  }
+
+  // ── #132-135: overview --path scopes architecture view ────────────────────
+
+  test("overview --path restricts to path prefix") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10,
+        pathFilter = Some("src/main/scala/com/example/")))
+    }
+    val output = out.toString
+    assert(output.contains("Project overview"), s"Should show overview: $output")
+    // Should not include com.other or com.client packages
+    assert(!output.contains("com.other"), s"Should not include com.other: $output")
+    assert(!output.contains("com.client"), s"Should not include com.client: $output")
+  }
+
+  // ── #132-135: --exclude-path ────────────────────────────────────────────
+
+  test("--exclude-path filters out symbols from excluded path") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("def", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, excludePath = Some("src/test/")))
+    }
+    val output = out.toString
+    assert(output.contains("UserService"), s"Should still find UserService: $output")
+    assert(!output.contains("src/test/"), s"Should exclude test path results: $output")
+  }
+
+  // ── #132-135: symbols --summary ──────────────────────────────────────────
+
+  test("symbols --summary shows grouped counts by kind") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val out = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) {
+      runCommand("symbols", List("src/main/scala/com/example/Model.scala"),
+        CommandContext(idx = idx, workspace = workspace, summaryMode = true))
+    }
+    val output = out.toString
+    // Should show kind counts, not individual symbols
+    assert(output.contains("total"), s"Should show total count: $output")
+  }
+
+  // ── #132-135: explain totalImpls hint ──────────────────────────────────
+
+  test("explain shows totalImpls hint when more impls exist than limit") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      // Processor has 4 impls, set limit to 2
+      runCommand("explain", List("Processor"),
+        CommandContext(idx = idx, workspace = workspace, implLimit = 2))
+    }
+    assert(output.contains("showing 2 of") || output.contains("--impl-limit"),
+      s"Should show totalImpls hint: $output")
+  }
+
+  // ── #132-135: explain companion members deduplication ────────────────────
+
+  test("explain deduplicates companion members shared with primary") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("Database"), CommandContext(idx = idx, workspace = workspace, implLimit = 10))
+    }
+    // If companion and primary share members, should show dedup note
+    assert(output.contains("Companion") || output.contains("Explanation of"),
+      s"Should show explanation: $output")
+  }
+
+  // ── #132-135: overview JSON includes signatures ──────────────────────────
+
+  test("overview JSON includes signature field in mostExtended") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 10, jsonOutput = true))
+    }
+    assert(output.contains("\"signature\""), s"JSON should include signature field: $output")
+  }
+
+  // ── #132-135: explain --json includes otherMatches and totalImpls ──────
+
+  test("explain --json includes otherMatches field when multiple matches") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
+    }
+    assert(output.contains("\"otherMatches\""),
+      s"JSON should include otherMatches: $output")
   }

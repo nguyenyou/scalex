@@ -8,21 +8,41 @@ private val stdlibParentNames = Set(
 private def isStdlibParent(name: String): Boolean =
   stdlibParentNames.contains(name.toLowerCase)
 
+private def recoverName(lower: String, symbolsByName: Map[String, List[SymbolInfo]]): String =
+  symbolsByName.get(lower).flatMap(_.headOption).map(_.name).getOrElse(lower)
+
+private def recoverSignature(lower: String, symbolsByName: Map[String, List[SymbolInfo]]): String =
+  symbolsByName.get(lower).flatMap(_.headOption).map(_.signature).getOrElse("")
+
 def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
-  val allSymbols = if ctx.noTests then ctx.idx.symbols.filter(s => !isTestFile(s.file, ctx.workspace))
+  var allSymbols = if ctx.noTests then ctx.idx.symbols.filter(s => !isTestFile(s.file, ctx.workspace))
                    else ctx.idx.symbols
+  ctx.pathFilter.foreach { p => allSymbols = allSymbols.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+  ctx.excludePath.foreach { p => allSymbols = allSymbols.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+
   val symbolsByKind = allSymbols.groupBy(_.kind).toList.sortBy(-_._2.size)
   val topPackages: List[(pkg: String, syms: List[SymbolInfo])] = allSymbols.groupBy(_.packageName)
     .filter(_._1.nonEmpty).toList.sortBy(-_._2.size).take(ctx.limit)
     .map((p, s) => (pkg = p, syms = s))
+
+  val pathFilteredSymbols = allSymbols.toSet
   val mostExtended = ctx.idx.parentIndex.toList
     .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name))
+    .filter((name, _) => recoverName(name, ctx.idx.symbolsByName).length > 1) // exclude single-char names
     .map { (name, impls) =>
-      if ctx.noTests then (name, impls.filter(s => !isTestFile(s.file, ctx.workspace)))
-      else (name, impls)
+      val filtered = {
+        var r = if ctx.noTests then impls.filter(s => !isTestFile(s.file, ctx.workspace)) else impls
+        // Apply path filters to impls too
+        ctx.pathFilter.foreach { p => r = r.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+        ctx.excludePath.foreach { p => r = r.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+        r
+      }
+      val distinctPkgs = filtered.map(_.packageName).distinct.size
+      (name, filtered, distinctPkgs)
     }
     .filter(_._2.nonEmpty)
-    .sortBy(-_._2.size).take(ctx.limit)
+    .sortBy(t => (-t._3, -t._2.size)) // primary: distinct packages, secondary: impl count
+    .take(ctx.limit)
 
   val effectiveArch = ctx.architecture || ctx.focusPackage.isDefined
 
@@ -63,23 +83,38 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     case None => archPkgDeps
 
   // Architecture: hub types (most-referenced + most-extended)
-  val hubTypes: List[(name: String, score: Int)] = if effectiveArch then {
-    val refCounts = mutable.HashMap.empty[String, Int]
+  val hubTypes: List[(name: String, score: Int, signature: String)] = if effectiveArch then {
+    val refCounts = mutable.HashMap.empty[String, (count: Int, distinctPkgs: Int)]
     ctx.idx.parentIndex.foreach { (name, impls) =>
-      if ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) then
-        val filteredImpls = if ctx.noTests then impls.filter(s => !isTestFile(s.file, ctx.workspace)) else impls
-        refCounts(name) = refCounts.getOrElse(name, 0) + filteredImpls.size
+      if ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) &&
+         recoverName(name, ctx.idx.symbolsByName).length > 1 then
+        var filtered = if ctx.noTests then impls.filter(s => !isTestFile(s.file, ctx.workspace)) else impls
+        ctx.pathFilter.foreach { p => filtered = filtered.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+        ctx.excludePath.foreach { p => filtered = filtered.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+        if filtered.nonEmpty then
+          refCounts(name) = (count = filtered.size, distinctPkgs = filtered.map(_.packageName).distinct.size)
     }
-    refCounts.filter(_._2 > 0).toList.sortBy(-_._2).take(ctx.limit)
+    refCounts.toList
+      .sortBy(t => (-t._2.distinctPkgs, -t._2.count))
+      .take(ctx.limit)
+      .map((name, data) => (
+        name = recoverName(name, ctx.idx.symbolsByName),
+        score = data.count,
+        signature = recoverSignature(name, ctx.idx.symbolsByName)
+      ))
   } else Nil
 
   CmdResult.Overview(OverviewData(
-    fileCount = if ctx.noTests then allSymbols.map(_.file).distinct.size else ctx.idx.fileCount,
+    fileCount = allSymbols.map(_.file).distinct.size,
     symbolCount = allSymbols.size,
-    packageCount = if ctx.noTests then allSymbols.map(_.packageName).filter(_.nonEmpty).distinct.size else ctx.idx.packages.size,
+    packageCount = allSymbols.map(_.packageName).filter(_.nonEmpty).distinct.size,
     symbolsByKind = symbolsByKind.map((k, syms) => (kind = k, count = syms.size)),
     topPackages = topPackages.map((p, syms) => (pkg = p, count = syms.size)),
-    mostExtended = mostExtended.map((n, impls) => (name = n, count = impls.size)),
+    mostExtended = mostExtended.map((n, impls, _) => (
+      name = recoverName(n, ctx.idx.symbolsByName),
+      count = impls.size,
+      signature = recoverSignature(n, ctx.idx.symbolsByName)
+    )),
     pkgDeps = filteredPkgDeps,
     hubTypes = hubTypes,
     hasArchitecture = effectiveArch,

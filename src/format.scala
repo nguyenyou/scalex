@@ -379,13 +379,13 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
     val kindJson = d.symbolsByKind.map((k, c) => s""""${k.toString.toLowerCase}":$c""").mkString("{", ",", "}")
     val pkgJson = d.topPackages.map((p, c) => s"""{"package":"${jsonEscape(p)}","count":$c}""").mkString("[", ",", "]")
-    val extJson = d.mostExtended.map((n, c) => s"""{"name":"${jsonEscape(n)}","implementations":$c}""").mkString("[", ",", "]")
+    val extJson = d.mostExtended.map((n, c, sig) => s"""{"name":"${jsonEscape(n)}","implementations":$c,"signature":"${jsonEscape(sig)}"}""").mkString("[", ",", "]")
     if d.hasArchitecture then {
       val depsJson = d.pkgDeps.map { (pkg, deps) =>
         val dArr = deps.map(dep => s""""${jsonEscape(dep)}"""").mkString("[", ",", "]")
         s""""${jsonEscape(pkg)}":$dArr"""
       }.mkString("{", ",", "}")
-      val hubJson = d.hubTypes.map((n, c) => s"""{"name":"${jsonEscape(n)}","score":$c}""").mkString("[", ",", "]")
+      val hubJson = d.hubTypes.map((n, c, sig) => s"""{"name":"${jsonEscape(n)}","score":$c,"signature":"${jsonEscape(sig)}"}""").mkString("[", ",", "]")
       val focusPkgJson = d.focusPackage.map(p => s""","focusPackage":"${jsonEscape(p)}"""").getOrElse("")
       println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson,"packageDependencies":$depsJson,"hubTypes":$hubJson$focusPkgJson}""")
     } else {
@@ -402,8 +402,9 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
       println(s"  ${pkg.padTo(50, ' ')} $count")
     }
     println(s"\nMost extended (by implementation count):")
-    d.mostExtended.foreach { (name, count) =>
-      println(s"  ${name.padTo(30, ' ')} $count impl")
+    d.mostExtended.foreach { (name, count, sig) =>
+      val sigHint = if sig.nonEmpty then s"  $sig" else ""
+      println(s"  ${name.padTo(30, ' ')} $count impl$sigHint")
     }
     if d.hasArchitecture then {
       d.focusPackage match {
@@ -426,8 +427,9 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
       }
       println(s"\nHub types (by extension count):")
       if d.hubTypes.isEmpty then println("  (none)")
-      else d.hubTypes.foreach { (name, count) =>
-        println(s"  ${name.padTo(30, ' ')} $count references")
+      else d.hubTypes.foreach { (name, count, sig) =>
+        val sigHint = if sig.nonEmpty then s"  $sig" else ""
+        println(s"  ${name.padTo(30, ' ')} $count references$sigHint")
       }
     }
   }
@@ -628,7 +630,9 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       val arr = r.importRefs.map(ref => jsonRef(ref, ctx.workspace)).mkString("[", ",", "]")
       s""","importFiles":$arr"""
     else ""
-    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson}""")
+    val otherJson = if r.otherMatches > 0 then s""","otherMatches":${r.otherMatches}""" else ""
+    val totalImplJson = if r.totalImpls > r.impls.size then s""","totalImplementations":${r.totalImpls}""" else ""
+    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson$otherJson$totalImplJson}""")
   } else {
     println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
     println(s"  Definition: $rel:${sym.line}")
@@ -655,14 +659,25 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       val compRel = ctx.workspace.relativize(compSym.file)
       println(s"  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}")
       if compMembers.nonEmpty then
-        compMembers.foreach { m =>
-          val label = if ctx.verbose then m.signature else m.name
-          println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
-        }
+        // Deduplicate: skip companion members that are identical to primary members
+        val primaryKeys = r.members.map(m => (m.name, m.kind)).toSet
+        val uniqueCompMembers = compMembers.filter(m => !primaryKeys.contains((m.name, m.kind)))
+        val dupeCount = compMembers.size - uniqueCompMembers.size
+        if uniqueCompMembers.nonEmpty then
+          uniqueCompMembers.foreach { m =>
+            val label = if ctx.verbose then m.signature else m.name
+            println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
+          }
+        if dupeCount > 0 then
+          println(s"    ($dupeCount members shared with ${sym.kind.toString.toLowerCase}, shown above)")
       println()
     }
     if r.impls.nonEmpty then {
-      println(s"  Implementations (top ${r.impls.size}):")
+      val implHeader = if r.totalImpls > r.impls.size then
+        s"  Implementations (showing ${r.impls.size} of ${r.totalImpls} — use --impl-limit to adjust):"
+      else
+        s"  Implementations (${r.impls.size}):"
+      println(implHeader)
       r.impls.foreach(s => println(formatSymbol(s, ctx.workspace)))
       println()
     }
@@ -681,14 +696,17 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       printExpanded(r.expandedImpls, "    ")
       println()
     }
-    val importCount = r.importRefs.size
-    if importCount == 0 then
-      println("  Imported by: 0 files")
-    else if importCount <= 10 then
-      println(s"  Imported by ($importCount files):")
-      r.importRefs.foreach(ref => println(s"    ${ctx.workspace.relativize(ref.file)}:${ref.line}"))
-    else
-      println(s"  Imported by: $importCount files (use `scalex imports ${sym.name}` for full list)")
+    if !ctx.shallow then
+      val importCount = r.importRefs.size
+      if importCount == 0 then
+        println("  Imported by: 0 files")
+      else if importCount <= 10 then
+        println(s"  Imported by ($importCount files):")
+        r.importRefs.foreach(ref => println(s"    ${ctx.workspace.relativize(ref.file)}:${ref.line}"))
+      else
+        println(s"  Imported by: $importCount files (use `scalex imports ${sym.name}` for full list)")
+    if r.otherMatches > 0 then
+      Console.err.println(s"(${r.otherMatches} other match${if r.otherMatches > 1 then "es" else ""} — use package-qualified name or --path to disambiguate)")
   }
 }
 

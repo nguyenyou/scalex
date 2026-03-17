@@ -142,9 +142,9 @@ trait PaymentService (com.example) — src/.../PaymentService.scala:7:
  */
 ```
 
-### `scalex overview [--architecture] [--focus-package PKG] [--include-tests] [--limit N]` — codebase summary
+### `scalex overview [--architecture] [--focus-package PKG] [--include-tests] [--path PREFIX] [--exclude-path PREFIX] [--limit N]` — codebase summary
 
-One-shot architectural summary. Shows symbols by kind, top packages by symbol count, and most-extended traits/classes. All computed from existing in-memory index data — no extra I/O. Use `--limit N` to control "top N" lists (default: 20).
+One-shot architectural summary. Shows symbols by kind, top packages by symbol count, and most-extended traits/classes with one-line signatures. Hub types are sorted by distinct-extending-package count (not just raw count) and single-character names are filtered out. All computed from existing in-memory index data — no extra I/O. Use `--limit N` to control "top N" lists (default: 20).
 
 **Defaults to `--no-tests`** — production code is almost always the intent. Use `--include-tests` to opt in to test files.
 
@@ -152,12 +152,15 @@ Use `--architecture` to also show package dependency graph (from imports) and hu
 
 Use `--focus-package PKG` to scope the dependency graph to a single package — shows direct dependencies and direct dependents only. Auto-enables `--architecture` when used.
 
+Use `--path PREFIX` to scope the entire overview to a subtree — hub types, package deps, and all counts are restricted to files under the prefix. Useful in monorepos.
+
 ```bash
 scalex overview
 scalex overview --limit 5
 scalex overview --architecture               # + package deps + hub types
 scalex overview --focus-package com.example   # scoped dependency view
 scalex overview --include-tests              # include test files
+scalex overview --path compiler/src/         # scope to subtree
 ```
 ```
 Project overview (14,000 files, 215,000 symbols):
@@ -298,15 +301,16 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--verbose] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--shallow] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
 
 One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
-`--verbose` shows member signatures instead of just names. `--impl-limit N` controls how many implementations to show (default: 5). `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint.
+`--verbose` shows member signatures instead of just names. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, a disambiguation hint is shown on stderr.
 
 ```bash
 scalex explain UserService                  # full summary with companion
 scalex explain UserService --verbose        # member signatures inline
+scalex explain UserService --shallow        # definition + members only, no impls
 scalex explain com.example.UserService      # package-qualified lookup
 scalex explain UserService.findUser         # Owner.member dotted syntax
 scalex explain UserService --impl-limit 10  # show more implementations
@@ -485,9 +489,9 @@ Summary of com.example (245 symbols):
   .util                 20
 ```
 
-### `scalex symbols <file> [--verbose]` / `scalex packages` — file symbols / list packages
+### `scalex symbols <file> [--verbose] [--summary]` / `scalex packages` — file symbols / list packages
 
-`symbols` lists everything defined in a file (`--verbose` for signatures). `packages` lists all packages in the index.
+`symbols` lists everything defined in a file (`--verbose` for signatures). `--summary` shows grouped counts by kind (e.g. "12 classes, 3 traits, 45 defs") instead of listing each symbol — useful for large files. `packages` lists all packages in the index.
 
 ### `scalex batch [-w workspace]` — multiple queries, one index load
 
@@ -554,6 +558,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
 | `--include-tests` | Override --no-tests default for overview command |
 | `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
+| `--exclude-path PREFIX` | Exclude files under PREFIX (e.g. `--exclude-path sbt-test/`) |
 | `-C N` | Show N context lines around each reference (refs, grep) |
 | `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
 | `--count` | Grep/refs: show counts only, no full results |
@@ -561,6 +566,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--prefix` | Search: only exact + prefix matches |
 | `--in OWNER` | Body: restrict to members of the given enclosing type |
 | `--of TRAIT` | Overrides: restrict to implementations of the given trait |
+| `--shallow` | Explain: skip implementations and import refs (definition + members only) |
 | `--impl-limit N` | Explain: max implementations to show (default: 5) |
 | `--members-limit N` | Explain: max members to show per type (default: 10) |
 | `--expand N` | Explain: recursively expand implementations N levels deep |
@@ -568,6 +574,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--down` | Hierarchy: show only children (default: both) |
 | `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5) |
 | `--brief` | Members: show names only (default shows signatures) |
+| `--summary` | Symbols: grouped counts by kind instead of full listing |
 | `--strict` | Refs/imports: treat `_` and `$` as word characters (stricter matching) |
 | `--inherited` | Members: include inherited members from parent types |
 | `--architecture` | Overview: show package dependency graph and hub types |

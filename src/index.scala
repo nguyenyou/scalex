@@ -407,7 +407,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val regex = try java.util.regex.Pattern.compile(pattern)
     catch
       case e: java.util.regex.PatternSyntaxException =>
-        System.err.println(s"Invalid regex: ${e.getMessage}")
+        Console.err.println(s"Invalid regex: ${e.getMessage}")
         return (Nil, false)
     var candidates = gitFiles
     if noTests then candidates = candidates.filter(gf => !isTestFile(gf.path, workspace))
@@ -746,6 +746,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
 def isTestFile(path: Path, workspace: Path): Boolean =
   val rel = workspace.relativize(path).toString
+  rel.startsWith("test/") || rel.startsWith("tests/") || rel.startsWith("testing/") ||
   rel.contains("/test/") || rel.contains("/tests/") || rel.contains("/testing/") ||
   rel.startsWith("bench-") || rel.contains("/bench-") ||
   rel.endsWith("Test.scala") || rel.endsWith("Spec.scala") || rel.endsWith("Suite.scala") ||

@@ -4,6 +4,41 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Community feedback: disambiguation & filtering (#132–#135)
+
+**Bugs:**
+- [x] `explain` import refs now filtered by `--path`/`--exclude-path` — were unfiltered before
+- [x] `isTestFile` detects root-level `tests/`, `test/`, `testing/` — `startsWith` added alongside `contains`
+
+**Disambiguation & ambiguity (reported in #132, #133, #134):**
+- [x] `explain` disambiguation hints — "(N other matches — use package-qualified name or --path to disambiguate)"
+- [x] `explain` package fallback — falls back to `summary` when symbol matches a package
+- [x] `explain --shallow` — skip implementations and import refs
+
+**Overview quality (#132, #133, #135):**
+- [x] Hub type casing — PascalCase preserved via `symbolsByName` lookup
+- [x] Hub type noise filter — single-char names excluded; sorted by distinct-package count
+- [x] Hub type signatures — one-line signature shown inline
+- [x] `overview --path` — scopes all overview data to path prefix
+
+**Filtering (#133, #135):**
+- [x] `--exclude-path` — negative path filter on all commands via `filterSymbols`/`filterRefs`
+- [x] `symbols --summary` — grouped counts by kind
+
+**Output control (#134):**
+- [x] Members deduplication — companion members deduplicated against primary in `explain`
+- [x] `explain` totalImpls hint — "(showing N of M — use --impl-limit to adjust)"
+- [ ] Batch output size estimation — warn or auto-limit when a single query in a batch would produce >100KB output
+
+### Discarded from #132–#135
+
+- ~~Java member extraction (#135)~~ — breaks Scalameta-only architecture; regex-based Java parsing is fragile and would need maintenance for every Java syntax variation. Agent can `read` Java files directly for member signatures
+- ~~Re-exported type ranking (#132)~~ — detecting alias chains requires type resolution (unavailable without build server); name-based heuristics would produce false positives
+- ~~Module/subproject awareness (#135)~~ — already discarded in #103; build file detection couples to external conventions
+- ~~`flow`/`pipeline` command (#135)~~ — already discarded; BFS without type resolution is fragile via name collisions
+- ~~`explain --expand-members` (#133, #134)~~ — `explain --expand N` + `body member --in Type` already covers this workflow; adding selective member expansion has diminishing returns vs composing existing commands
+- ~~Cross-project most-imported ranking (#132)~~ — `search` already ranks by import count (shipped in #119)
+
 ### Discarded from #121
 
 - ~~`scalex flow <from> <to>`~~ — BFS without type resolution is fragile via name collisions; fails "better than grep" gate (same reasoning as rejected `scalex path` in #102)

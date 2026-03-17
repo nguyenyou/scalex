@@ -5,6 +5,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
       var defs = ctx.idx.findDefinition(symbol)
       if ctx.noTests then defs = defs.filter(s => !isTestFile(s.file, ctx.workspace))
       ctx.pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+      ctx.excludePath.foreach { p => defs = defs.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
       // Rank: class/trait/object/enum first (same as def command)
       defs = defs.sortBy { s =>
         val kindRank = s.kind match
@@ -29,6 +30,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         var fuzzyResults = ctx.idx.search(symbol).filter(s => typeKinds.contains(s.kind))
         if ctx.noTests then fuzzyResults = fuzzyResults.filter(s => !isTestFile(s.file, ctx.workspace))
         ctx.pathFilter.foreach { p => fuzzyResults = fuzzyResults.filter(s => matchesPath(s.file, p, ctx.workspace)) }
+        ctx.excludePath.foreach { p => fuzzyResults = fuzzyResults.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
         // Auto-use if exactly one strong match by name (exact case-insensitive or prefix)
         val lower = symbol.toLowerCase
         val strongMatches = fuzzyResults.filter { s =>
@@ -38,15 +40,23 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val distinctNames = strongMatches.map(_.name.toLowerCase).distinct
         if distinctNames.size == 1 then
           val bestMatch = strongMatches.head
-          System.err.println(s"""(no exact match for "$symbol" — showing ${bestMatch.name} instead)""")
+          Console.err.println(s"""(no exact match for "$symbol" — showing ${bestMatch.name} instead)""")
           defs = strongMatches.toList
         end if
       if defs.isEmpty then
-        CmdResult.NotFound(
-          s"""No definition of "$symbol" found""",
-          mkNotFoundWithSuggestions(symbol, ctx, "explain"))
+        // Package fallback: if symbol matches a package name, delegate to summary
+        val lower = symbol.toLowerCase
+        val pkgMatch = ctx.idx.packages.find(_.equalsIgnoreCase(symbol))
+          .orElse(ctx.idx.packages.find(_.toLowerCase.endsWith("." + lower)))
+        pkgMatch match
+          case Some(_) => cmdSummary(List(symbol), ctx)
+          case None =>
+            CmdResult.NotFound(
+              s"""No definition of "$symbol" found""",
+              mkNotFoundWithSuggestions(symbol, ctx, "explain"))
       else
         val sym = defs.head
+        val otherMatches = defs.size - 1
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc
@@ -69,15 +79,22 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
                 val compMembers = extractMembers(compSym.file, simpleName).sortBy(memberKindRank).take(ctx.membersLimit)
                 (sym = compSym, members = compMembers)
               }
-        // Implementations
-        val impls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx).take(ctx.implLimit)
-        // Expanded implementations
-        val expandedImpls =
-          if ctx.expandDepth > 0 then expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
-          else Nil
-        // Import refs
-        val importRefs = ctx.idx.findImports(simpleName, timeoutMs = 3000)
-        CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls)
+        if ctx.shallow then
+          // Shallow mode: definition + members + companion only
+          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches)
+        else
+          // Implementations
+          val allImpls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx)
+          val totalImpls = allImpls.size
+          val impls = allImpls.take(ctx.implLimit)
+          // Expanded implementations
+          val expandedImpls =
+            if ctx.expandDepth > 0 then expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
+            else Nil
+          // Import refs (apply path/exclude/noTests filters)
+          val importRefs = filterRefs(ctx.idx.findImports(simpleName, timeoutMs = 3000), ctx)
+          CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls,
+            otherMatches = otherMatches, totalImpls = totalImpls)
 
 private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
                         depth: Int, visited: Set[String]): List[ExplainedImpl] =

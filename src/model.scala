@@ -137,6 +137,9 @@ case class CommandContext(
   usedByFilter: Option[String] = None,
   returnsFilter: Option[String] = None,
   takesFilter: Option[String] = None,
+  shallow: Boolean = false,
+  excludePath: Option[String] = None,
+  summaryMode: Boolean = false,
 ):
   val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
@@ -163,9 +166,9 @@ case class OverviewData(
   fileCount: Int, symbolCount: Int, packageCount: Int,
   symbolsByKind: List[(kind: SymbolKind, count: Int)],
   topPackages: List[(pkg: String, count: Int)],
-  mostExtended: List[(name: String, count: Int)],
+  mostExtended: List[(name: String, count: Int, signature: String)],
   pkgDeps: Map[String, Set[String]],
-  hubTypes: List[(name: String, score: Int)],
+  hubTypes: List[(name: String, score: Int, signature: String)],
   hasArchitecture: Boolean,
   focusPackage: Option[String] = None
 )
@@ -190,7 +193,8 @@ enum CmdResult:
   case OverrideList(header: String, results: List[OverrideInfo])
   case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importRefs: List[Reference],
     companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None,
-    expandedImpls: List[ExplainedImpl] = Nil)
+    expandedImpls: List[ExplainedImpl] = Nil,
+    otherMatches: Int = 0, totalImpls: Int = 0)
   case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
   case Scopes(file: Path, line: Int, scopes: List[ScopeInfo])
   case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])

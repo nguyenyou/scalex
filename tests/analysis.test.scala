@@ -115,11 +115,9 @@ class AnalysisSuite extends ScalexTestBase:
     val idx = WorkspaceIndex(workspace)
     idx.index()
     // UserService has trait + object + val references — explain should pick the trait
-    val out = new java.io.ByteArrayOutputStream()
-    Console.withOut(out) {
+    val output = captureOut {
       runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace))
     }
-    val output = out.toString
     assert(output.contains("trait UserService"),
       s"explain should pick trait UserService, not val/object: $output")
   }

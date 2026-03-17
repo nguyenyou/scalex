@@ -176,7 +176,7 @@ scalex refs Cache --strict                 # No underscore/dollar false positive
 scalex deps Phase --depth 2                # Transitive dependencies
 ```
 
-All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`.
+All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N`.
 
 ## Run Without Installing
 
@@ -234,7 +234,7 @@ scalex api <package>            Public API surface of a package (aka: exported s
 scalex summary <package>        Sub-packages with symbol counts   (aka: package breakdown)
 ```
 
-All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
+All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
 
 ### What Makes It AI-Friendly
 
@@ -257,7 +257,7 @@ All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. S
 
 **Less noise.** Large codebases produce hundreds of results. Scalex gives the agent tools to cut through:
 
-- `--kind`, `--path`, `--no-tests` — filter at the source, not after
+- `--kind`, `--path`, `--exclude-path`, `--no-tests` — filter at the source, not after
 - `--exact` / `--prefix` — `search Auth --prefix` returns ~20 results instead of 1300+
 - `--definitions-only` — only class/trait/object/enum, no val/def name collisions (works on `search` and `package`)
 - `summary` — sub-package breakdown with symbol counts; drill-down from overview to package
