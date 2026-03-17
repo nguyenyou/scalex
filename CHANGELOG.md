@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.23.0] — 2026-03-18
+
 ### Fixed
 - Java parser crash: `parseJavaSource` now catches `Error` (not just `Exception`) — fixes `NoSuchFieldError` crash from JavaParser on certain Java files (#172)
 - `body` command fallback owner lookup now applies `filterSymbols` — `--path`, `--no-tests`, `--exclude-path` are respected when searching for the `--in` owner's files (#172)
