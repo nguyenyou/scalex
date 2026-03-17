@@ -263,7 +263,7 @@ Benchmark data shows every query pays ~770ms baseline just to load+build the ind
 
 **High priority:**
 - [x] Lazy map building — `lazy val` fields in `WorkspaceIndex` compute derived maps on first access; most commands use only 1–2 maps. Measured: `file` 2.16x, `impl` 2.00x, `packages` 1.86x, `def` 1.31x faster on scala3 (17.7k files)
-- [ ] Separate bloom storage — store bloom filters in `blooms.bin` separate from `index.bin`; non-bloom commands (`def`, `search`, `impl`, `packages`, `hierarchy`) load ~7MB instead of 22MB. Expected: ~100–150ms savings on non-bloom commands
+- [x] ~~Separate bloom storage~~ — **won't do.** Benchmarked: `cache-load` is 231ms without blooms vs 269ms with blooms — only ~38ms difference, not the estimated 100–150ms. The existing `skipBytes` in `IndexPersistence.load` already skips bloom data efficiently; separating into a second file adds sync/versioning complexity for marginal gain
 
 **Medium priority:**
 - [ ] Varint encoding — replace fixed 4-byte `writeInt` for string table indices with variable-length encoding (1–3 bytes); most of ~180K indices fit in 2 bytes. Expected: shrink index from 22MB to ~15MB
