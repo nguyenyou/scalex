@@ -1479,6 +1479,148 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("No body found"), s"Should NOT find body when path is excluded: $output")
   }
 
+  // ── #172: body command — nested local defs + filter fixes ───────────
+
+  test("body --in finds nested local def via command") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("runSteps"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("Pipeline")))
+    }
+    assert(output.contains("def runSteps"), s"Should find local def runSteps: $output")
+    assert(output.contains("Pipeline"), s"Should mention Pipeline: $output")
+  }
+
+  test("body --in with --path filter on fallback restricts to matching files") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Pipeline is in src/main/ — use --path to include it
+    val output = captureOut {
+      runCommand("body", List("runSteps"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("Pipeline"),
+          pathFilter = Some("src/main/")))
+    }
+    assert(output.contains("def runSteps"), s"Should find runSteps with matching --path: $output")
+    // Now exclude it via path
+    val excluded = captureOut {
+      runCommand("body", List("runSteps"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("Pipeline"),
+          pathFilter = Some("src/test/")))
+    }
+    assert(excluded.contains("No body found"), s"Should NOT find runSteps when --path excludes it: $excluded")
+  }
+
+  test("body --in with --no-tests on fallback owner lookup") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // testFindUser is a method in UserServiceSpec (src/test/). With --in and --no-tests,
+    // the owner lookup should exclude test files.
+    val output = captureOut {
+      runCommand("body", List("testFindUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceSpec"),
+          noTests = true))
+    }
+    assert(output.contains("No body found"), s"Should NOT find testFindUser when --no-tests excludes owner: $output")
+  }
+
+  test("body finds local def nested inside synchronized/wrapper call") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("processBatch"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("Scheduler")))
+    }
+    assert(output.contains("def processBatch"), s"Should find local def inside synchronized: $output")
+    assert(output.contains("batch.size"), s"Should contain body: $output")
+  }
+
+  test("body on Java file does not crash with parser error") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // BrokenRecord.java may trigger JavaParser internal errors.
+    // The command should return gracefully, not throw.
+    val output = captureOut {
+      runCommand("body", List("Ok"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("BrokenRecord")))
+    }
+    // Either finds the result or says "No body found" — must not crash
+    assert(output.nonEmpty, s"Should produce output, not crash: $output")
+  }
+
+  // ── #172: parseFlags + batch per-line flag parsing ─────────────────
+
+  test("parseFlags extracts --path from arg list") {
+    val flags = parseFlags(List("Parser", "--verbose", "--no-tests", "--path", "compiler/src/"))
+    assertEquals(flags.pathFilter, Some("compiler/src/"))
+    assert(flags.verbose)
+    assert(flags.noTests)
+    assertEquals(flags.cleanArgs, List("Parser"))
+  }
+
+  test("parseFlags strips leading / from --path") {
+    val flags = parseFlags(List("Foo", "--path", "/src/main/"))
+    assertEquals(flags.pathFilter, Some("src/main/"))
+  }
+
+  test("parseFlags extracts --in owner") {
+    val flags = parseFlags(List("runPhases", "--in", "Run", "--no-tests"))
+    assertEquals(flags.inOwner, Some("Run"))
+    assert(flags.noTests)
+    assertEquals(flags.cleanArgs, List("runPhases"))
+  }
+
+  test("parseFlags with no flags returns defaults and full cleanArgs") {
+    val flags = parseFlags(List("UserService"))
+    assertEquals(flags.pathFilter, None)
+    assertEquals(flags.inOwner, None)
+    assert(!flags.noTests)
+    assert(!flags.verbose)
+    assertEquals(flags.cleanArgs, List("UserService"))
+  }
+
+  test("batch per-line flags override: --path applied to per-line context") {
+    // Simulate what the batch loop does: parse per-line flags and build context
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val lineArgs = List("UserService", "--path", "src/main/scala/com/example/")
+    val lineFlags = parseFlags(lineArgs)
+    val ctx = flagsToContext(lineFlags, idx, workspace, batchMode = true)
+    assertEquals(ctx.pathFilter, Some("src/main/scala/com/example/"))
+    assert(ctx.batchMode)
+    // Run command with per-line context — should find UserService in that path
+    val output = captureOut { runCommand("def", lineFlags.cleanArgs, ctx) }
+    assert(output.contains("UserService"), s"Should find UserService with per-line --path: $output")
+  }
+
+  test("batch per-line --path excludes non-matching results") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Registry exists in both com/example/ and com/other/
+    val lineArgs = List("Registry", "--path", "src/main/scala/com/other/")
+    val lineFlags = parseFlags(lineArgs)
+    val ctx = flagsToContext(lineFlags, idx, workspace, batchMode = true)
+    val output = captureOut { runCommand("def", lineFlags.cleanArgs, ctx) }
+    assert(output.contains("com.other"), s"Should find com.other.Registry: $output")
+    assert(!output.contains("com.example"), s"Should NOT find com.example.Registry: $output")
+  }
+
+  test("batch per-line --no-tests applied independently") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Without --no-tests, UserServiceSpec (in src/test/) should appear
+    val withTests = parseFlags(List("UserServiceSpec"))
+    val ctxWith = flagsToContext(withTests, idx, workspace, batchMode = true)
+    val outWith = captureOut { runCommand("def", withTests.cleanArgs, ctxWith) }
+    assert(outWith.contains("UserServiceSpec"), s"Should find test class without --no-tests: $outWith")
+    // With --no-tests, it should be filtered out
+    val noTests = parseFlags(List("UserServiceSpec", "--no-tests"))
+    val ctxNo = flagsToContext(noTests, idx, workspace, batchMode = true)
+    val outNo = captureOut { runCommand("def", noTests.cleanArgs, ctxNo) }
+    assert(!outNo.contains("UserServiceSpec") || outNo.contains("not found"),
+      s"Should NOT find test class with --no-tests: $outNo")
+  }
+
   test("entrypoints --no-tests excludes test suites from results") {
     val idx = WorkspaceIndex(workspace)
     idx.index()

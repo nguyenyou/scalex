@@ -303,6 +303,60 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    // File with nested local defs inside methods (#172)
+    writeFile("src/main/scala/com/example/Pipeline.scala",
+      """package com.example
+        |
+        |class Pipeline(steps: List[String]) {
+        |  def execute(): Unit = {
+        |    var count = 0
+        |    def runSteps(remaining: List[String]): Unit = {
+        |      remaining match {
+        |        case head :: tail =>
+        |          count += 1
+        |          runSteps(tail)
+        |        case Nil => ()
+        |      }
+        |    }
+        |    runSteps(steps)
+        |  }
+        |
+        |  def validate(): Boolean = {
+        |    def checkStep(step: String): Boolean = step.nonEmpty
+        |    steps.forall(checkStep)
+        |  }
+        |}
+        |
+        |object Pipeline {
+        |  def create(steps: String*): Pipeline = Pipeline(steps.toList)
+        |}
+        |""".stripMargin)
+
+    // Scala file with local def nested inside a wrapper call (#172)
+    writeFile("src/main/scala/com/example/Scheduler.scala",
+      """package com.example
+        |
+        |object Scheduler {
+        |  def schedule(tasks: List[String]): Unit = synchronized {
+        |    def processBatch(batch: List[String]): Int = {
+        |      batch.size
+        |    }
+        |    processBatch(tasks)
+        |  }
+        |}
+        |""".stripMargin)
+
+    // Java file with syntax that may trigger parser errors (#172)
+    writeFile("src/main/java/com/example/BrokenRecord.java",
+      """package com.example;
+        |
+        |// This sealed interface + record pattern can trigger JavaParser errors
+        |public sealed interface BrokenRecord permits BrokenRecord.Ok, BrokenRecord.Err {
+        |    record Ok(String value) implements BrokenRecord {}
+        |    record Err(String message) implements BrokenRecord {}
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")

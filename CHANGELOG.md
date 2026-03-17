@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- Java parser crash: `parseJavaSource` now catches `Error` (not just `Exception`) — fixes `NoSuchFieldError` crash from JavaParser on certain Java files (#172)
+- `body` command fallback owner lookup now applies `filterSymbols` — `--path`, `--no-tests`, `--exclude-path` are respected when searching for the `--in` owner's files (#172)
+- `body` command now finds nested local defs inside methods (e.g. `body runPhases --in Run` finds a `def runPhases` inside `compileUnits`) — tree walker now recurses into def bodies and general AST nodes (#172)
+- Batch mode now parses per-line flags (`--path`, `--no-tests`, `--in`, etc.) — previously all per-line flags were ignored and only top-level flags applied (#172)
+
+### Changed
+- Extracted `parseFlags` / `flagsToContext` helpers from `main` — eliminates flag-parsing duplication between batch loop and single-command path (#172)
+
 ## [1.22.0] — 2026-03-17
 
 ### Added

@@ -13,13 +13,33 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
     case ws :: a :: _ => Some((resolveWorkspace(ws), a))
     case _ => None
 
-@main def main(args: String*): Unit =
-  val argList = args.toList
+// ── Flag parsing (shared by main + batch) ─────────────────────────────────
 
-  if argList.contains("--version") then
-    println(ScalexVersion)
-    return
+case class ParsedFlags(
+  limit: Int = 20, kindFilter: Option[String] = None, verbose: Boolean = false,
+  categorize: Boolean = true, includeTests: Boolean = false, noTests: Boolean = false,
+  pathFilter: Option[String] = None, contextLines: Int = 0, jsonOutput: Boolean = false,
+  countOnly: Boolean = false, searchMode: Option[String] = None, definitionsOnly: Boolean = false,
+  categoryFilter: Option[String] = None, grepPatterns: List[String] = Nil,
+  explicitWorkspace: Option[String] = None,
+  inOwner: Option[String] = None, ofTrait: Option[String] = None,
+  implLimit: Int = 5, goUp: Boolean = true, goDown: Boolean = true, maxDepth: Int = -1,
+  inherited: Boolean = false, architecture: Boolean = false,
+  hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
+  bodyContainsFilter: Option[String] = None, focusPackage: Option[String] = None,
+  expandDepth: Int = 0, membersLimit: Int = 10, brief: Boolean = false, strict: Boolean = false,
+  usedByFilter: Option[String] = None, returnsFilter: Option[String] = None,
+  takesFilter: Option[String] = None, shallow: Boolean = false, noDoc: Boolean = false,
+  excludePath: Option[String] = None, topN: Option[Int] = None, summaryMode: Boolean = false,
+  timingsEnabled: Boolean = false,
+  cleanArgs: List[String] = Nil,
+)
 
+private val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
+                         "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
+                         "--members-limit", "--used-by", "--returns", "--takes", "--top")
+
+def parseFlags(argList: List[String]): ParsedFlags =
   val limit = argList.indexOf("--limit") match
     case -1 => 20
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(20)
@@ -54,8 +74,6 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
     val shortIdx = argList.indexOf("-w")
     val idx = if longIdx >= 0 then longIdx else shortIdx
     if idx >= 0 then argList.lift(idx + 1) else None
-
-  // New flags for new commands
   val inOwner: Option[String] = argList.indexOf("--in") match
     case -1 => None
     case i => argList.lift(i + 1)
@@ -111,17 +129,46 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
     case i => argList.lift(i + 1).flatMap(_.toIntOption)
   val summaryMode = argList.contains("--summary")
   val timingsEnabled = argList.contains("--timings")
-  Timings.enabled = timingsEnabled
 
-  val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
-                           "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
-                           "--members-limit", "--used-by", "--returns", "--takes", "--top")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
   })
 
-  cleanArgs match
+  ParsedFlags(limit, kindFilter, verbose, categorize, includeTests, noTests, pathFilter,
+    contextLines, jsonOutput, countOnly, searchMode, definitionsOnly, categoryFilter, grepPatterns,
+    explicitWorkspace, inOwner, ofTrait, implLimit, goUp, goDown, maxDepth, inherited, architecture,
+    hasMethodFilter, extendsFilter, bodyContainsFilter, focusPackage, expandDepth, membersLimit,
+    brief, strict, usedByFilter, returnsFilter, takesFilter, shallow, noDoc, excludePath, topN,
+    summaryMode, timingsEnabled, cleanArgs)
+
+private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
+                           batchMode: Boolean = false, effectiveNoTests: Option[Boolean] = None): CommandContext =
+  val noTests = effectiveNoTests.getOrElse(f.noTests)
+  CommandContext(idx = idx, workspace = workspace, limit = f.limit, verbose = f.verbose,
+    jsonOutput = f.jsonOutput, batchMode = batchMode, kindFilter = f.kindFilter, noTests = noTests,
+    pathFilter = f.pathFilter, contextLines = f.contextLines, categorize = f.categorize,
+    categoryFilter = f.categoryFilter, grepPatterns = f.grepPatterns, countOnly = f.countOnly,
+    topN = f.topN, searchMode = f.searchMode, definitionsOnly = f.definitionsOnly,
+    inOwner = f.inOwner, ofTrait = f.ofTrait, implLimit = f.implLimit,
+    goUp = f.goUp, goDown = f.goDown, maxDepth = f.maxDepth, inherited = f.inherited,
+    architecture = f.architecture, focusPackage = f.focusPackage,
+    hasMethodFilter = f.hasMethodFilter, extendsFilter = f.extendsFilter,
+    bodyContainsFilter = f.bodyContainsFilter, expandDepth = f.expandDepth,
+    membersLimit = f.membersLimit, brief = f.brief, strict = f.strict,
+    usedByFilter = f.usedByFilter, returnsFilter = f.returnsFilter, takesFilter = f.takesFilter,
+    shallow = f.shallow, noDoc = f.noDoc, excludePath = f.excludePath, summaryMode = f.summaryMode)
+
+@main def main(args: String*): Unit =
+  val f = parseFlags(args.toList)
+
+  if args.contains("--version") then
+    println(ScalexVersion)
+    return
+
+  Timings.enabled = f.timingsEnabled
+
+  f.cleanArgs match
     case Nil | List("help") =>
       println("""Scalex — Scala code intelligence for AI agents
         |
@@ -207,38 +254,29 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |""".stripMargin)
 
     case "batch" :: rest =>
-      val workspace = resolveWorkspace(explicitWorkspace.orElse(rest.headOption).getOrElse("."))
+      val workspace = resolveWorkspace(f.explicitWorkspace.orElse(rest.headOption).getOrElse("."))
       val idx = WorkspaceIndex(workspace, needBlooms = true)
       idx.index()
       Timings.report()
-      val ctx = CommandContext(idx = idx, workspace = workspace, limit = limit, verbose = verbose,
-        jsonOutput = jsonOutput, batchMode = true, kindFilter = kindFilter, noTests = noTests,
-        pathFilter = pathFilter, contextLines = contextLines, categorize = categorize,
-        categoryFilter = categoryFilter, grepPatterns = grepPatterns, countOnly = countOnly, topN = topN,
-        searchMode = searchMode, definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait,
-        implLimit = implLimit, goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited,
-        architecture = architecture, focusPackage = focusPackage,
-        hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
-        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
-        membersLimit = membersLimit, brief = brief, strict = strict,
-        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter,
-        shallow = shallow, noDoc = noDoc, excludePath = excludePath, summaryMode = summaryMode)
+      val baseCtx = flagsToContext(f, idx, workspace, batchMode = true)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
       while line != null do
         val parts = line.trim.split("\\s+").toList
         if parts.nonEmpty && parts.head.nonEmpty then
           val batchCmd = parts.head
-          val batchRest = parts.tail
+          // Parse per-line flags so each batch line can override --path, --no-tests, etc.
+          val lineFlags = parseFlags(parts.tail)
+          val lineCtx = flagsToContext(lineFlags, idx, workspace, batchMode = true)
           println(s">>> $line")
           Timings.reset()
-          runCommand(batchCmd, batchRest, ctx)
+          runCommand(batchCmd, lineFlags.cleanArgs, lineCtx)
           Timings.report()
           println()
         line = reader.readLine()
 
     case cmd :: rest =>
-      val (workspace, cmdRest) = explicitWorkspace match
+      val (workspace, cmdRest) = f.explicitWorkspace match
         case Some(ws) =>
           (resolveWorkspace(ws), rest)
         case None =>
@@ -252,22 +290,11 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
                 case Nil => (resolveWorkspace("."), Nil)
 
       // overview defaults to --no-tests unless --include-tests is explicitly passed
-      val effectiveNoTests = if cmd == "overview" && !includeTests then true else noTests
+      val effectiveNoTests = if cmd == "overview" && !f.includeTests then true else f.noTests
 
       val bloomCmds = Set("refs", "imports", "coverage")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
-      val ctx = CommandContext(idx = idx, workspace = workspace, limit = limit, verbose = verbose,
-        jsonOutput = jsonOutput, kindFilter = kindFilter, noTests = effectiveNoTests, pathFilter = pathFilter,
-        contextLines = contextLines, categorize = categorize, categoryFilter = categoryFilter,
-        grepPatterns = grepPatterns, countOnly = countOnly, topN = topN, searchMode = searchMode,
-        definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit,
-        goUp = goUp, goDown = goDown, maxDepth = maxDepth, inherited = inherited, architecture = architecture,
-        focusPackage = focusPackage,
-        hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
-        bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
-        membersLimit = membersLimit, brief = brief, strict = strict,
-        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter,
-        shallow = shallow, noDoc = noDoc, excludePath = excludePath, summaryMode = summaryMode)
+      val ctx = flagsToContext(f, idx, workspace, effectiveNoTests = Some(effectiveNoTests))
       runCommand(cmd, cmdRest, ctx)
       Timings.report()
