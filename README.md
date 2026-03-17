@@ -149,6 +149,7 @@ scalex search hms                          # Fuzzy camelCase: finds HttpMessageS
 scalex file PaymentService                 # Find files by name (like IntelliJ)
 scalex packages                            # List all packages
 scalex package com.example                 # Explore a specific package
+scalex api com.example                     # What does this package export?
 
 # Understand
 scalex def UserService --verbose           # Definition with signature
@@ -224,6 +225,7 @@ scalex diff <git-ref>           Symbol-level diff vs git ref    (aka: symbol dif
 scalex ast-pattern              Structural AST search           (aka: pattern search)
 scalex tests                    List test cases structurally    (aka: find tests)
 scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
+scalex api <package>            Public API surface of a package (aka: exported symbols)
 ```
 
 All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
@@ -236,6 +238,7 @@ All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. S
 - `explain --expand N` recursively expands implementations — shows each subtype's members in one call
 - `def pkg.Name` resolves by package-qualified name — no ambiguity, no follow-up disambiguation
 - `impl Foo` finds `class Bar extends Mixin[Foo]` — type-param parent indexing discovers parametric inheritance
+- `api` shows a package's public API surface — which symbols are imported externally, sorted by importer count
 - `body` extracts source without a Read call — eliminates ~50% of follow-up file reads
 - `refs` returns categorized results (Definition/ExtendedBy/ImportedBy/UsedAsType) — no post-processing
 - `hierarchy` shows the full inheritance tree in one call — parents up, children down

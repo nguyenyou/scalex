@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- `scalex api <package>` command — show a package's public API surface by cross-referencing imports; symbols sorted by external importer count; supports `--kind`, `--no-tests`, `--path`, `--json`; zero index change, pure in-memory query (#102, #103)
 - `--brief` flag for `members` command — show names only instead of signatures (signatures are now the default) (#102)
 - `--strict` flag for `refs` and `imports` commands — treats `_` and `$` as word characters for stricter boundary matching (#101)
 - `deps --depth N` — transitive dependency expansion with cycle detection and depth indentation; hard-capped at 5 (#103)

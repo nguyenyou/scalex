@@ -2,7 +2,6 @@
 
 ## Pending
 
-- [ ] `scalex api <package>` (#102, #103) — show symbols imported by other packages (the public API surface); cross-reference existing import data to find what a package exports; zero index change, pure in-memory query
 - [ ] Publish plugin to Claude Code marketplace
 
 ## Completed
@@ -103,6 +102,9 @@
 #### Exploration & UX (#93–#96)
 - Fuzzy "did you mean?" on not-found, `package` command
 - `overview --no-tests`, `overview --focus-package`
+
+#### API surface (#102, #103)
+- `scalex api <package>` — show which symbols are imported by other packages (public API surface); cross-reference import data with `packageToSymbols`; zero index change, pure in-memory query
 
 #### Community feedback (#101–#103)
 - Package-qualified symbol lookup, type param indexing in extends clauses

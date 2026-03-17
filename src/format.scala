@@ -105,6 +105,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: GrepCount        => renderGrepCount(r, ctx)
     case r: Packages         => renderPackages(r, ctx)
     case r: PackageSymbols   => renderPackageSymbols(r, ctx)
+    case r: ApiSurface       => renderApiSurface(r, ctx)
     case r: NotFound         => renderNotFound(r, ctx)
     case r: UsageError       => println(r.message)
   }
@@ -817,6 +818,35 @@ private def renderPackageSymbols(r: CmdResult.PackageSymbols, ctx: CommandContex
   }
 }
 
+private def renderApiSurface(r: CmdResult.ApiSurface, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val items = r.symbols.take(ctx.limit).map { (sym, count) =>
+      val rel = jsonEscape(ctx.workspace.relativize(sym.file).toString)
+      s"""{"name":"${jsonEscape(sym.name)}","kind":"${sym.kind.toString.toLowerCase}","file":"$rel","line":${sym.line},"package":"${jsonEscape(sym.packageName)}","importerCount":$count}"""
+    }.mkString("[", ",", "]")
+    val internalJson = r.internalOnly.map(n => s""""${jsonEscape(n)}"""").mkString("[", ",", "]")
+    println(s"""{"package":"${jsonEscape(r.pkg)}","exportedCount":${r.symbols.size},"totalInPackage":${r.totalInPackage},"symbols":$items,"internalOnly":$internalJson}""")
+  } else {
+    if r.symbols.isEmpty && r.internalOnly.isEmpty then {
+      println(s"""API surface of ${r.pkg}: no symbols found""")
+    } else {
+      val exportedCount = r.symbols.size
+      println(s"API surface of ${r.pkg} ($exportedCount of ${r.totalInPackage} symbols imported externally):\n")
+      r.symbols.take(ctx.limit).foreach { (sym, count) =>
+        val rel = ctx.workspace.relativize(sym.file)
+        val importerLabel = if count == 1 then "importer" else "importers"
+        println(s"  ${sym.name.padTo(25, ' ')} ${sym.kind.toString.toLowerCase.padTo(9, ' ')} $count $importerLabel  $rel:${sym.line}")
+      }
+      if r.symbols.size > ctx.limit then println(s"  ... and ${r.symbols.size - ctx.limit} more")
+      if r.internalOnly.nonEmpty then {
+        val shown = r.internalOnly.take(10)
+        val suffix = if r.internalOnly.size > 10 then s", ... and ${r.internalOnly.size - 10} more" else ""
+        println(s"\n  Not imported externally (${r.internalOnly.size}): ${shown.mkString(", ")}$suffix")
+      }
+    }
+  }
+}
+
 private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
   val suggestionsJson = r.hint.suggestions.map(s => s""""${jsonEscape(s)}"""").mkString("[", ",", "]")
   if ctx.jsonOutput then {
@@ -828,7 +858,7 @@ private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
       case "explain" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
       case "imports" => println(s"""{"results":[],"timedOut":${ctx.idx.timedOut},"suggestions":$suggestionsJson}""")
       case "deps" => println(s"""{"imports":[],"bodyReferences":[],"suggestions":$suggestionsJson}""")
-      case "package" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
+      case "package" | "api" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
       case _ => println(s"""{"results":[],"suggestions":$suggestionsJson}""")
     }
   } else {
