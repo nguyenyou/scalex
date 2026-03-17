@@ -154,7 +154,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --expand N            Explain: recursively expand implementations N levels deep
         |  --up                  Hierarchy: show only parents (default: both)
         |  --down                Hierarchy: show only children (default: both)
-        |  --depth N             Hierarchy/deps: max tree depth (hierarchy default: 5, deps default: 1, max: 5)
+        |  --depth N             Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5)
         |  --inherited           Members: include inherited members from parent types
         |  --brief               Members: show names only (default shows signatures)
         |  --strict              Refs/imports: treat _ and $ as word characters (no boundary matches)
