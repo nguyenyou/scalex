@@ -595,8 +595,8 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       val subJson = ei.subImpls.map(explainedImplJson).mkString("[", ",", "]")
       s"""{"definition":${jsonSymbol(ei.sym, ctx.workspace)},"members":$mJson,"subImplementations":$subJson}"""
     }
-    val expandedJson = if r.expandedImpls.isEmpty then "" else s""","expandedImplementations":${r.expandedImpls.map(explainedImplJson).mkString("[", ",", "]")}"""
-    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":${r.importCount},"companion":$companionJson$expandedJson}""")
+    val expandedJson = r.expandedImpls.map(explainedImplJson).mkString("[", ",", "]")
+    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":${r.importCount},"companion":$companionJson,"expandedImplementations":$expandedJson}""")
   } else {
     println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
     println(s"  Definition: $rel:${sym.line}")

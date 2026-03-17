@@ -678,6 +678,22 @@ class IndexSuite extends ScalexTestBase:
       s"Single-letter type param A should be filtered: $names")
   }
 
+  test("nested type constructors are not indexed as type-param parents") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // NestedTypeArgProcessor extends Processor[Map[String, User]]
+    // Map should NOT be a type-param parent (it's a type constructor, not a domain type)
+    val mapResults = idx.findImplementations("Map")
+    val mapNames = mapResults.map(_.name)
+    assert(!mapNames.contains("NestedTypeArgProcessor"),
+      s"Type constructor Map should not be indexed: $mapNames")
+    // But User should still be found (leaf type arg)
+    val userResults = idx.findImplementations("User")
+    val userNames = userResults.map(_.name)
+    assert(userNames.contains("NestedTypeArgProcessor"),
+      s"Leaf type arg User should be found: $userNames")
+  }
+
   test("typeParamParents survive persistence roundtrip") {
     val cacheDir = workspace.resolve(".scalex")
     if Files.exists(cacheDir) then

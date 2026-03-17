@@ -42,7 +42,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
                 (sym = compSym, members = compMembers)
               }
         // Implementations
-        val impls = ctx.idx.findImplementations(simpleName).take(ctx.implLimit)
+        val impls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx).take(ctx.implLimit)
         // Expanded implementations
         val expandedImpls =
           if ctx.expandDepth > 0 then expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
@@ -61,7 +61,7 @@ private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
       if visited.contains(key) then ExplainedImpl(impl, Nil, Nil)
       else
         val members = extractMembers(impl.file, impl.name).take(10)
-        val subImpls = ctx.idx.findImplementations(impl.name).take(ctx.implLimit)
+        val subImpls = filterSymbols(ctx.idx.findImplementations(impl.name), ctx).take(ctx.implLimit)
         val expanded = expandImpls(subImpls, ctx, depth + 1, visited + key)
         ExplainedImpl(impl, members, expanded)
     }

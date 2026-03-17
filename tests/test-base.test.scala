@@ -180,6 +180,8 @@ abstract class ScalexTestBase extends FunSuite:
         |class RoleProcessor extends Processor[Role] with Serializable
         |
         |class GenericProcessor[A] extends Processor[A]
+        |
+        |class NestedTypeArgProcessor extends Processor[Map[String, User]]
         |""".stripMargin)
 
     // Initialize git repo

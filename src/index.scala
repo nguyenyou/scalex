@@ -376,7 +376,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   def findImplementations(name: String): List[SymbolInfo] =
     val direct = parentIndex.getOrElse(name.toLowerCase, Nil)
     val viaTp = typeParamParentIndex.getOrElse(name.toLowerCase, Nil)
-    (direct ++ viaTp).distinctBy(s => (s.name, s.file, s.line))
+    (direct ++ viaTp).distinctBy(s => (name = s.name, file = s.file, line = s.line))
 
   def findAnnotated(annotation: String): List[SymbolInfo] =
     annotationIndex.getOrElse(annotation.toLowerCase, Nil)

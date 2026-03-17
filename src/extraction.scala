@@ -28,8 +28,9 @@ private def extractParents(templ: Template): (parents: List[String], typeParamPa
   def extractTypeArgNames(tpe: scala.meta.Type): List[String] = tpe match
     case Type.Name(name) => List(name)
     case Type.Select(_, Type.Name(name)) => List(name)
-    case Type.Apply.After_4_6_0(inner, argClause) =>
-      extractTypeArgNames(inner) ++ argClause.values.flatMap(extractTypeArgNames)
+    case Type.Apply.After_4_6_0(_, argClause) =>
+      // Skip the type constructor (Map, List, Option etc.) — only collect leaf type args
+      argClause.values.flatMap(extractTypeArgNames)
     case _ => Nil
 
   templ.inits.foreach { init =>
