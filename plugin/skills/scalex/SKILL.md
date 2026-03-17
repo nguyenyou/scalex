@@ -31,7 +31,7 @@ Replace `/absolute/path/to/skills/scalex` with the absolute path to the director
 
 Scalex extracts **top-level declarations** from every git-tracked `.scala` file: classes, traits, objects, enums, defs, vals, types, givens (named only — anonymous givens are skipped), and extension groups. It also extracts **annotations** on these declarations (e.g. `@deprecated`, `@main`, `@tailrec`). Java files (`.java`) are also indexed — classes, interfaces, enums, and records are extracted via regex. Scalex does NOT index local definitions inside method bodies, method parameters, or pattern bindings.
 
-The `refs`, `imports`, `grep`, and `categorize` features work differently — they do text search across files, so they find ALL textual occurrences regardless of whether the symbol is in the index.
+The `refs`, `imports`, and `grep` commands work differently — they do text search across files, so they find ALL textual occurrences regardless of whether the symbol is in the index.
 
 ## Commands
 
@@ -68,7 +68,7 @@ scalex impl PaymentService --no-tests --path core/src/
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--flat] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
+### `scalex refs <symbol> [--flat] [--strict] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
@@ -94,7 +94,7 @@ scalex refs PaymentService --flat                 # flat list (old default)
     .../PaymentServiceLive.scala:38 — /** Live implementation of PaymentService ...
 ```
 
-### `scalex imports <symbol> [--no-tests] [--path PREFIX] [--limit N]` — import graph
+### `scalex imports <symbol> [--strict] [--no-tests] [--path PREFIX] [--limit N]` — import graph
 
 Returns only import statements for a symbol. Use when you need to know which files depend on something — cleaner than `refs` for dependency analysis. Also has a 20-second timeout.
 
@@ -426,7 +426,7 @@ Package com.example (45 symbols):
 
 ### `scalex batch [-w workspace]` — multiple queries, one index load
 
-Reads queries from stdin, loads index once. Use when you need several lookups — avoids re-loading the index for each command. 5 queries in ~1s instead of ~5s. Supports all subcommands: `def`, `impl`, `refs`, `search`, `imports`, `annotated`, `grep`, `symbols`, `packages`, `file`.
+Reads queries from stdin, loads index once. Use when you need several lookups — avoids re-loading the index for each command. 5 queries in ~1s instead of ~5s. Supports all commands.
 
 The workspace is set on the `batch` subcommand, not per-query. Use `-w` or pass it as a positional arg after `batch`:
 
