@@ -10,6 +10,5 @@ def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
         case Some(resolvedPkg) =>
           var symbols = filterSymbols(ctx.idx.symbols.filter(_.packageName == resolvedPkg), ctx)
           if ctx.definitionsOnly then
-            val defKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
-            symbols = symbols.filter(s => defKinds.contains(s.kind))
+            symbols = symbols.filter(s => typeKinds.contains(s.kind))
           CmdResult.PackageSymbols(resolvedPkg, symbols)

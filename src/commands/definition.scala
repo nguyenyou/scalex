@@ -3,16 +3,7 @@ def cmdDef(args: List[String], ctx: CommandContext): CmdResult =
     case None => CmdResult.UsageError("Usage: scalex def <symbol>")
     case Some(symbol) =>
       var results = filterSymbols(ctx.idx.findDefinition(symbol), ctx)
-      // Rank: class/trait/object/enum > type/given > def/val/var, non-test > test, shorter path first
-      results = results.sortBy { s =>
-        val kindRank = s.kind match
-          case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
-          case SymbolKind.Type | SymbolKind.Given => 1
-          case _ => 2
-        val testRank = if isTestFile(s.file, ctx.workspace) then 1 else 0
-        val pathLen = ctx.workspace.relativize(s.file).toString.length
-        (kindRank, testRank, pathLen)
-      }
+      results = rankSymbols(results, ctx.workspace)
       // If no results and symbol contains ".", try Owner.member resolution
       if results.isEmpty && symbol.contains(".") then
         resolveDottedMember(symbol, ctx) match
@@ -41,7 +32,6 @@ private def resolveDottedMember(symbol: String, ctx: CommandContext): Option[Lis
   if lastDot <= 0 then return None
   val ownerName = symbol.substring(0, lastDot)
   val memberName = symbol.substring(lastDot + 1)
-  val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
   val ownerDefs = filterSymbols(ctx.idx.findDefinition(ownerName), ctx).filter(s => typeKinds.contains(s.kind))
   if ownerDefs.isEmpty then return None
   val memberResults = ownerDefs.flatMap { owner =>

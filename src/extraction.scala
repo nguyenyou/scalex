@@ -57,6 +57,11 @@ private def buildSignature(name: String, kind: String, parents: List[String], tp
   val ext = if parents.nonEmpty then s" extends ${parents.mkString(" with ")}" else ""
   s"$kind $name$tps$ext"
 
+private def formatParamClauses(paramClauses: Seq[Term.ParamClause]): String =
+  paramClauses.map(_.values.map(p =>
+    s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}"
+  ).mkString(", ")).mkString("(", ")(", ")")
+
 private def extractAnnotations(mods: List[Mod]): List[String] =
   mods.collect { case Mod.Annot(init) =>
     init.tpe match
@@ -133,7 +138,7 @@ def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: Strin
       val annots = extractAnnotations(d.mods)
       buf += RawSymbol(d.name.value, SymbolKind.Type, d.pos.startLine + 1, Nil, Nil, sig, annots)
     case d: Defn.Def =>
-      val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+      val params = formatParamClauses(d.paramClauses)
       val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
       val sig = s"def ${d.name.value}$params$ret"
       val annots = extractAnnotations(d.mods)
@@ -220,7 +225,7 @@ def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
       def extractFromTemplate(templ: Template): Unit =
         templ.stats.foreach {
           case d: Defn.Def =>
-            val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+            val params = formatParamClauses(d.paramClauses)
             val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
             val annots = extractAnnotations(d.mods)
             buf += MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots)
@@ -244,7 +249,7 @@ def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
             val annots = extractAnnotations(d.mods)
             buf += MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value} = ${d.body.toString().take(60)}", annots)
           case d: Decl.Def =>
-            val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+            val params = formatParamClauses(d.paramClauses)
             val ret = s": ${d.decltpe.toString()}"
             val annots = extractAnnotations(d.mods)
             buf += MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots)

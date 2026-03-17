@@ -15,10 +15,7 @@ private def recoverSignature(lower: String, symbolsByName: Map[String, List[Symb
   symbolsByName.get(lower).flatMap(_.headOption).map(_.signature).getOrElse("")
 
 def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
-  var allSymbols = if ctx.noTests then ctx.idx.symbols.filter(s => !isTestFile(s.file, ctx.workspace))
-                   else ctx.idx.symbols
-  ctx.pathFilter.foreach { p => allSymbols = allSymbols.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-  ctx.excludePath.foreach { p => allSymbols = allSymbols.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+  var allSymbols = filterSymbols(ctx.idx.symbols, ctx)
 
   val symbolsByKind = allSymbols.groupBy(_.kind).toList.sortBy(-_._2.size)
   val topPackages: List[(pkg: String, syms: List[SymbolInfo])] = allSymbols.groupBy(_.packageName)
@@ -29,13 +26,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name))
     .filter((name, _) => recoverName(name, ctx.idx.symbolsByName).length > 1) // exclude single-char names
     .map { (name, impls) =>
-      val filtered = {
-        var r = if ctx.noTests then impls.filter(s => !isTestFile(s.file, ctx.workspace)) else impls
-        // Apply path filters to impls too
-        ctx.pathFilter.foreach { p => r = r.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-        ctx.excludePath.foreach { p => r = r.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
-        r
-      }
+      val filtered = filterSymbols(impls, ctx)
       val distinctPkgs = filtered.map(_.packageName).distinct.size
       (name = name, impls = filtered, distinctPkgs = distinctPkgs)
     }
@@ -87,9 +78,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     ctx.idx.parentIndex.foreach { (name, impls) =>
       if ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) &&
          recoverName(name, ctx.idx.symbolsByName).length > 1 then
-        var filtered = if ctx.noTests then impls.filter(s => !isTestFile(s.file, ctx.workspace)) else impls
-        ctx.pathFilter.foreach { p => filtered = filtered.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-        ctx.excludePath.foreach { p => filtered = filtered.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+        val filtered = filterSymbols(impls, ctx)
         if filtered.nonEmpty then
           refCounts(name) = (count = filtered.size, distinctPkgs = filtered.map(_.packageName).distinct.size)
     }

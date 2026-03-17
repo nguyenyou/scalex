@@ -13,8 +13,7 @@ def cmdSearch(args: List[String], ctx: CommandContext): CmdResult =
         case _ => ()
       }
       if ctx.definitionsOnly then
-        val defKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
-        results = results.filter(s => defKinds.contains(s.kind))
+        results = results.filter(s => typeKinds.contains(s.kind))
       // Filter by return type: check if signature ends with ": <Type>" or "]: <Type>"
       ctx.returnsFilter.foreach { rt =>
         results = results.filter { s =>

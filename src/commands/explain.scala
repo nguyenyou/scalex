@@ -2,20 +2,8 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
   args.headOption match
     case None => CmdResult.UsageError("Usage: scalex explain <symbol>")
     case Some(symbol) =>
-      var defs = ctx.idx.findDefinition(symbol)
-      if ctx.noTests then defs = defs.filter(s => !isTestFile(s.file, ctx.workspace))
-      ctx.pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-      ctx.excludePath.foreach { p => defs = defs.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
-      // Rank: class/trait/object/enum first (same as def command)
-      defs = defs.sortBy { s =>
-        val kindRank = s.kind match
-          case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
-          case SymbolKind.Type | SymbolKind.Given => 1
-          case _ => 2
-        val testRank = if isTestFile(s.file, ctx.workspace) then 1 else 0
-        val pathLen = ctx.workspace.relativize(s.file).toString.length
-        (kindRank, testRank, pathLen)
-      }
+      var defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(kindFilter = None))
+      defs = rankSymbols(defs, ctx.workspace)
       // If no results and symbol contains ".", try Owner.member resolution
       if defs.isEmpty && symbol.contains(".") then
         resolveDottedMember(symbol, ctx) match
@@ -26,11 +14,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           case None => ()
       if defs.isEmpty then
         // Fuzzy fallback: try search and auto-show best match if unambiguous
-        val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
-        var fuzzyResults = ctx.idx.search(symbol).filter(s => typeKinds.contains(s.kind))
-        if ctx.noTests then fuzzyResults = fuzzyResults.filter(s => !isTestFile(s.file, ctx.workspace))
-        ctx.pathFilter.foreach { p => fuzzyResults = fuzzyResults.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-        ctx.excludePath.foreach { p => fuzzyResults = fuzzyResults.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+        var fuzzyResults = filterSymbols(ctx.idx.search(symbol).filter(s => typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
         // Auto-use if exactly one strong match by name (exact case-insensitive, prefix, or suffix)
         val lower = symbol.toLowerCase
         val strongMatches = fuzzyResults.filter { s =>
@@ -67,7 +51,6 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         // Scaladoc
         val doc = if ctx.noDoc then None else extractScaladoc(sym.file, sym.line)
         // Members (for types)
-        val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
         val inheritResult = if typeKinds.contains(sym.kind) then collectInheritedMembers(sym, ctx)
           else (inherited = Nil: List[(parentName: String, parentFile: Option[java.nio.file.Path], parentPackage: String, members: List[MemberInfo])], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
         val inherited = inheritResult.inherited
@@ -78,18 +61,8 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           }.sortBy(memberKindRank).take(ctx.membersLimit)
         else Nil
         // Companion lookup
-        val companionKinds: Set[SymbolKind] = sym.kind match
-          case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => Set(SymbolKind.Object)
-          case SymbolKind.Object => Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Enum)
-          case _ => Set.empty
-        val companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] =
-          if companionKinds.isEmpty then None
-          else
-            defs.find(d => companionKinds.contains(d.kind) && d.packageName == sym.packageName && d.file == sym.file)
-              .map { compSym =>
-                val compMembers = extractMembers(compSym.file, simpleName).sortBy(memberKindRank).take(ctx.membersLimit)
-                (sym = compSym, members = compMembers)
-              }
+        val companion = findCompanion(sym, simpleName, defs)
+          .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.membersLimit)))
         if ctx.shallow then
           // Shallow mode: definition + members + companion only
           CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches)
@@ -111,7 +84,6 @@ private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
                         depth: Int, visited: Set[String]): List[ExplainedImpl] =
   if depth > ctx.expandDepth then Nil
   else
-    val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
     impls.filter(s => typeKinds.contains(s.kind)).take(ctx.implLimit).map { impl =>
       val key = s"${impl.packageName}.${impl.name}".toLowerCase
       if visited.contains(key) then ExplainedImpl(impl, Nil, Nil)
@@ -122,9 +94,3 @@ private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
         ExplainedImpl(impl, members, expanded)
     }
 
-private def memberKindRank(m: MemberInfo): Int = m.kind match
-  case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
-  case SymbolKind.Def => 1
-  case SymbolKind.Val | SymbolKind.Var => 2
-  case SymbolKind.Type => 3
-  case _ => 4

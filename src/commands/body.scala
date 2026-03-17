@@ -3,12 +3,7 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
     case None => CmdResult.UsageError("Usage: scalex body <symbol> [--in <owner>]")
     case Some(symbol) =>
       // Find files containing the symbol
-      var defs = ctx.idx.findDefinition(symbol)
-      if ctx.noTests then defs = defs.filter(s => !isTestFile(s.file, ctx.workspace))
-      ctx.pathFilter.foreach { p => defs = defs.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-      ctx.excludePath.foreach { p => defs = defs.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
-      // Also look in type definitions for member bodies
-      val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+      var defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(kindFilter = None))
       val filesToSearch = if defs.nonEmpty then {
         defs.map(_.file).distinct
       } else {

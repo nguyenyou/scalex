@@ -10,12 +10,7 @@ def cmdSummary(args: List[String], ctx: CommandContext): CmdResult =
         case Some(resolvedPkg) =>
           val prefix = resolvedPkg + "."
           // Collect all packages that start with resolvedPkg (including itself)
-          var allSymbols = ctx.idx.symbols.filter { s =>
-            s.packageName == resolvedPkg || s.packageName.startsWith(prefix)
-          }
-          if ctx.noTests then allSymbols = allSymbols.filter(s => !isTestFile(s.file, ctx.workspace))
-          ctx.pathFilter.foreach { p => allSymbols = allSymbols.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-          ctx.excludePath.foreach { p => allSymbols = allSymbols.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+          var allSymbols = filterSymbols(symbolsInPackage(resolvedPkg, ctx.idx.symbols), ctx)
 
           // Group by sub-package relative to resolvedPkg
           val grouped = allSymbols.groupBy { s =>

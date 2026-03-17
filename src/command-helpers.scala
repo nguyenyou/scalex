@@ -63,9 +63,11 @@ def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
   ctx.excludePath.foreach { p => r = r.filter(ref => !matchesPath(ref.file, p, ctx.workspace)) }
   r
 
-// ── Inherited member collection (shared by members + explain) ──────────────
+// ── Shared constants ─────────────────────────────────────────────────────────
 
-private val inheritableKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+val typeKinds: Set[SymbolKind] = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+
+// ── Inherited member collection (shared by members + explain) ──────────────
 
 def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
   inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
@@ -82,7 +84,7 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
     parentNames.foreach { pName =>
       if !visited.contains(pName.toLowerCase) then {
         visited += pName.toLowerCase
-        val parentDefs = ctx.idx.findDefinition(pName).filter(s => inheritableKinds.contains(s.kind))
+        val parentDefs = ctx.idx.findDefinition(pName).filter(s => typeKinds.contains(s.kind))
         parentDefs.headOption.foreach { pd =>
           val parentMembers = extractMembers(pd.file, pd.name)
           parentMembers.foreach(m => allParentKeys += ((name = m.name, kind = m.kind)))
@@ -97,3 +99,44 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
   walk(sym.parents)
   (inherited = result.toList, parentMemberKeys = allParentKeys.toSet)
 }
+
+// ── Ranking / sorting ────────────────────────────────────────────────────────
+
+def rankSymbols(symbols: List[SymbolInfo], workspace: Path): List[SymbolInfo] =
+  symbols.sortBy { s =>
+    val kindRank = s.kind match
+      case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
+      case SymbolKind.Type | SymbolKind.Given => 1
+      case _ => 2
+    val testRank = if isTestFile(s.file, workspace) then 1 else 0
+    val pathLen = workspace.relativize(s.file).toString.length
+    (kindRank = kindRank, testRank = testRank, pathLen = pathLen)
+  }
+
+def memberKindRank(m: MemberInfo): Int = m.kind match
+  case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
+  case SymbolKind.Def => 1
+  case SymbolKind.Val | SymbolKind.Var => 2
+  case SymbolKind.Type => 3
+  case _ => 4
+
+// ── Companion lookup ─────────────────────────────────────────────────────────
+
+def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Option[(sym: SymbolInfo, members: List[MemberInfo])] =
+  val companionKinds: Set[SymbolKind] = sym.kind match
+    case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => Set(SymbolKind.Object)
+    case SymbolKind.Object => Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Enum)
+    case _ => Set.empty
+  if companionKinds.isEmpty then None
+  else
+    defs.find(d => companionKinds.contains(d.kind) && d.packageName == sym.packageName && d.file == sym.file)
+      .map { compSym =>
+        val compMembers = extractMembers(compSym.file, symbol)
+        (sym = compSym, members = compMembers)
+      }
+
+// ── Package helpers ──────────────────────────────────────────────────────────
+
+def symbolsInPackage(pkg: String, symbols: List[SymbolInfo]): List[SymbolInfo] =
+  val prefix = pkg + "."
+  symbols.filter(s => s.packageName == pkg || s.packageName.startsWith(prefix))
