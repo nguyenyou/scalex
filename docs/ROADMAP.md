@@ -4,6 +4,14 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### On-the-fly local definition fallback (#176)
+
+- [ ] When `def` returns 0 results, use bloom filters to find candidate files, parse them on-the-fly, and search for local defs/vals/vars inside method bodies matching the query name
+- [ ] Return results marked as "local" with owner chain (package > class > method > local def)
+- [ ] Zero index size growth — pays parse cost only on the miss path
+- [ ] Performance safeguards: file count limit, timeout consistent with refs/imports (20s)
+- [ ] Consider extending to `explain` and `body` commands as well
+
 ### Community feedback: agent UX improvements (#164)
 
 - [x] Copy-paste disambiguation commands — when `explain` hits multiple matches, print ready-to-run `scalex explain pkg.Name` commands instead of just a count + generic hint. Saves one round-trip per disambiguation.
