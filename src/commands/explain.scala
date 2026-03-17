@@ -35,7 +35,8 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val lower = symbol.toLowerCase
         val strongMatches = fuzzyResults.filter { s =>
           val nl = s.name.toLowerCase
-          nl == lower || nl.startsWith(lower) || lower.startsWith(nl) || lower.endsWith(nl)
+          nl == lower || nl.startsWith(lower) || lower.startsWith(nl) ||
+            (lower.endsWith(nl) && nl.length >= 3 && nl.length > lower.length / 2)
         }
         val distinctNames = strongMatches.map(_.name.toLowerCase).distinct
         if distinctNames.size == 1 then

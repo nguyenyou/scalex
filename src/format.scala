@@ -135,8 +135,6 @@ private def renderHint(h: NotFoundHint): Unit = {
   }
 }
 
-private def mkNotFoundHint(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
-  mkNotFoundWithSuggestions(symbol, ctx, cmd)
 
 private def renderSymbolList(r: CmdResult.SymbolList, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
@@ -508,7 +506,7 @@ private def renderCoverageReport(r: CmdResult.CoverageReport, ctx: CommandContex
     if r.testRefs.isEmpty then {
       if r.totalRefs == 0 then {
         println(s"""Coverage of "${r.symbol}" — no references found""")
-        renderHint(mkNotFoundHint(r.symbol, ctx, "coverage"))
+        renderHint(mkNotFoundWithSuggestions(r.symbol, ctx, "coverage"))
       } else {
         println(s"""Coverage of "${r.symbol}" — ${r.totalRefs} refs but 0 in test files""")
       }

@@ -4,6 +4,13 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Community feedback: fuzzy not-found suggestions (#156)
+
+- [x] `search` reverse-suffix matching — queries like `ScalaJSClassEmitter` suggest `ClassEmitter`
+- [x] `explain` suffix auto-resolve — auto-shows best match when query is a superset
+- [x] Unified not-found suggestions — `search`, `coverage` now show "Did you mean?" hints
+- [x] Extracted `resolvePackage()`/`mkPackageNotFound()` — deduplicated package resolution from `package`/`api`/`summary`
+
 ### Community feedback: disambiguation & filtering (#132–#135)
 
 **Bugs:**
