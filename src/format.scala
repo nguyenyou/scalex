@@ -198,7 +198,7 @@ private def renderCategorizedRefs(r: CmdResult.CategorizedRefs, ctx: CommandCont
                          RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
         order.foreach { cat =>
           byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
-            val sorted = entries.sortBy((_, ref, _) => (ctx.workspace.relativize(ref.file).toString, ref.line))
+            val sorted = entries.sortBy((_, ref, _) => (path = ctx.workspace.relativize(ref.file).toString, line = ref.line))
             println(s"\n    ${cat.toString}:")
             sorted.take(ctx.limit).foreach((_, ref, _) => println(s"    ${ctx.fmtRef(ref)}"))
             if sorted.size > ctx.limit then println(s"      ... and ${sorted.size - ctx.limit} more")
@@ -217,7 +217,7 @@ private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
     val suffix = if r.timedOut then " (timed out — partial results)" else ""
     println(s"""References to "${r.symbol}" — ${r.refs.size} found:$suffix""")
     val annotated = r.refs.map(ref => (ref, ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
-    val sorted = annotated.sortBy { case (ref, c) => (c.ordinal, ctx.workspace.relativize(ref.file).toString, ref.line) }
+    val sorted = annotated.sortBy { case (ref, c) => (confidence = c.ordinal, path = ctx.workspace.relativize(ref.file).toString, line = ref.line) }
     var lastConf: Option[Confidence] = None
     var shown = 0
     sorted.foreach { case (ref, conf) =>
