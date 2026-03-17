@@ -226,39 +226,7 @@ scalex tests                    List test cases structurally    (aka: find tests
 scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
 ```
 
-### Options
-
-| Flag | Effect |
-|---|---|
-| `--verbose` | Show signatures, extends clauses, param types |
-| `--flat` | Refs: flat list instead of categorized (default is categorized) |
-| `--definitions-only` | Search: only class/trait/object/enum definitions |
-| `--category CAT` | Refs: filter to one category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment) |
-| `--limit N` | Max results (default: 20) |
-| `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
-| `--no-tests` | Exclude test files |
-| `--path PREFIX` | Restrict to files under PREFIX (e.g. `compiler/src/`) |
-| `-C N` | Context lines around each reference (refs, grep) |
-| `-e PATTERN` | Grep: additional pattern (repeatable) |
-| `--count` | Grep: match/file count only |
-| `--exact` | Search: exact name matches only |
-| `--prefix` | Search: exact + prefix matches only |
-| `--json` | Structured JSON output on all commands |
-| `--in OWNER` | Body: restrict to enclosing type |
-| `--of TRAIT` | Overrides: restrict to trait |
-| `--impl-limit N` | Explain: max implementations (default: 5) |
-| `--expand N` | Explain: recursively expand implementations N levels |
-| `--up` / `--down` | Hierarchy: limit direction |
-| `--brief` | Members: show names only (default shows signatures) |
-| `--strict` | Refs/imports: treat `_` and `$` as word characters (no boundary matches) |
-| `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5) |
-| `--inherited` | Members: include inherited members |
-| `--architecture` | Overview: package deps + hub types |
-| `--focus-package PKG` | Overview: scope dependency graph to one package |
-| `--has-method NAME` | AST pattern: types with method NAME |
-| `--extends TRAIT` | AST pattern: types extending TRAIT |
-| `--body-contains PAT` | AST pattern: types whose body contains PAT |
-| `--version` | Print version and exit |
+All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
 
 ### What Makes It AI-Friendly
 
