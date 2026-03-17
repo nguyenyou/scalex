@@ -36,6 +36,18 @@
 - [x] `refs --top N` — rank files by reference count (descending) instead of flat list; heaviest users surface first for impact analysis
 - [ ] Directory-level dependency graph — `scalex dir-deps --path src/modules/auth/` aggregates imports by target directory with file counts; more granular than `overview --architecture` package-level graph (deferred — package→directory mapping adds complexity)
 
+### Community feedback: UX & discovery (#141)
+
+- [x] `explain` package fallback warning — stderr message when silently falling back to package summary
+- [x] `entrypoints` command — find `@main`, `def main(`, `extends App`, test suites; small effort, useful for onboarding
+- [x] Override markers in `members --inherited` — show `[override]` vs `[inherited from Parent]` markers
+
+### Discarded from #141
+
+- ~~Approximate call graph (`calls` command)~~ — same reasoning as rejected "Static call graph (#101, #102)"; name-matched call targets produce false positives for common methods (`apply`, `map`, `get`)
+- ~~Pipeline/flow command~~ — same reasoning as rejected in #121, #135; BFS without type resolution is fragile
+- ~~Co-occurrence analysis~~ — pure text co-occurrence is what grep does; unclear value over `refs --categorize`
+
 ### Discarded from #137
 
 - ~~Companion member dedup in `explain`~~ — already shipped in #136
@@ -105,7 +117,7 @@
 
 ### Phase 8: Testing
 
-- 176 MUnit tests (ExtractionSuite: 47, IndexSuite: 53, AnalysisSuite: 20, CliSuite: 56)
+- 243 MUnit tests (ExtractionSuite: 50, IndexSuite: 68, AnalysisSuite: 23, CliSuite: 102)
 - Coverage: symbol extraction, persistence roundtrip, OID caching, bloom filters, search ranking, refs categorization, word boundary matching
 
 #### Benchmarks (native image)

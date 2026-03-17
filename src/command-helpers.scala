@@ -1,4 +1,5 @@
 import java.nio.file.Path
+import scala.collection.mutable
 
 // ── Command helpers ─────────────────────────────────────────────────────────
 
@@ -39,3 +40,38 @@ def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
   ctx.pathFilter.foreach { p => r = r.filter(ref => matchesPath(ref.file, p, ctx.workspace)) }
   ctx.excludePath.foreach { p => r = r.filter(ref => !matchesPath(ref.file, p, ctx.workspace)) }
   r
+
+// ── Inherited member collection (shared by members + explain) ──────────────
+
+private val inheritableKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+
+def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
+  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
+  parentMemberKeys: Set[(name: String, kind: SymbolKind)]
+) = {
+  if !ctx.inherited then return (inherited = Nil, parentMemberKeys = Set.empty)
+  val visited = mutable.HashSet.empty[String]
+  visited += sym.name.toLowerCase
+  val ownMembers = extractMembers(sym.file, sym.name).map(m => (name = m.name, kind = m.kind)).toSet
+  val result = mutable.ListBuffer.empty[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])]
+  val allParentKeys = mutable.HashSet.empty[(name: String, kind: SymbolKind)]
+
+  def walk(parentNames: List[String]): Unit = {
+    parentNames.foreach { pName =>
+      if !visited.contains(pName.toLowerCase) then {
+        visited += pName.toLowerCase
+        val parentDefs = ctx.idx.findDefinition(pName).filter(s => inheritableKinds.contains(s.kind))
+        parentDefs.headOption.foreach { pd =>
+          val parentMembers = extractMembers(pd.file, pd.name)
+          parentMembers.foreach(m => allParentKeys += ((name = m.name, kind = m.kind)))
+          val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
+          if filtered.nonEmpty then result += ((parentName = pd.name, parentFile = Some(pd.file), parentPackage = pd.packageName, members = filtered))
+          walk(pd.parents)
+        }
+      }
+    }
+  }
+
+  walk(sym.parents)
+  (inherited = result.toList, parentMemberKeys = allParentKeys.toSet)
+}

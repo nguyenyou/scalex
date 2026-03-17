@@ -1,6 +1,3 @@
-import scala.collection.mutable
-import java.nio.file.Path
-
 def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
   args.headOption match
     case None => CmdResult.UsageError("Usage: scalex explain <symbol>")
@@ -52,7 +49,9 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val pkgMatch = ctx.idx.packages.find(_.equalsIgnoreCase(symbol))
           .orElse(ctx.idx.packages.find(_.toLowerCase.endsWith("." + lower)))
         pkgMatch match
-          case Some(_) => cmdSummary(List(symbol), ctx)
+          case Some(pkg) =>
+            Console.err.println(s"""(no type "$symbol" found — showing package summary instead)""")
+            cmdSummary(List(symbol), ctx)
           case None =>
             CmdResult.NotFound(
               s"""No definition of "$symbol" found""",
@@ -68,34 +67,15 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val doc = extractScaladoc(sym.file, sym.line)
         // Members (for types)
         val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+        val inheritResult = if typeKinds.contains(sym.kind) then collectInheritedMembers(sym, ctx)
+          else (inherited = Nil: List[(parentName: String, parentFile: Option[java.nio.file.Path], parentPackage: String, members: List[MemberInfo])], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
+        val inherited = inheritResult.inherited
+        val parentKeys = inheritResult.parentMemberKeys
         val members = if typeKinds.contains(sym.kind) then
-          extractMembers(sym.file, simpleName).sortBy(memberKindRank).take(ctx.membersLimit)
+          extractMembers(sym.file, simpleName).map { m =>
+            if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
+          }.sortBy(memberKindRank).take(ctx.membersLimit)
         else Nil
-        // Inherited members (only when --inherited)
-        val inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])] = {
-          if !ctx.inherited || !typeKinds.contains(sym.kind) then Nil
-          else
-            val visited = mutable.HashSet.empty[String]
-            visited += sym.name.toLowerCase
-            val ownMembers = extractMembers(sym.file, simpleName).map(m => (name = m.name, kind = m.kind)).toSet
-            val result = mutable.ListBuffer.empty[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])]
-            def walk(parentNames: List[String]): Unit = {
-              parentNames.foreach { pName =>
-                if !visited.contains(pName.toLowerCase) then {
-                  visited += pName.toLowerCase
-                  val parentDefs = ctx.idx.findDefinition(pName).filter(s => typeKinds.contains(s.kind))
-                  parentDefs.headOption.foreach { pd =>
-                    val parentMembers = extractMembers(pd.file, pd.name)
-                    val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
-                    if filtered.nonEmpty then result += ((parentName = pd.name, parentFile = Some(pd.file), parentPackage = pd.packageName, members = filtered))
-                    walk(pd.parents)
-                  }
-                }
-              }
-            }
-            walk(sym.parents)
-            result.toList
-        }
         // Companion lookup
         val companionKinds: Set[SymbolKind] = sym.kind match
           case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => Set(SymbolKind.Object)

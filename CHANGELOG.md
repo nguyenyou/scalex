@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- `entrypoints` command — find `@main` annotated, `def main(...)` methods, `extends App`, and test suites in one call; supports `--no-tests`, `--path`, `--json` (#141)
+- Override markers on `members --inherited` and `explain --inherited` — own members that shadow parent members are annotated with `[override]` in text output and `"isOverride":true` in JSON (#141)
+
+### Fixed
+- `explain` package fallback now warns on stderr: `(no type "X" found — showing package summary instead)` instead of silently falling back (#141)
+
 ## [1.18.0] — 2026-03-17
 
 ### Fixed

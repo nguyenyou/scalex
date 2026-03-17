@@ -153,6 +153,7 @@ scalex package com.example                 # Explore a specific package
 scalex api com.example                     # What does this package export?
 scalex api com.example --used-by com.web   # Coupling: what does web use from example?
 scalex summary com.example                 # Sub-packages with symbol counts
+scalex entrypoints                         # Find @main, def main, extends App, test suites
 
 # Understand
 scalex def UserService --verbose           # Definition with signature
@@ -234,6 +235,7 @@ scalex tests                    List test cases structurally    (aka: find tests
 scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
 scalex api <package>            Public API surface of a package (aka: exported symbols)
 scalex summary <package>        Sub-packages with symbol counts   (aka: package breakdown)
+scalex entrypoints              Find @main, def main, extends App, test suites
 ```
 
 All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
@@ -251,6 +253,8 @@ All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-t
 - `members` auto-shows companion object/class members alongside the primary type
 - `refs --count` gives category counts in one line — fast impact triage without reading full file lists
 - `refs --top N` ranks files by reference count — surfaces heaviest users first for impact analysis
+- `entrypoints` finds all application entry points (`@main`, `def main`, `extends App`, test suites) in one call — useful for onboarding
+- `members --inherited` marks overrides with `[override]` — shows which own members shadow parent definitions
 - `body` extracts source without a Read call — eliminates ~50% of follow-up file reads
 - `refs` returns categorized results (Definition/ExtendedBy/ImportedBy/UsedAsType) — no post-processing
 - `search` ranks by import popularity; `--returns` / `--takes` filter by signature

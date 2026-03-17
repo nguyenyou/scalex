@@ -917,12 +917,15 @@ class CliSuite extends ScalexTestBase:
   test("explain falls back to summary when symbol matches a package") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
-    val output = captureOut {
+    val (stdout, stderr) = captureOutErr {
       runCommand("explain", List("com.example"), CommandContext(idx = idx, workspace = workspace))
     }
     // Should show package summary instead of not-found
-    assert(output.contains("com.example") && !output.contains("No definition"),
-      s"Should fall back to package summary: $output")
+    assert(stdout.contains("com.example") && !stdout.contains("No definition"),
+      s"Should fall back to package summary: $stdout")
+    // Should warn user about the fallback on stderr
+    assert(stderr.contains("no type") && stderr.contains("package summary"),
+      s"Should warn about package fallback on stderr: $stderr")
   }
 
   // ── #132-135: explain import refs respect --path filter ────────────────────
@@ -1125,4 +1128,119 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("\"symbol\":\"UserService\""), s"JSON should have symbol: $output")
     assert(output.contains("\"files\":["), s"JSON should have files array: $output")
     assert(output.contains("\"total\":"), s"JSON should have total: $output")
+  }
+
+  // ── Override markers ──────────────────────────────────────────────────
+
+  test("members --inherited shows override markers") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("UserServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, inherited = true))
+    }
+    assert(output.contains("[override]"), s"Should show [override] marker: $output")
+    assert(output.contains("findUser"), s"Should contain findUser: $output")
+    assert(output.contains("createUser"), s"Should contain createUser: $output")
+  }
+
+  test("members --inherited JSON includes isOverride") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("UserServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, inherited = true, jsonOutput = true))
+    }
+    assert(output.contains("\"isOverride\":true"), s"JSON should have isOverride: $output")
+  }
+
+  test("members without --inherited has no override markers") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("UserServiceLive"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(!output.contains("[override]"), s"Should not show [override] without --inherited: $output")
+  }
+
+  test("explain --inherited shows override markers") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, inherited = true, shallow = true))
+    }
+    assert(output.contains("[override]"), s"Should show [override] marker: $output")
+  }
+
+  // ── Entrypoints ────────────────────────────────────────────────────────
+
+  test("entrypoints finds @main annotated") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("entrypoints", Nil,
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("@main annotated"), s"Should have @main section: $output")
+    assert(output.contains("run"), s"Should find @main def run: $output")
+  }
+
+  test("entrypoints finds def main methods") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("entrypoints", Nil,
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("def main("), s"Should have def main section: $output")
+    assert(output.contains("MyApp"), s"Should find object MyApp: $output")
+  }
+
+  test("entrypoints finds extends App") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("entrypoints", Nil,
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("extends App"), s"Should have extends App section: $output")
+    assert(output.contains("Legacy"), s"Should find Legacy object: $output")
+  }
+
+  test("entrypoints finds test suites") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("entrypoints", Nil,
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("Test suites"), s"Should have test suites section: $output")
+    assert(output.contains("UserServiceTest"), s"Should find UserServiceTest: $output")
+  }
+
+  test("entrypoints --json produces structured output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("entrypoints", Nil,
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true))
+    }
+    assert(output.contains("\"entrypoints\":{"), s"JSON should have entrypoints: $output")
+    assert(output.contains("\"mainAnnotated\":"), s"JSON should have mainAnnotated: $output")
+    assert(output.contains("\"mainMethods\":"), s"JSON should have mainMethods: $output")
+    assert(output.contains("\"extendsApp\":"), s"JSON should have extendsApp: $output")
+    assert(output.contains("\"testSuites\":"), s"JSON should have testSuites: $output")
+    assert(output.contains("\"total\":"), s"JSON should have total: $output")
+  }
+
+  test("entrypoints --no-tests excludes test suites from results") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("entrypoints", Nil,
+        CommandContext(idx = idx, workspace = workspace, noTests = true))
+    }
+    assert(!output.contains("UserServiceTest"), s"Should not show test suites with --no-tests: $output")
   }

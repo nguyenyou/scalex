@@ -112,7 +112,7 @@ Lists member declarations (def, val, var, type) inside a class, trait, object, o
 
 **Companion-aware**: automatically shows companion object/class members alongside the primary symbol — no follow-up query needed.
 
-Use `--inherited` to walk the extends chain and include members from parent types — gives the full API surface in one call. Child overrides win when the same member exists in both parent and child.
+Use `--inherited` to walk the extends chain and include members from parent types — gives the full API surface in one call. Own members that shadow parent members are marked `[override]` in text output (JSON: `"isOverride":true`). Child overrides win when the same member exists in both parent and child.
 
 ```bash
 scalex members PaymentService                    # show all defs/vals with signatures (default)
@@ -491,6 +491,33 @@ Summary of com.example (245 symbols):
   .util                 20
 ```
 
+### `scalex entrypoints [--no-tests] [--path PREFIX] [--json]` — find entry points
+
+Find all application entry points in the workspace: `@main` annotated functions, objects with `def main(...)`, objects that `extends App`, and test suites (MUnit, ScalaTest, specs2). Results are grouped by category. Use `--no-tests` to exclude test suites.
+
+```bash
+scalex entrypoints                           # all entry points
+scalex entrypoints --no-tests                # skip test suites
+scalex entrypoints --path src/main/          # only production code
+scalex entrypoints --json                    # structured JSON output
+```
+```
+Entrypoints — 5 found:
+
+  @main annotated (2):
+    def       run — src/Main.scala:3
+    def       serve — src/Server.scala:1
+
+  def main(...) methods (1):
+    object    MyApp — src/MyApp.scala:5
+
+  extends App (1):
+    object    Legacy — src/Legacy.scala:1
+
+  Test suites (1):
+    class     UserSpec — tests/UserSpec.scala:3
+```
+
 ### `scalex symbols <file> [--verbose] [--summary]` / `scalex packages` — file symbols / list packages
 
 `symbols` lists everything defined in a file (`--verbose` for signatures). `--summary` shows grouped counts by kind (e.g. "12 classes, 3 traits, 45 defs") instead of listing each symbol — useful for large files. `packages` lists all packages in the index.
@@ -631,6 +658,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"What from package A does package B use?"** → `scalex api com.example --used-by com.example.web` — coupling analysis
 
 **"Find methods that return/take a type"** → `scalex search process --returns Boolean` or `scalex search convert --takes String`
+
+**"Where are the entry points?"** → `scalex entrypoints` — finds `@main`, `def main(...)`, `extends App`, and test suites in one call
 
 **"I need structured output"** → append `--json` to any command
 

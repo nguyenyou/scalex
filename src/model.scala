@@ -90,7 +90,7 @@ enum Confidence:
 
 // ── Member / body / hierarchy types ─────────────────────────────────────────
 
-case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil)
+case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil, isOverride: Boolean = false)
 
 case class BodyInfo(ownerName: String, symbolName: String, sourceText: String, startLine: Int, endLine: Int)
 
@@ -115,6 +115,11 @@ case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[
 case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int, packageName: String, signature: String)
 
 case class ExplainedImpl(sym: SymbolInfo, members: List[MemberInfo], subImpls: List[ExplainedImpl] = Nil)
+
+case class EntrypointInfo(sym: SymbolInfo, category: EntrypointCategory, enclosingObject: Option[String] = None)
+
+enum EntrypointCategory:
+  case MainAnnotation, MainMethod, ExtendsApp, TestSuite
 
 // ── Command context ────────────────────────────────────────────────────────
 
@@ -207,5 +212,6 @@ enum CmdResult:
   case ApiSurface(pkg: String, symbols: List[(symbol: SymbolInfo, importerCount: Int)], totalInPackage: Int, internalOnly: List[String])
   case RefsTop(symbol: String, fileRanking: List[(file: Path, count: Int)], total: Int, timedOut: Boolean)
   case RefsSummary(symbol: String, categoryCounts: List[(category: RefCategory, count: Int)], total: Int, timedOut: Boolean)
+  case Entrypoints(entries: List[EntrypointInfo], total: Int)
   case NotFound(message: String, hint: NotFoundHint)
   case UsageError(message: String)

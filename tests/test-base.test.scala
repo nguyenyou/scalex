@@ -170,6 +170,24 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/main/scala/com/example/MainApp.scala",
+      """package com.example
+        |
+        |@main def run(): Unit = println("hello")
+        |
+        |object MyApp {
+        |  def main(args: Array[String]): Unit = println("hello")
+        |}
+        |""".stripMargin)
+
+    writeFile("src/main/scala/com/example/LegacyApp.scala",
+      """package com.example
+        |
+        |object Legacy extends App {
+        |  println("hello")
+        |}
+        |""".stripMargin)
+
     writeFile("src/main/scala/com/example/Mixins.scala",
       """package com.example
         |
@@ -234,6 +252,12 @@ abstract class ScalexTestBase extends FunSuite:
     val err = new java.io.ByteArrayOutputStream()
     Console.withOut(out) { Console.withErr(err) { body } }
     out.toString
+
+  protected def captureOutErr(body: => Unit): (stdout: String, stderr: String) =
+    val out = new java.io.ByteArrayOutputStream()
+    val err = new java.io.ByteArrayOutputStream()
+    Console.withOut(out) { Console.withErr(err) { body } }
+    (stdout = out.toString, stderr = err.toString)
 
   private def deleteRecursive(path: Path): Unit =
     if Files.isDirectory(path) then

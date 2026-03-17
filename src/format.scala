@@ -109,6 +109,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: ApiSurface       => renderApiSurface(r, ctx)
     case r: RefsTop          => renderRefsTop(r, ctx)
     case r: RefsSummary      => renderRefsSummary(r, ctx)
+    case r: Entrypoints      => renderEntrypoints(r, ctx)
     case r: NotFound         => renderNotFound(r, ctx)
     case r: UsageError       => println(r.message)
   }
@@ -290,7 +291,8 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
     val allMembers = r.sections.flatMap { sec =>
       val ownMembers = sec.ownMembers.map { m =>
         val rel = jsonEscape(ctx.workspace.relativize(sec.file).toString)
-        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(r.symbol)}","ownerKind":"${sec.ownerKind.toString.toLowerCase}","package":"${jsonEscape(sec.packageName)}","inherited":false}"""
+        val overrideJson = if m.isOverride then ""","isOverride":true""" else ""
+        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(r.symbol)}","ownerKind":"${sec.ownerKind.toString.toLowerCase}","package":"${jsonEscape(sec.packageName)}","inherited":false$overrideJson}"""
       }
       val inheritedMembers = sec.inherited.flatMap { (parentName, parentFile, parentPackage, members) =>
         members.map { m =>
@@ -319,10 +321,11 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
         else {
           println(s"  Defined in ${r.symbol}:")
           sec.ownMembers.take(ctx.limit).foreach { m =>
+            val overrideMarker = if m.isOverride then "  [override]" else ""
             if !ctx.brief then
-              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
+              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}$overrideMarker")
             else
-              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
+              println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}$overrideMarker")
           }
           if sec.ownMembers.size > ctx.limit then println(s"    ... and ${sec.ownMembers.size - ctx.limit} more")
         }
@@ -611,7 +614,8 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
   if ctx.jsonOutput then {
     val docJson = r.doc.map(d => s""""${jsonEscape(d)}"""").getOrElse("null")
     val membersJson = r.members.map { m =>
-      s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+      val overrideJson = if m.isOverride then ""","isOverride":true""" else ""
+      s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"$overrideJson}"""
     }.mkString("[", ",", "]")
     val implsJson = r.impls.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
     val primaryKeys = r.members.map(m => (name = m.name, kind = m.kind)).toSet
@@ -666,7 +670,8 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       println(s"  Members (top ${r.members.size}):")
       r.members.foreach { m =>
         val label = if ctx.verbose then m.signature else m.name
-        println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label")
+        val overrideMarker = if m.isOverride then "  [override]" else ""
+        println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label$overrideMarker")
       }
       println()
     }
@@ -991,6 +996,55 @@ private def renderRefsSummary(r: CmdResult.RefsSummary, ctx: CommandContext): Un
       s"$count $label"
     }
     println(s"""References to "${r.symbol}" — ${r.total} total: ${parts.mkString(", ")}$suffix""")
+  }
+}
+
+private def renderEntrypoints(r: CmdResult.Entrypoints, ctx: CommandContext): Unit = {
+  import EntrypointCategory.*
+  val byCategory = r.entries.groupBy(_.category)
+  val categoryOrder = List(MainAnnotation, MainMethod, ExtendsApp, TestSuite)
+  val categoryLabels = Map(
+    MainAnnotation -> "@main annotated",
+    MainMethod -> "def main(...) methods",
+    ExtendsApp -> "extends App",
+    TestSuite -> "Test suites"
+  )
+  val categoryJsonKeys = Map(
+    MainAnnotation -> "mainAnnotated",
+    MainMethod -> "mainMethods",
+    ExtendsApp -> "extendsApp",
+    TestSuite -> "testSuites"
+  )
+  if ctx.jsonOutput then {
+    val groups = categoryOrder.map { cat =>
+      val entries = byCategory.getOrElse(cat, Nil).take(ctx.limit)
+      val arr = entries.map { e =>
+        val rel = jsonEscape(ctx.workspace.relativize(e.sym.file).toString)
+        val enclosing = e.enclosingObject.map(o => s""","enclosingObject":"${jsonEscape(o)}"""").getOrElse("")
+        s"""{"name":"${jsonEscape(e.sym.name)}","kind":"${e.sym.kind.toString.toLowerCase}","file":"$rel","line":${e.sym.line},"package":"${jsonEscape(e.sym.packageName)}"$enclosing}"""
+      }.mkString("[", ",", "]")
+      s""""${categoryJsonKeys(cat)}":$arr"""
+    }.mkString(",")
+    println(s"""{"entrypoints":{$groups},"total":${r.total}}""")
+  } else {
+    if r.entries.isEmpty then
+      println("No entrypoints found")
+    else {
+      println(s"Entrypoints — ${r.total} found:\n")
+      categoryOrder.foreach { cat =>
+        val entries = byCategory.getOrElse(cat, Nil)
+        if entries.nonEmpty then {
+          println(s"  ${categoryLabels(cat)} (${entries.size}):")
+          entries.take(ctx.limit).foreach { e =>
+            val rel = ctx.workspace.relativize(e.sym.file)
+            val label = e.enclosingObject.getOrElse(e.sym.name)
+            println(s"    ${e.sym.kind.toString.toLowerCase.padTo(9, ' ')} $label — $rel:${e.sym.line}")
+          }
+          if entries.size > ctx.limit then println(s"    ... and ${entries.size - ctx.limit} more")
+          println()
+        }
+      }
+    }
   }
 }
 

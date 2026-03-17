@@ -10,6 +10,7 @@ val commands: Map[String, (List[String], CommandContext) => CmdResult] = Map(
   "deps" -> cmdDeps, "context" -> cmdContext, "diff" -> cmdDiff, "ast-pattern" -> cmdAstPattern,
   "api" -> cmdApi,
   "summary" -> cmdSummary,
+  "entrypoints" -> cmdEntrypoints,
 )
 
 def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =

@@ -153,6 +153,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)
         |  scalex api <package>            Public API surface of a package (aka: exported symbols)
         |  scalex summary <package>        Sub-packages with symbol counts   (aka: package breakdown)
+        |  scalex entrypoints              Find @main, def main, extends App, test suites
         |
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
@@ -240,7 +241,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
           (resolveWorkspace(ws), rest)
         case None =>
           cmd match
-            case "index" | "packages" | "overview" | "ast-pattern" =>
+            case "index" | "packages" | "overview" | "ast-pattern" | "entrypoints" =>
               (resolveWorkspace(rest.headOption.getOrElse(".")), rest)
             case _ =>
               rest match
