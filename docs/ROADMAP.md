@@ -69,7 +69,7 @@
 
 ### Discarded from #132–#135
 
-- ~~Java member extraction (#135)~~ — breaks Scalameta-only architecture; regex-based Java parsing is fragile and would need maintenance for every Java syntax variation. Agent can `read` Java files directly for member signatures
+- ~~Java member extraction (#135) [regex-based]~~ — regex-based approach was fragile; replaced with JavaParser AST-based extraction in #167
 - ~~Re-exported type ranking (#132)~~ — detecting alias chains requires type resolution (unavailable without build server); name-based heuristics would produce false positives
 - ~~Module/subproject awareness (#135)~~ — already discarded in #103; build file detection couples to external conventions
 - ~~`flow`/`pipeline` command (#135)~~ — already discarded; BFS without type resolution is fragile via name collisions
@@ -83,6 +83,14 @@
 - ~~Smarter default limits~~ — auto-summarize is hard to get right universally; better to give users explicit flags (`--members-limit`, `--definitions-only`)
 
 ## Completed
+
+### JavaParser-based Java extraction (#167)
+
+- [x] Replace regex-based Java symbol extraction with JavaParser AST parsing
+- [x] Java symbol extraction (classes, interfaces, enums, records, methods, fields)
+- [x] Java member extraction (constructors, nested types, enum constants, @Override detection)
+- [x] Java body extraction with owner filtering
+- [x] Centralized `isJavaFile()` routing — eliminates scattered `.endsWith(".java")` checks
 
 ### Extraction fixes (#127)
 
