@@ -44,8 +44,13 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
       else
         val sym = defs.head
         // Deduplicate by (name, package): trait+companion = 1 match, cross-package = distinct (see #8bd6b57)
-        val distinctByNamePkg = defs.map(s => (name = s.name.toLowerCase, pkg = s.packageName)).distinct.size
-        val otherMatches = distinctByNamePkg - 1
+        val shownKey = (name = sym.name.toLowerCase, pkg = sym.packageName)
+        val distinctKeys = defs.map(s => (name = s.name.toLowerCase, pkg = s.packageName)).distinct
+        val otherMatches = distinctKeys.size - 1
+        // Collect one representative def per distinct (name, package) for copy-paste disambiguation hints
+        val otherDefs = distinctKeys.filterNot(_ == shownKey).flatMap { k =>
+          defs.find(s => s.name.toLowerCase == k.name && s.packageName == k.pkg)
+        }
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc
@@ -65,7 +70,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.membersLimit)))
         if ctx.shallow then
           // Shallow mode: definition + members + companion only
-          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches)
+          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches, otherDefs = otherDefs)
         else
           // Implementations
           val allImpls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx)
@@ -78,7 +83,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           // Import refs (apply path/exclude/noTests filters)
           val importRefs = filterRefs(ctx.idx.findImports(simpleName, timeoutMs = 3000), ctx)
           CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls,
-            otherMatches = otherMatches, totalImpls = totalImpls, inherited = inherited)
+            otherMatches = otherMatches, otherDefs = otherDefs, totalImpls = totalImpls, inherited = inherited)
 
 private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
                         depth: Int, visited: Set[String]): List[ExplainedImpl] =

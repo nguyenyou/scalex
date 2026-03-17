@@ -202,7 +202,7 @@ enum CmdResult:
   case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importRefs: List[Reference],
     companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None,
     expandedImpls: List[ExplainedImpl] = Nil,
-    otherMatches: Int = 0, totalImpls: Int = 0,
+    otherMatches: Int = 0, otherDefs: List[SymbolInfo] = Nil, totalImpls: Int = 0,
     inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])] = Nil)
   case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
   case Scopes(file: Path, line: Int, scopes: List[ScopeInfo])

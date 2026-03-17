@@ -4,6 +4,11 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Community feedback: agent experience (#164)
+
+- [x] `explain` copy-paste disambiguation — when multiple matches exist, show `scalex explain pkg.Name` commands instead of generic hint
+- [ ] Batch output size estimation — warn or auto-limit when a single query in a batch would produce >100KB output
+
 ### Community feedback: fuzzy not-found suggestions (#156)
 
 - [x] `search` reverse-suffix matching — queries like `ScalaJSClassEmitter` suggest `ClassEmitter`

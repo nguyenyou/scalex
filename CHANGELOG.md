@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Improved
+- `explain` disambiguation now shows copy-paste-ready commands with package-qualified names instead of generic "use --path to disambiguate" hint (#164)
+
 ## [1.21.0] — 2026-03-17
 
 ### Added

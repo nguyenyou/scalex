@@ -637,7 +637,15 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       val arr = r.importRefs.map(ref => jsonRef(ref, ctx.workspace)).mkString("[", ",", "]")
       s""","importFiles":$arr"""
     else ""
-    val otherJson = if r.otherMatches > 0 then s""","otherMatches":${r.otherMatches}""" else ""
+    val otherJson = if r.otherDefs.nonEmpty then
+      val alts = r.otherDefs.map { s =>
+        val qualified = if s.packageName.nonEmpty then s"${s.packageName}.${s.name}" else s.name
+        val rel = ctx.workspace.relativize(s.file)
+        s"""{"name":"${jsonEscape(s.name)}","package":"${jsonEscape(s.packageName)}","qualifiedName":"${jsonEscape(qualified)}","file":"${jsonEscape(rel.toString)}","line":${s.line}}"""
+      }.mkString("[", ",", "]")
+      s""","otherMatches":${r.otherDefs.size},"alternatives":$alts"""
+    else if r.otherMatches > 0 then s""","otherMatches":${r.otherMatches}"""
+    else ""
     val totalImplJson = if r.totalImpls > r.impls.size then s""","totalImplementations":${r.totalImpls}""" else ""
     val inheritedJson = if r.inherited.nonEmpty then
       val groups = r.inherited.map { (parentName, parentFile, parentPackage, members) =>
@@ -732,7 +740,13 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
         r.importRefs.foreach(ref => println(s"    ${ctx.workspace.relativize(ref.file)}:${ref.line}"))
       else
         println(s"  Imported by: $importCount files (use `scalex imports ${sym.name}` for full list)")
-    if r.otherMatches > 0 then
+    if r.otherDefs.nonEmpty then
+      Console.err.println(s"(${r.otherDefs.size} other match${if r.otherDefs.size > 1 then "es" else ""} — try:)")
+      r.otherDefs.foreach { s =>
+        val qualified = if s.packageName.nonEmpty then s"${s.packageName}.${s.name}" else s.name
+        Console.err.println(s"  scalex explain $qualified")
+      }
+    else if r.otherMatches > 0 then
       Console.err.println(s"(${r.otherMatches} other match${if r.otherMatches > 1 then "es" else ""} — use package-qualified name or --path to disambiguate)")
   }
 }

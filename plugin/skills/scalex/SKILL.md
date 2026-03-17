@@ -637,6 +637,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"I need to look up 3+ symbols"** → use `batch` to load the index once: `echo -e "def Foo\nimpl Foo\nrefs Foo" | scalex batch -w /project`
 
+**"Quick overview of multiple types"** → use `batch` with `explain --shallow --no-doc --members-limit 3`: `echo -e "explain --shallow --no-doc --members-limit 3 Foo\nexplain --shallow --no-doc --members-limit 3 Bar" | scalex batch -w /project`
+
 **"Search for a pattern in Scala files"** → `scalex grep "pattern"` — prefer this over the Grep tool for `.scala` files because it integrates with `--path` and `--no-tests`
 
 **"Show me the source code of method X"** → `scalex body X --in MyClass` — use `--in` when the name exists in multiple classes
