@@ -5,7 +5,7 @@
     <img src="site/readme-banner-dark.png" alt="Scalex — Scala code intelligence for AI coding agents" width="839" height="440">
   </picture>
   <br>
-  <em>Scala code intelligence for AI coding agents.</em>
+  <em>Grep knows text. Scalex knows Scala.</em>
 </p>
 
 ---
