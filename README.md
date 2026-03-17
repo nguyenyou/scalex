@@ -251,7 +251,7 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 | `--up` / `--down` | Hierarchy: limit direction |
 | `--brief` | Members: show names only (default shows signatures) |
 | `--strict` | Refs/imports: treat `_` and `$` as word characters (no boundary matches) |
-| `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, deps default: 1, max: 5) |
+| `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5) |
 | `--inherited` | Members: include inherited members |
 | `--architecture` | Overview: package deps + hub types |
 | `--focus-package PKG` | Overview: scope dependency graph to one package |

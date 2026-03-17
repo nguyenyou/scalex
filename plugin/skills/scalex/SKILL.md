@@ -254,7 +254,7 @@ Body of findUser returns None — UserServiceTest — src/.../UserServiceTest.sc
 
 Full inheritance tree using extends clauses. Shows parents (walking up the extends chain) and children (walking down to implementors). External/unknown parents shown as `[external]`.
 
-Flags: `--up` (parents only), `--down` (children only), `--depth N` (max tree depth; hierarchy default: 5, deps default: 1, max: 5). Default: both directions. Tree-formatted output with `├──`/`└──` prefixes.
+Flags: `--up` (parents only), `--down` (children only), `--depth N` (max tree depth; hierarchy default: 5, no cap; deps default: 1, max: 5). Default: both directions. Tree-formatted output with `├──`/`└──` prefixes.
 
 ```bash
 scalex hierarchy UserServiceLive           # both parents and children
@@ -499,7 +499,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--expand N` | Explain: recursively expand implementations N levels deep |
 | `--up` | Hierarchy: show only parents (default: both) |
 | `--down` | Hierarchy: show only children (default: both) |
-| `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, deps default: 1, max: 5) |
+| `--depth N` | Hierarchy/deps: max tree depth (hierarchy default: 5, no cap; deps default: 1, max: 5) |
 | `--brief` | Members: show names only (default shows signatures) |
 | `--strict` | Refs/imports: treat `_` and `$` as word characters (stricter matching) |
 | `--inherited` | Members: include inherited members from parent types |
