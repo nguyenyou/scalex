@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- `identifierBloom` field is now `Option[BloomFilter]` — eliminates null sentinel; index format bumped to v8 (old caches auto-rebuild) (#148)
+- Exception catches narrowed from `Exception` to `java.io.IOException` for file I/O; parse fallbacks log to stderr: `scalex: parse failed: <path>` (#148)
+- Parallel file reads (grep, refs, imports) use atomic counters with summary: `scalex: N file(s) unreadable during <op>` (#148)
+- Index load failure now logs: `scalex: index load failed, rebuilding` (#148)
+
 ### Fixed
+- `diff` command now detects Given, GivenAlias, ExtensionGroup, and Pkg.Object symbols — previously missed by `extractSymbolsFromSource` (#148)
+- `diff` command no longer reports local vals inside def bodies as added/removed — traversal now correctly skips def/val/var/given bodies (#148)
 - `body` command now supports `Owner.method` dotted syntax (e.g. `body DynamicOwner.activate`) — splits into member name + implicit `--in` owner (#147)
 - `body` not-found error message now includes the owner name when `--in` is used (e.g. `No body found for "onStart" in WritableObservable`) (#147)
 

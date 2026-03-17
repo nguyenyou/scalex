@@ -120,19 +120,21 @@ class ExtractionSuite extends ScalexTestBase:
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
     val (_, bloom, _, _, _) = extractSymbols(file)
 
-    assert(bloom.mightContain("UserService"))
-    assert(bloom.mightContain("findUser"))
-    assert(bloom.mightContain("Database"))
-    assert(bloom.mightContain("Option"))
+    assert(bloom.isDefined, "bloom should be Some")
+    assert(bloom.get.mightContain("UserService"))
+    assert(bloom.get.mightContain("findUser"))
+    assert(bloom.get.mightContain("Database"))
+    assert(bloom.get.mightContain("Option"))
   }
 
   test("bloom filter rejects absent identifiers") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
     val (_, bloom, _, _, _) = extractSymbols(file)
 
+    assert(bloom.isDefined, "bloom should be Some")
     // These should almost certainly not be in the bloom filter
-    assert(!bloom.mightContain("ZxQwVeryUnlikelyIdentifier"))
-    assert(!bloom.mightContain("NobodyWouldNameThisXyz"))
+    assert(!bloom.get.mightContain("ZxQwVeryUnlikelyIdentifier"))
+    assert(!bloom.get.mightContain("NobodyWouldNameThisXyz"))
   }
 
   // ── Phase 7: Signatures ───────────────────────────────────────────────

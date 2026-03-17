@@ -74,7 +74,7 @@ case class IndexedFile(
     relativePath: String,
     oid: String,
     symbols: List[SymbolInfo],
-    identifierBloom: BloomFilter[CharSequence],
+    identifierBloom: Option[BloomFilter[CharSequence]],
     imports: List[String] = Nil,
     aliases: Map[String, String] = Map.empty,
     parseFailed: Boolean = false

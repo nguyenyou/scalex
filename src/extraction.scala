@@ -83,11 +83,92 @@ def extractImports(tree: Tree): (imports: List[String], aliases: Map[String, Str
   visit(tree)
   (buf.toList, aliases.toMap)
 
-def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[CharSequence], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
+// ── Shared raw symbol extraction ─────────────────────────────────────────────
+
+case class RawSymbol(name: String, kind: SymbolKind, line: Int, parents: List[String] = Nil, typeParamParents: List[String] = Nil, signature: String = "", annotations: List[String] = Nil)
+
+def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: String) =
+  val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
+  val buf = mutable.ListBuffer.empty[RawSymbol]
+
+  def visit(t: Tree): Unit = t match
+    case d: Defn.Class =>
+      val (parents, tpParents) = extractParents(d.templ)
+      val tparams = d.tparamClause.values.map(_.name.value)
+      val sig = buildSignature(d.name.value, "class", parents, tparams)
+      val annots = extractAnnotations(d.mods)
+      buf += RawSymbol(d.name.value, SymbolKind.Class, d.pos.startLine + 1, parents, tpParents, sig, annots)
+    case d: Defn.Trait =>
+      val (parents, tpParents) = extractParents(d.templ)
+      val tparams = d.tparamClause.values.map(_.name.value)
+      val sig = buildSignature(d.name.value, "trait", parents, tparams)
+      val annots = extractAnnotations(d.mods)
+      buf += RawSymbol(d.name.value, SymbolKind.Trait, d.pos.startLine + 1, parents, tpParents, sig, annots)
+    case d: Defn.Object =>
+      val (parents, tpParents) = extractParents(d.templ)
+      val sig = buildSignature(d.name.value, "object", parents)
+      val annots = extractAnnotations(d.mods)
+      buf += RawSymbol(d.name.value, SymbolKind.Object, d.pos.startLine + 1, parents, tpParents, sig, annots)
+    case d: Pkg.Object =>
+      val (parents, tpParents) = extractParents(d.templ)
+      val sig = buildSignature(d.name.value, "object", parents)
+      buf += RawSymbol(d.name.value, SymbolKind.Object, d.pos.startLine + 1, parents, tpParents, sig)
+    case d: Defn.Enum =>
+      val (parents, tpParents) = extractParents(d.templ)
+      val tparams = d.tparamClause.values.map(_.name.value)
+      val sig = buildSignature(d.name.value, "enum", parents, tparams)
+      val annots = extractAnnotations(d.mods)
+      buf += RawSymbol(d.name.value, SymbolKind.Enum, d.pos.startLine + 1, parents, tpParents, sig, annots)
+    case d: Defn.Given =>
+      if d.name.value.nonEmpty then
+        val annots = extractAnnotations(d.mods)
+        buf += RawSymbol(d.name.value, SymbolKind.Given, d.pos.startLine + 1, Nil, Nil, s"given ${d.name.value}", annots)
+    case d: Defn.GivenAlias =>
+      if d.name.value.nonEmpty then
+        val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
+        val annots = extractAnnotations(d.mods)
+        buf += RawSymbol(d.name.value, SymbolKind.Given, d.pos.startLine + 1, Nil, Nil, sig, annots)
+    case d: Defn.Type =>
+      val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
+      val annots = extractAnnotations(d.mods)
+      buf += RawSymbol(d.name.value, SymbolKind.Type, d.pos.startLine + 1, Nil, Nil, sig, annots)
+    case d: Defn.Def =>
+      val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
+      val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+      val sig = s"def ${d.name.value}$params$ret"
+      val annots = extractAnnotations(d.mods)
+      buf += RawSymbol(d.name.value, SymbolKind.Def, d.pos.startLine + 1, Nil, Nil, sig, annots)
+    case d: Defn.Val =>
+      val annots = extractAnnotations(d.mods)
+      d.pats.foreach {
+        case Pat.Var(name) =>
+          val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+          buf += RawSymbol(name.value, SymbolKind.Val, d.pos.startLine + 1, Nil, Nil, s"val ${name.value}$tpe", annots)
+        case _ =>
+      }
+    case d: Defn.ExtensionGroup =>
+      val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
+        s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})"
+      ).getOrElse("")
+      buf += RawSymbol("<extension>", SymbolKind.Extension, d.pos.startLine + 1, Nil, Nil, s"extension $recv")
+    case _ =>
+
+  def traverse(t: Tree): Unit =
+    visit(t)
+    t match
+      case _: Defn.Def | _: Defn.Val | _: Defn.Var | _: Defn.Given | _: Defn.GivenAlias => ()
+      case _ => t.children.foreach(traverse)
+
+  traverse(tree)
+  (buf.toList, pkg)
+
+// ── Symbol extraction + bloom filter ────────────────────────────────────────
+
+def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
   val source = try Files.readString(file) catch
-    case _: Exception =>
+    case _: java.io.IOException =>
       val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
-      return (Nil, bloom, Nil, Map.empty, true)
+      return (Nil, Some(bloom), Nil, Map.empty, true)
 
   val bloom = buildBloomFilterFromSource(source)
 
@@ -101,88 +182,20 @@ def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[C
         given scala.meta.Dialect = scala.meta.dialects.Scala213
         input.parse[Source].get
       catch
-        case _: Exception => return (Nil, bloom, Nil, Map.empty, true)
+        case _: Exception =>
+          System.err.println(s"scalex: parse failed: $file")
+          return (Nil, Some(bloom), Nil, Map.empty, true)
 
-  val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
   val (imports, aliases) = extractImports(tree)
-  val buf = mutable.ListBuffer.empty[SymbolInfo]
-
-  def visit(t: Tree): Unit = t match
-    case d: Defn.Class =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "class", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Class, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
-    case d: Defn.Trait =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "trait", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Trait, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
-    case d: Defn.Object =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val sig = buildSignature(d.name.value, "object", parents)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
-    case d: Pkg.Object =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val sig = buildSignature(d.name.value, "object", parents)
-      buf += SymbolInfo(d.name.value, SymbolKind.Object, file, d.pos.startLine + 1, pkg, parents, tpParents, sig)
-    case d: Defn.Enum =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "enum", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Enum, file, d.pos.startLine + 1, pkg, parents, tpParents, sig, annots)
-    case d: Defn.Given =>
-      if d.name.value.nonEmpty then
-        val annots = extractAnnotations(d.mods)
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, Nil, s"given ${d.name.value}", annots)
-    case d: Defn.GivenAlias =>
-      if d.name.value.nonEmpty then
-        val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
-        val annots = extractAnnotations(d.mods)
-        buf += SymbolInfo(d.name.value, SymbolKind.Given, file, d.pos.startLine + 1, pkg, Nil, Nil, sig, annots)
-    case d: Defn.Type =>
-      val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Type, file, d.pos.startLine + 1, pkg, Nil, Nil, sig, annots)
-    case d: Defn.Def =>
-      val params = d.paramClauses.map(_.values.map(p => s"${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")}").mkString(", ")).mkString("(", ")(", ")")
-      val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-      val sig = s"def ${d.name.value}$params$ret"
-      val annots = extractAnnotations(d.mods)
-      buf += SymbolInfo(d.name.value, SymbolKind.Def, file, d.pos.startLine + 1, pkg, Nil, Nil, sig, annots)
-    case d: Defn.Val =>
-      val annots = extractAnnotations(d.mods)
-      d.pats.foreach {
-        case Pat.Var(name) =>
-          val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-          buf += SymbolInfo(name.value, SymbolKind.Val, file, d.pos.startLine + 1, pkg, Nil, Nil, s"val ${name.value}$tpe", annots)
-        case _ =>
-      }
-    case d: Defn.ExtensionGroup =>
-      val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
-        s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})"
-      ).getOrElse("")
-      buf += SymbolInfo("<extension>", SymbolKind.Extension, file, d.pos.startLine + 1, pkg, Nil, Nil, s"extension $recv")
-    case _ =>
-
-  def traverse(t: Tree): Unit =
-    visit(t)
-    t match
-      case _: Defn.Def | _: Defn.Val | _: Defn.Var | _: Defn.Given | _: Defn.GivenAlias => ()
-      case _ => t.children.foreach(traverse)
-
-  traverse(tree)
-  (buf.toList, bloom, imports, aliases, false)
+  val (rawSymbols, pkg) = extractRawSymbols(tree)
+  val symbols = rawSymbols.map(r => SymbolInfo(r.name, r.kind, file, r.line, pkg, r.parents, r.typeParamParents, r.signature, r.annotations))
+  (symbols, Some(bloom), imports, aliases, false)
 
 // ── Source parsing helper ────────────────────────────────────────────────────
 
 def parseFile(path: Path): Option[Source] =
   val source = try Files.readString(path) catch
-    case _: Exception => return None
+    case _: java.io.IOException => return None
   val input = Input.VirtualFile(path.toString, source)
   try
     given scala.meta.Dialect = scala.meta.dialects.Scala3
@@ -193,7 +206,9 @@ def parseFile(path: Path): Option[Source] =
         given scala.meta.Dialect = scala.meta.dialects.Scala213
         Some(input.parse[Source].get)
       catch
-        case _: Exception => None
+        case _: Exception =>
+          System.err.println(s"scalex: parse failed: $path")
+          None
 
 // ── Member extraction ───────────────────────────────────────────────────────
 
@@ -286,7 +301,7 @@ def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
 
 def extractScaladoc(file: Path, targetLine: Int): Option[String] =
   val lines = try Files.readAllLines(file).asScala.toArray catch
-    case _: Exception => return None
+    case _: java.io.IOException => return None
   // targetLine is 1-indexed, array is 0-indexed
   var i = targetLine - 2 // line before the symbol
   // skip blank lines between doc and symbol
@@ -367,7 +382,7 @@ def extractTests(file: Path): List[TestSuiteInfo] = {
 
 def extractBody(file: Path, symbolName: String, ownerName: Option[String]): List[BodyInfo] = {
   val lines = try Files.readAllLines(file).asScala.toArray catch
-    case _: Exception => return Nil
+    case _: java.io.IOException => return Nil
   parseFile(file) match
     case None => Nil
     case Some(tree) =>
@@ -507,11 +522,11 @@ def extractScopes(file: Path, targetLine: Int): List[ScopeInfo] = {
 
 // ── Java symbol extraction (regex-based) ────────────────────────────────────
 
-def extractJavaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[CharSequence], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
+def extractJavaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
   val source = try Files.readString(file) catch
-    case _: Exception =>
+    case _: java.io.IOException =>
       val bloom = BloomFilter.create(Funnels.unencodedCharsFunnel(), 500, 0.01)
-      return (Nil, bloom, Nil, Map.empty, true)
+      return (Nil, Some(bloom), Nil, Map.empty, true)
 
   val bloom = buildBloomFilterFromSource(source)
   val lines = source.split("\n")
@@ -541,4 +556,4 @@ def extractJavaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilt
       case _ =>
   }
 
-  (buf.toList, bloom, imports.toList, Map.empty, false)
+  (buf.toList, Some(bloom), imports.toList, Map.empty, false)

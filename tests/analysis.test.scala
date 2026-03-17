@@ -232,6 +232,49 @@ class AnalysisSuite extends ScalexTestBase:
     assert(!added.contains("bar"), s"bar should not be added: $added")
   }
 
+  test("extractSymbolsFromSource finds Given, Extension, and Pkg.Object") {
+    val source =
+      """package com.example
+        |
+        |given defaultOrdering: Ordering[String] = Ordering.String
+        |
+        |extension (s: String)
+        |  def shout: String = s.toUpperCase
+        |
+        |package object utils {
+        |  val version = "1.0"
+        |}
+        |""".stripMargin
+    val symbols = extractSymbolsFromSource(source, "test.scala")
+    val kinds = symbols.map(s => (s.name, s.kind))
+    assert(kinds.exists((n, k) => n == "defaultOrdering" && k == SymbolKind.Given),
+      s"Should find given: $kinds")
+    assert(kinds.exists((_, k) => k == SymbolKind.Extension),
+      s"Should find extension: $kinds")
+    assert(kinds.exists((n, k) => n == "utils" && k == SymbolKind.Object),
+      s"Should find package object: $kinds")
+  }
+
+  test("extractSymbolsFromSource skips local vals inside def bodies") {
+    val source =
+      """package com.example
+        |
+        |object Service {
+        |  def process(data: String): String = {
+        |    val temp = data.trim
+        |    temp.toUpperCase
+        |  }
+        |  val publicVal: Int = 42
+        |}
+        |""".stripMargin
+    val symbols = extractSymbolsFromSource(source, "test.scala")
+    val names = symbols.map(_.name).toSet
+    assert(names.contains("Service"), s"Should find top-level object: $names")
+    assert(names.contains("process"), s"Should find top-level def: $names")
+    assert(names.contains("publicVal"), s"Should find top-level val: $names")
+    assert(!names.contains("temp"), s"Should NOT find local val 'temp': $names")
+  }
+
   // ── ast-pattern — astPatternSearch ────────────────────────────────────
 
   test("astPatternSearch with --extends filter finds PaymentServiceLive") {

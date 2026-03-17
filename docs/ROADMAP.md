@@ -42,6 +42,12 @@
 - [x] `entrypoints` command — find `@main`, `def main(`, `extends App`, test suites; small effort, useful for onboarding
 - [x] Override markers in `members --inherited` — show `[override]` vs `[inherited from Parent]` markers
 
+### Code quality improvements (#148)
+
+- [x] Option bloom filters — `identifierBloom: Option[BloomFilter]` replaces null sentinel; index v8
+- [x] Error handling — narrow `Exception` catches to `IOException` for file I/O; stderr logging for parse failures and unreadable files
+- [x] Deduplicate extraction — shared `extractRawSymbols` used by both `extractSymbols` and `extractSymbolsFromSource`; fixes missing Given/Extension/Pkg.Object in diff command
+
 ### Discarded from #141
 
 - ~~Approximate call graph (`calls` command)~~ — same reasoning as rejected "Static call graph (#101, #102)"; name-matched call targets produce false positives for common methods (`apply`, `map`, `get`)

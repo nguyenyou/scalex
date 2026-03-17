@@ -30,7 +30,7 @@ def gitLsFiles(workspace: Path): List[GitFile] =
 
 object IndexPersistence:
   private val MAGIC = 0x53584458
-  private val VERSION: Byte = 7
+  private val VERSION: Byte = 8
 
   def indexPath(workspace: Path): Path = workspace.resolve(".scalex").resolve("index.bin")
 
@@ -98,11 +98,15 @@ object IndexPersistence:
         }
 
         // Bloom filter
-        val bloomBytes = java.io.ByteArrayOutputStream()
-        f.identifierBloom.writeTo(bloomBytes)
-        val ba = bloomBytes.toByteArray
-        out.writeInt(ba.length)
-        out.write(ba)
+        f.identifierBloom match
+          case Some(bloom) =>
+            val bloomBytes = java.io.ByteArrayOutputStream()
+            bloom.writeTo(bloomBytes)
+            val ba = bloomBytes.toByteArray
+            out.writeInt(ba.length)
+            out.write(ba)
+          case None =>
+            out.writeInt(0)
 
         // Parse failed flag
         out.writeBoolean(f.parseFailed)
@@ -164,16 +168,17 @@ object IndexPersistence:
 
           // Bloom filter
           val bloomLen = in.readInt()
-          val bloom = if loadBlooms then
+          val bloom: Option[BloomFilter[CharSequence]] = if bloomLen == 0 then None
+          else if loadBlooms then
             val bloomBytes = new Array[Byte](bloomLen)
             in.readFully(bloomBytes)
-            BloomFilter.readFrom(
+            Some(BloomFilter.readFrom(
               java.io.ByteArrayInputStream(bloomBytes),
               Funnels.unencodedCharsFunnel()
-            )
+            ))
           else
             in.skipBytes(bloomLen)
-            null
+            None
 
           // Parse failed flag
           val parseFailed = in.readBoolean()
@@ -184,7 +189,9 @@ object IndexPersistence:
         Some(result.toMap)
       finally in.close()
     catch
-      case _: Exception => None
+      case _: Exception =>
+        System.err.println("scalex: index load failed, rebuilding")
+        None
 
 // ── Workspace index ─────────────────────────────────────────────────────────
 
@@ -370,12 +377,12 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
     if parsedCount > 0 then
       if !needBlooms then
-        // Reload with blooms for newly parsed files that have null blooms
+        // Reload with blooms for newly parsed files that have empty blooms
         indexedFiles = indexedFiles.map { f =>
-          if f.identifierBloom == null then
+          if f.identifierBloom.isEmpty then
             val source = try Files.readString(workspace.resolve(f.relativePath)) catch
-              case _: Exception => ""
-            f.copy(identifierBloom = buildBloomFilterFromSource(source))
+              case _: java.io.IOException => ""
+            f.copy(identifierBloom = Some(buildBloomFilterFromSource(source)))
           else f
         }
       Timings.phase("cache-save") { IndexPersistence.save(workspace, indexedFiles) }
@@ -417,6 +424,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     var grepTimedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
+    val grepUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
     candidates.asJava.parallelStream().forEach { gf =>
       if System.nanoTime() < deadline then {
         try {
@@ -427,9 +435,10 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
                 results.add(Reference(gf.path, idx + 1, line.trim))
             } else grepTimedOut = true
           }
-        } catch { case _: Exception => () }
+        } catch { case _: java.io.IOException => grepUnreadable.incrementAndGet(); () }
       } else grepTimedOut = true
     }
+    if grepUnreadable.get() > 0 then System.err.println(s"scalex: ${grepUnreadable.get()} file(s) unreadable during grep")
     (results.asScala.toList.sortBy(r => (workspace.relativize(r.file).toString, r.line)), grepTimedOut)
 
   def search(query: String): List[SymbolInfo] =
@@ -487,7 +496,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): List[Reference] =
     val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
     val (candidates, allCandidates, fileAliasMap) = Timings.phase("bloom-screen") {
-      val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
+      val candidates = indexedFiles.filter(f => f.identifierBloom.forall(_.mightContain(name)))
       val aliasFiles = aliasIndex.getOrElse(name, Nil)
       val candidateSet = candidates.map(_.relativePath).toSet
       val extraFiles = aliasFiles.collect {
@@ -502,12 +511,13 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
     val seen = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    val refsUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
     Timings.phase("text-search") {
       allCandidates.asJava.parallelStream().forEach { idxFile =>
         if System.nanoTime() < deadline then
           val path = workspace.resolve(idxFile.relativePath)
           val lines = try Files.readAllLines(path).asScala catch
-            case _: Exception => Seq.empty
+            case _: java.io.IOException => refsUnreadable.incrementAndGet(); Seq.empty
           val aliasName = fileAliasMap.get(idxFile.relativePath)
           lines.zipWithIndex.foreach {
             case (line, idx) if System.nanoTime() < deadline =>
@@ -523,6 +533,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         else timedOut = true
       }
     }
+    if refsUnreadable.get() > 0 then System.err.println(s"scalex: ${refsUnreadable.get()} file(s) unreadable during refs")
     results.asScala.toList
 
   def categorizeReferences(name: String, strict: Boolean = false): Map[RefCategory, List[Reference]] =
@@ -548,16 +559,17 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
   def findImports(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): List[Reference] =
     val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
-    val candidates = indexedFiles.filter(f => f.identifierBloom == null || f.identifierBloom.mightContain(name))
+    val candidates = indexedFiles.filter(f => f.identifierBloom.forall(_.mightContain(name)))
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
     val resultPaths = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    val importsUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
     candidates.asJava.parallelStream().forEach { idxFile =>
       if System.nanoTime() < deadline then
         val path = workspace.resolve(idxFile.relativePath)
         val lines = try Files.readAllLines(path).asScala catch
-          case _: Exception => Seq.empty
+          case _: java.io.IOException => importsUnreadable.incrementAndGet(); Seq.empty
         lines.zipWithIndex.foreach {
           case (line, idx) if System.nanoTime() < deadline && line.trim.startsWith("import ") && wordMatch(line, name) =>
             results.add(Reference(path, idx + 1, line.trim))
@@ -586,8 +598,9 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
                       results.add(Reference(path, lineIdx + 1, line.trim))
                       resultPaths.add(key)
                 }
-              } catch { case _: Exception => () }
+              } catch { case _: java.io.IOException => importsUnreadable.incrementAndGet(); () }
 
+    if importsUnreadable.get() > 0 then System.err.println(s"scalex: ${importsUnreadable.get()} file(s) unreadable during imports")
     results.asScala.toList
 
   private def filePackage(idxFile: IndexedFile): String =

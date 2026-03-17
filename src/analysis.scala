@@ -227,7 +227,7 @@ def gitShowFile(workspace: Path, ref: String, relPath: String): Option[String] =
     val exitCode = proc.waitFor()
     if exitCode == 0 then Some(content) else None
   } catch {
-    case _: Exception => None
+    case _: java.io.IOException => None
   }
 }
 
@@ -242,43 +242,14 @@ def extractSymbolsFromSource(source: String, filePath: String): List[DiffSymbol]
         given scala.meta.Dialect = scala.meta.dialects.Scala213
         input.parse[Source].get
       } catch {
-        case _: Exception => return Nil
+        case _: Exception =>
+          System.err.println(s"scalex: parse failed: $filePath")
+          return Nil
       }
   }
 
-  val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
-  val buf = mutable.ListBuffer.empty[DiffSymbol]
-
-  def visit(t: Tree): Unit = {
-    t match
-      case d: Defn.Class =>
-        buf += DiffSymbol(d.name.value, SymbolKind.Class, filePath, d.pos.startLine + 1, pkg, s"class ${d.name.value}")
-      case d: Defn.Trait =>
-        buf += DiffSymbol(d.name.value, SymbolKind.Trait, filePath, d.pos.startLine + 1, pkg, s"trait ${d.name.value}")
-      case d: Defn.Object =>
-        buf += DiffSymbol(d.name.value, SymbolKind.Object, filePath, d.pos.startLine + 1, pkg, s"object ${d.name.value}")
-      case d: Defn.Enum =>
-        buf += DiffSymbol(d.name.value, SymbolKind.Enum, filePath, d.pos.startLine + 1, pkg, s"enum ${d.name.value}")
-      case d: Defn.Def =>
-        buf += DiffSymbol(d.name.value, SymbolKind.Def, filePath, d.pos.startLine + 1, pkg, s"def ${d.name.value}")
-      case d: Defn.Val =>
-        d.pats.foreach {
-          case Pat.Var(name) =>
-            buf += DiffSymbol(name.value, SymbolKind.Val, filePath, d.pos.startLine + 1, pkg, s"val ${name.value}")
-          case _ =>
-        }
-      case d: Defn.Type =>
-        buf += DiffSymbol(d.name.value, SymbolKind.Type, filePath, d.pos.startLine + 1, pkg, s"type ${d.name.value}")
-      case _ =>
-  }
-
-  def traverse(t: Tree): Unit = {
-    visit(t)
-    t.children.foreach(traverse)
-  }
-
-  traverse(tree)
-  buf.toList
+  val (rawSymbols, pkg) = extractRawSymbols(tree)
+  rawSymbols.map(r => DiffSymbol(r.name, r.kind, filePath, r.line, pkg, r.signature))
 }
 
 // ── AST pattern search ──────────────────────────────────────────────────────
