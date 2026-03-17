@@ -527,6 +527,36 @@ class IndexSuite extends ScalexTestBase:
     assert(results.isEmpty)
   }
 
+  // ── Reverse-suffix search (#156) ──────────────────────────────────
+
+  test("search reverse-suffix matches superset query") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "MyUserService" contains "UserService" as suffix → should match
+    val results = idx.search("MyUserService")
+    assert(results.exists(_.name == "UserService"),
+      s"Should reverse-suffix match UserService: ${results.map(_.name)}")
+  }
+
+  test("search reverse-suffix requires symbol > half query length") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "findUser" contains "User" as suffix, but "User"(4) is not > "findUser"(8)/2=4
+    val results = idx.search("findUser")
+    assert(!results.exists(r => r.name == "User" && r.kind == SymbolKind.Class),
+      s"Should NOT reverse-suffix match short names: ${results.map(_.name)}")
+  }
+
+  test("search reverse-suffix ranks below exact/prefix/substring") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "UserServiceLive" is exact match, "MyUserServiceLive" would reverse-suffix match
+    val results = idx.search("UserServiceLive")
+    val exactIdx = results.indexWhere(_.name == "UserServiceLive")
+    // Exact match should be first
+    assert(exactIdx == 0, s"Exact match should rank first: ${results.map(_.name)}")
+  }
+
   // ── File search ─────────────────────────────────────────────────────
 
   test("searchFiles exact match") {
