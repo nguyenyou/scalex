@@ -146,26 +146,30 @@ cd /path/to/your/scala/project
 # Discover
 scalex search Service --kind trait         # Find traits by name
 scalex search hms                          # Fuzzy camelCase: finds HttpMessageService
+scalex search find --returns Boolean       # Filter by return type
 scalex file PaymentService                 # Find files by name (like IntelliJ)
 scalex packages                            # List all packages
 scalex package com.example                 # Explore a specific package
 scalex api com.example                     # What does this package export?
+scalex api com.example --used-by com.web   # Coupling: what does web use from example?
 
 # Understand
 scalex def UserService --verbose           # Definition with signature
-scalex explain UserService                 # One-shot: def + doc + members + impls
+scalex def UserService.findUser            # Owner.member dotted syntax
+scalex explain UserService --verbose       # One-shot: def + doc + signatures + impls
 scalex members UserService --inherited     # Full API surface including parents
 scalex hierarchy UserService               # Inheritance tree (parents + children)
 
 # Navigate
 scalex refs UserService                    # Categorized references
+scalex refs UserService --count            # Summary: "12 importers, 4 extensions, ..."
 scalex impl UserService                    # Who extends this?
 scalex imports UserService                 # Who imports this?
 scalex grep "def.*process" --no-tests      # Regex content search
 scalex body findUser --in UserServiceLive  # Extract method body without Read
 
 # Refine
-scalex members Signal                      # Signatures by default
+scalex members Signal                      # Signatures by default + companion hint
 scalex members Signal --brief              # Names only
 scalex refs Cache --strict                 # No underscore/dollar false positives
 scalex deps Phase --depth 2                # Transitive dependencies
@@ -234,13 +238,18 @@ All commands support `--json`, `--path PREFIX`, `--no-tests`, and `--limit N`. S
 
 **Fewer round-trips.** The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space.
 
-- `explain` replaces 4-5 calls (def + doc + members + impl + imports) with one; auto-shows companion object/class members
+- `explain` replaces 4-5 calls (def + doc + members + impl + imports) with one; auto-shows companion object/class members; `--verbose` shows full signatures
 - `explain --expand N` recursively expands implementations — shows each subtype's members in one call
 - `def pkg.Name` resolves by package-qualified name — no ambiguity, no follow-up disambiguation
+- `def Owner.member` navigates directly to a member — `def MyService.findUser` resolves without `body --in`
 - `impl Foo` finds `class Bar extends Mixin[Foo]` — type-param parent indexing discovers parametric inheritance
-- `api` shows a package's public API surface — which symbols are imported externally, sorted by importer count
+- `api` shows a package's public API surface — `--used-by` filters to a specific consumer package
+- `members` auto-shows companion object/class members alongside the primary type
+- `refs --count` gives category counts in one line — fast impact triage without reading full file lists
 - `body` extracts source without a Read call — eliminates ~50% of follow-up file reads
 - `refs` returns categorized results (Definition/ExtendedBy/ImportedBy/UsedAsType) — no post-processing
+- `search` ranks by import popularity; `--returns` / `--takes` filter by signature
+- `overview` defaults to `--no-tests` — production code is almost always the intent
 - `hierarchy` shows the full inheritance tree in one call — parents up, children down
 - `batch` loads the index once for multiple queries — 5 queries in ~1s instead of ~5s
 

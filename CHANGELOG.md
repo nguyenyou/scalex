@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+- `overview` defaults to `--no-tests` — production code is almost always the intent; use `--include-tests` to opt in (#119, #120)
+- `explain --verbose` shows member signatures instead of just names (#119, #120)
+- `explain` inlines "Imported by" file list when count <= 10; shows count + hint otherwise (#119, #120)
+- `refs --count` summary mode — category counts without full file lists (e.g. "12 importers, 4 extensions, 30 usages") (#119, #120)
+- Companion-aware `members` — auto-shows companion object/class members alongside the primary type (#119, #120)
+- `Owner.member` dotted syntax for `def` and `explain` — `def MyService.findUser` resolves to the member directly (#119, #120)
+- `api --used-by <package>` — filter importers to only those from a specific package; coupling analysis (#120)
+- `search` ranking includes import popularity — symbols from heavily-imported types surface first (#119, #120)
+- `search --returns <Type>` / `--takes <Type>` — filter search results by signature substring (#119, #120)
+
 ## [1.16.0] — 2026-03-17
 
 ### Added

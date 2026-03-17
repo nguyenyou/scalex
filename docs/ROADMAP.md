@@ -6,6 +6,18 @@
 
 ## Completed
 
+### Reduce round-trips (#119, #120)
+
+- `overview` defaults to `--no-tests`; `--include-tests` to opt in
+- `Owner.member` dotted syntax for `explain` and `def` — `def MyService.findUser` resolves directly
+- `explain --verbose` — show member signatures inline instead of just names
+- `explain` inlines "Imported by" file list when count ≤ 10, shows count + hint otherwise
+- `refs --count` summary mode — "12 importers, 4 extensions, 30 usages" without full file lists
+- Companion-aware `members` — auto-shows companion object/class members
+- `api --used-by <package>` — coupling analysis: which types from pkg A are used by pkg B
+- `search` ranks by import count — heavily-imported types surface first
+- `search --returns <Type>` / `--takes <Type>` — signature substring filter
+
 ### Phase 1–5: Foundation
 
 - Git file listing, Scalameta parsing, in-memory index, find definition, find references, CLI

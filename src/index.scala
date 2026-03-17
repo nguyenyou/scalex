@@ -273,6 +273,23 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       aIdx.map((k, v) => k -> v.toList).toMap
     }
 
+  private lazy val symbolImportRank: Map[String, Int] =
+    Timings.phase("build-symbolImportRank") {
+      // Count how many files import each symbol name (by counting import lines mentioning it)
+      val counts = mutable.HashMap.empty[String, Int]
+      indexedFiles.foreach { idxFile =>
+        idxFile.imports.foreach { imp =>
+          parseImportTarget(imp).foreach { (_, names, _) =>
+            names.foreach { name =>
+              val lower = name.toLowerCase
+              counts(lower) = counts.getOrElse(lower, 0) + 1
+            }
+          }
+        }
+      }
+      counts.toMap
+    }
+
   private lazy val annotationIndex: Map[String, List[SymbolInfo]] =
     Timings.phase("build-annotationIndex") {
       val aByAnnot = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
@@ -427,15 +444,17 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       else if n.contains(lower) then contains += s
       else if camelCaseMatch(lower, s.name) then fuzzy += s
     }
-    def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, pathLen: Int) =
+    def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, importRank: Int, pathLen: Int) =
       val kindRank = s.kind match
         case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => 0
         case SymbolKind.Object => 1
         case SymbolKind.Def | SymbolKind.Val | SymbolKind.Type => 2
         case _ => 3
       val testRank = if isTestFile(s.file, workspace) then 1 else 0
+      // Symbols in heavily-imported types rank higher (lower importRank = better)
+      val importRank = -symbolImportRank.getOrElse(s.name.toLowerCase, 0)
       val pathLen = s.file.toString.length
-      (kindRank, testRank, pathLen)
+      (kindRank, testRank, importRank, pathLen)
     exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ fuzzy.sortBy(_.name.length).toList
 
   def fileSymbols(path: String): List[SymbolInfo] =
@@ -630,7 +649,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   private def isIdentChar(c: Char): Boolean =
     c.isLetterOrDigit || c == '_' || c == '$'
 
-  def findApiSurface(targetPkg: String): List[(symbol: SymbolInfo, importerCount: Int)] =
+  def findApiSurface(targetPkg: String, filterToPkg: Option[String] = None): List[(symbol: SymbolInfo, importerCount: Int)] =
     Timings.phase("api-surface") {
       val targetSymNames = packageToSymbols.getOrElse(targetPkg, Set.empty)
       if targetSymNames.isEmpty then Nil
@@ -642,23 +661,29 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
       indexedFiles.foreach { idxFile =>
         val filePkg = filePackage(idxFile)
-        if filePkg != targetPkg then
-          idxFile.imports.foreach { imp =>
-            parseImportTarget(imp).foreach { (pkg, names, isWildcard) =>
-              if pkg == targetPkg then {
-                if isWildcard then
-                  // Credit all symbols in the package
-                  targetSymNames.foreach { symName =>
-                    importerCounts(symName).add(idxFile.relativePath)
-                  }
-                else
-                  names.foreach { name =>
-                    if importerCounts.contains(name) then
-                      importerCounts(name).add(idxFile.relativePath)
-                  }
+        if filePkg != targetPkg then {
+          // If --used-by filter is set, only count importers from matching packages
+          val matchesFilter = filterToPkg match
+            case Some(fpkg) => filePkg.toLowerCase.contains(fpkg.toLowerCase) || filePkg.equalsIgnoreCase(fpkg)
+            case None => true
+          if matchesFilter then
+            idxFile.imports.foreach { imp =>
+              parseImportTarget(imp).foreach { (pkg, names, isWildcard) =>
+                if pkg == targetPkg then {
+                  if isWildcard then
+                    // Credit all symbols in the package
+                    targetSymNames.foreach { symName =>
+                      importerCounts(symName).add(idxFile.relativePath)
+                    }
+                  else
+                    names.foreach { name =>
+                      if importerCounts.contains(name) then
+                        importerCounts(name).add(idxFile.relativePath)
+                    }
+                }
               }
             }
-          }
+        }
       }
 
       // Build result with SymbolInfo objects

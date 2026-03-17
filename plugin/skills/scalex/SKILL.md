@@ -39,12 +39,13 @@ All commands default to current directory. You can set the workspace with `-w` /
 
 ### `scalex def <symbol> [--verbose] [--kind K] [--no-tests] [--path PREFIX]` — find definition
 
-Returns where a symbol is defined, including given instances that grep would miss. Use `--verbose` to see the full signature inline — saves a follow-up Read call. Results are ranked: class/trait/object/enum first, non-test before test, shorter paths first. Supports **package-qualified names** — `def com.example.Cache` or partial `def cache.Cache` disambiguates by package.
+Returns where a symbol is defined, including given instances that grep would miss. Use `--verbose` to see the full signature inline — saves a follow-up Read call. Results are ranked: class/trait/object/enum first, non-test before test, shorter paths first. Supports **package-qualified names** — `def com.example.Cache` or partial `def cache.Cache` disambiguates by package. Also supports **Owner.member dotted syntax** — `def MyService.findUser` resolves to the `findUser` member inside `MyService`.
 
 ```bash
 scalex def PaymentService --verbose
 scalex def com.example.payment.PaymentService  # fully-qualified lookup
 scalex def payment.PaymentService              # partial qualification
+scalex def PaymentService.processPayment       # Owner.member dotted syntax
 scalex def Driver --kind class              # only class definitions
 scalex def Driver --no-tests --path compiler/src/  # exclude tests, restrict to subtree
 ```
@@ -68,14 +69,15 @@ scalex impl PaymentService --no-tests --path core/src/
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--flat] [--strict] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
+### `scalex refs <symbol> [--flat] [--count] [--strict] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
-Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `--category CAT` to filter to a single category (e.g. `--category ExtendedBy`). Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead.
+Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `--category CAT` to filter to a single category (e.g. `--category ExtendedBy`). Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead. Use `--count` to get category counts without full file lists — fast impact triage.
 
 ```bash
 scalex refs PaymentService                        # categorized by default
+scalex refs PaymentService --count               # summary: "12 importers, 4 extensions, 30 usages"
 scalex refs PaymentService --category ExtendedBy  # only show ExtendedBy
 scalex refs PaymentService --no-tests --path core/src/
 scalex refs PaymentService -C 3                   # show 3 lines of context
@@ -106,6 +108,8 @@ scalex imports PaymentService --no-tests
 ### `scalex members <symbol> [--verbose] [--brief] [--inherited] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — list members
 
 Lists member declarations (def, val, var, type) inside a class, trait, object, or enum body. Parses source on-the-fly — NOT stored in the index, so no index bloat. Single file parse is <50ms. Shows full signatures by default; use `--brief` for names only.
+
+**Companion-aware**: automatically shows companion object/class members alongside the primary symbol — no follow-up query needed.
 
 Use `--inherited` to walk the extends chain and include members from parent types — gives the full API surface in one call. Child overrides win when the same member exists in both parent and child.
 
@@ -138,20 +142,22 @@ trait PaymentService (com.example) — src/.../PaymentService.scala:7:
  */
 ```
 
-### `scalex overview [--architecture] [--focus-package PKG] [--no-tests] [--limit N]` — codebase summary
+### `scalex overview [--architecture] [--focus-package PKG] [--include-tests] [--limit N]` — codebase summary
 
 One-shot architectural summary. Shows symbols by kind, top packages by symbol count, and most-extended traits/classes. All computed from existing in-memory index data — no extra I/O. Use `--limit N` to control "top N" lists (default: 20).
 
+**Defaults to `--no-tests`** — production code is almost always the intent. Use `--include-tests` to opt in to test files.
+
 Use `--architecture` to also show package dependency graph (from imports) and hub types (most-extended + most-referenced) — gives a structural understanding of the codebase in one call.
 
-Use `--focus-package PKG` to scope the dependency graph to a single package — shows direct dependencies and direct dependents only. Auto-enables `--architecture` when used. Use `--no-tests` to exclude test files from all counts and lists.
+Use `--focus-package PKG` to scope the dependency graph to a single package — shows direct dependencies and direct dependents only. Auto-enables `--architecture` when used.
 
 ```bash
 scalex overview
 scalex overview --limit 5
 scalex overview --architecture               # + package deps + hub types
 scalex overview --focus-package com.example   # scoped dependency view
-scalex overview --no-tests                   # exclude test fixtures
+scalex overview --include-tests              # include test files
 ```
 ```
 Project overview (14,000 files, 215,000 symbols):
@@ -171,11 +177,13 @@ Most extended (by implementation count):
   ...
 ```
 
-### `scalex search <query> [--kind K] [--verbose] [--limit N] [--exact] [--prefix] [--definitions-only]` — search symbols
+### `scalex search <query> [--kind K] [--verbose] [--limit N] [--exact] [--prefix] [--definitions-only] [--returns TYPE] [--takes TYPE]` — search symbols
 
-Fuzzy search by name, ranked: exact > prefix > substring > camelCase fuzzy. Supports camelCase abbreviation matching — e.g. `search "hms"` matches `HttpMessageService`, `search "usl"` matches `UserServiceLive`. Use `--kind` to filter by symbol type.
+Fuzzy search by name, ranked: exact > prefix > substring > camelCase fuzzy. Supports camelCase abbreviation matching — e.g. `search "hms"` matches `HttpMessageService`, `search "usl"` matches `UserServiceLive`. Use `--kind` to filter by symbol type. Results are ranked by import popularity — symbols from heavily-imported types surface first.
 
 Use `--exact` to only return symbols with exact name match (case-insensitive). Use `--prefix` to only return symbols whose name starts with the query. Both eliminate noise from substring/fuzzy matches on large codebases. Use `--definitions-only` to filter to class/trait/object/enum definitions only — excludes defs and vals whose name happens to match.
+
+Use `--returns TYPE` to filter to symbols whose return type contains TYPE. Use `--takes TYPE` to filter to symbols whose parameters contain TYPE. Both are substring matches on the signature.
 
 ```bash
 scalex search Service --kind trait --limit 10
@@ -183,6 +191,8 @@ scalex search hms       # finds HttpMessageService via camelCase matching
 scalex search Auth --prefix    # only exact + prefix matches, no substring/fuzzy
 scalex search Auth --exact     # only exact name matches
 scalex search Signal --definitions-only  # only class/trait/object/enum, no defs/vals
+scalex search find --returns Boolean     # methods named "find" returning Boolean
+scalex search process --takes String     # methods named "process" taking String
 ```
 
 ### `scalex file <query> [--limit N]` — find file
@@ -288,15 +298,17 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--impl-limit N] [--expand N] [--no-tests] [--path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--impl-limit N] [--expand N] [--no-tests] [--path PREFIX]` — composite summary
 
-One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import count. Supports **package-qualified names** (e.g. `explain com.example.Cache`).
+One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
-`--impl-limit N` controls how many implementations to show (default: 5). `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable.
+`--verbose` shows member signatures instead of just names. `--impl-limit N` controls how many implementations to show (default: 5). `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint.
 
 ```bash
 scalex explain UserService                  # full summary with companion
+scalex explain UserService --verbose        # member signatures inline
 scalex explain com.example.UserService      # package-qualified lookup
+scalex explain UserService.findUser         # Owner.member dotted syntax
 scalex explain UserService --impl-limit 10  # show more implementations
 scalex explain UserService --expand 1       # expand impls with their members
 ```
@@ -319,7 +331,10 @@ Explanation of trait UserService (com.example):
     class     UserServiceLive (com.example) — .../UserService.scala:8
     class     OldService (com.example) — .../Annotated.scala:4
 
-  Imported by: 3 files
+  Imported by (3 files):
+    src/.../ServiceModule.scala:2
+    src/.../AppModule.scala:5
+    src/.../TestHelper.scala:1
 ```
 
 ### `scalex deps <symbol> [--depth N]` — dependency graph
@@ -420,18 +435,21 @@ Package com.example (45 symbols):
     ...
 ```
 
-### `scalex api <package> [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — public API surface
+### `scalex api <package> [--used-by PKG] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — public API surface
 
 Shows which symbols in a package are actually imported by other packages — the public API surface. Cross-references stored import data with the package's symbol list. Symbols sorted by external importer count (descending). Internal-only symbols (never imported externally) listed at the bottom.
+
+Use `--used-by PKG` to filter importers to only those from a specific package — answers "which types from package A are used by package B" (coupling analysis).
 
 Package name is fuzzy matched (same as `package` command): exact → suffix → substring. Zero index change — pure in-memory query.
 
 ```bash
-scalex api com.example                  # public API surface of com.example
-scalex api example                      # fuzzy match on package name
-scalex api com.example --kind trait     # only traits in the API surface
-scalex api com.example --no-tests       # exclude test symbols
-scalex api com.example --json           # structured JSON output
+scalex api com.example                              # public API surface of com.example
+scalex api example                                  # fuzzy match on package name
+scalex api com.example --used-by com.example.web    # coupling: what does web use from example?
+scalex api com.example --kind trait                 # only traits in the API surface
+scalex api com.example --no-tests                   # exclude test symbols
+scalex api com.example --json                       # structured JSON output
 ```
 ```
 API surface of com.example (8 of 15 symbols imported externally):
@@ -510,10 +528,11 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--limit N` | Max results (default: 20) |
 | `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
+| `--include-tests` | Override --no-tests default for overview command |
 | `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
 | `-C N` | Show N context lines around each reference (refs, grep) |
 | `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
-| `--count` | Grep: output match/file count only, no full results |
+| `--count` | Grep/refs: show counts only, no full results |
 | `--exact` | Search: only exact name matches (case-insensitive) |
 | `--prefix` | Search: only exact + prefix matches |
 | `--in OWNER` | Body: restrict to members of the given enclosing type |
@@ -531,6 +550,9 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--has-method NAME` | AST pattern: match types that have a method with NAME |
 | `--extends TRAIT` | AST pattern: match types that extend TRAIT |
 | `--body-contains PAT` | AST pattern: match types whose body contains PAT |
+| `--used-by PKG` | API: filter importers to only those from PKG |
+| `--returns TYPE` | Search: filter to symbols whose signature returns TYPE |
+| `--takes TYPE` | Search: filter to symbols whose signature takes TYPE |
 | `--json` | Output results as JSON — structured output for programmatic parsing |
 | `--timings` | Print per-phase timing breakdown to stderr |
 | `--version` | Print version and exit |
@@ -562,6 +584,14 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"Find tests for X / show me tests about X"** → `scalex tests extractBody` — filter by name + show bodies inline in one command
 
 **"Is this function tested?"** → `scalex coverage extractBody` — refs in test files only, with count + locations
+
+**"How many places reference X?"** → `scalex refs X --count` — category counts without full file lists
+
+**"Navigate to a specific method"** → `scalex def MyService.findUser` — Owner.member dotted syntax, faster than `body --in`
+
+**"What from package A does package B use?"** → `scalex api com.example --used-by com.example.web` — coupling analysis
+
+**"Find methods that return/take a type"** → `scalex search process --returns Boolean` or `scalex search convert --takes String`
 
 **"I need structured output"** → append `--json` to any command
 

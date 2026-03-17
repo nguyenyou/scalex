@@ -133,6 +133,9 @@ case class CommandContext(
   hasMethodFilter: Option[String] = None, extendsFilter: Option[String] = None,
   bodyContainsFilter: Option[String] = None,
   expandDepth: Int = 0,
+  usedByFilter: Option[String] = None,
+  returnsFilter: Option[String] = None,
+  takesFilter: Option[String] = None,
 ):
   val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
@@ -149,7 +152,8 @@ case class NotFoundHint(symbol: String, fileCount: Int, parseFailures: Int, cmd:
 case class MemberSectionData(
   file: Path, ownerKind: SymbolKind, packageName: String, line: Int,
   ownMembers: List[MemberInfo],
-  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])]
+  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
+  companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None
 )
 
 case class DocEntryData(sym: SymbolInfo, doc: Option[String])
@@ -183,7 +187,7 @@ enum CmdResult:
   case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String])
   case HierarchyResult(symbol: String, tree: HierarchyTree)
   case OverrideList(header: String, results: List[OverrideInfo])
-  case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importCount: Int,
+  case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importRefs: List[Reference],
     companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None,
     expandedImpls: List[ExplainedImpl] = Nil)
   case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
@@ -194,5 +198,6 @@ enum CmdResult:
   case Packages(packages: List[String])
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
   case ApiSurface(pkg: String, symbols: List[(symbol: SymbolInfo, importerCount: Int)], totalInPackage: Int, internalOnly: List[String])
+  case RefsSummary(symbol: String, categoryCounts: List[(category: RefCategory, count: Int)], total: Int, timedOut: Boolean)
   case NotFound(message: String, hint: NotFoundHint)
   case UsageError(message: String)

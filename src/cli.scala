@@ -28,6 +28,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
     case i => argList.lift(i + 1)
   val verbose = argList.contains("--verbose")
   val categorize = !argList.contains("--flat")
+  val includeTests = argList.contains("--include-tests")
   val noTests = argList.contains("--no-tests")
   val pathFilter: Option[String] = argList.indexOf("--path") match
     case -1 => None
@@ -88,11 +89,21 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(1)
   val brief = argList.contains("--brief")
   val strict = argList.contains("--strict")
+  val usedByFilter: Option[String] = argList.indexOf("--used-by") match
+    case -1 => None
+    case i => argList.lift(i + 1)
+  val returnsFilter: Option[String] = argList.indexOf("--returns") match
+    case -1 => None
+    case i => argList.lift(i + 1)
+  val takesFilter: Option[String] = argList.indexOf("--takes") match
+    case -1 => None
+    case i => argList.lift(i + 1)
   val timingsEnabled = argList.contains("--timings")
   Timings.enabled = timingsEnabled
 
   val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "-C", "-e", "--category",
-                           "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand")
+                           "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
+                           "--used-by", "--returns", "--takes")
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
     prev >= 0 && flagsWithArgs.contains(argList(prev))
@@ -141,10 +152,11 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --definitions-only    Search: only return class/trait/object/enum definitions
         |  --category CAT        Refs: filter to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment)
         |  --no-tests            Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.)
+        |  --include-tests       Override --no-tests default for overview command
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
         |  -C N                  Show N context lines around each reference (refs, grep)
         |  -e PATTERN            Grep: additional pattern (combine multiple with |); repeatable
-        |  --count               Grep: show match/file count only, no full results
+        |  --count               Grep/refs: show counts only, no full results
         |  --exact               Search: only exact name matches
         |  --prefix              Search: only exact + prefix matches
         |  --json                Output results as JSON (structured output for programmatic use)
@@ -164,6 +176,9 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         |  --has-method NAME     AST pattern: match types that have a method with NAME
         |  --extends TRAIT       AST pattern: match types that extend TRAIT
         |  --body-contains PAT   AST pattern: match types whose body contains PAT
+        |  --used-by PKG         API: filter importers to only those from PKG
+        |  --returns TYPE        Search: filter to symbols whose signature returns TYPE
+        |  --takes TYPE          Search: filter to symbols whose signature takes TYPE
         |  --timings             Print per-phase timing breakdown to stderr
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
@@ -185,7 +200,8 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         architecture = architecture, focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
-        brief = brief, strict = strict)
+        brief = brief, strict = strict,
+        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter)
       val reader = BufferedReader(InputStreamReader(System.in))
       var line = reader.readLine()
       while line != null do
@@ -214,11 +230,14 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
                 case ws :: arg :: tail => (resolveWorkspace(ws), arg :: tail)
                 case Nil => (resolveWorkspace("."), Nil)
 
+      // overview defaults to --no-tests unless --include-tests is explicitly passed
+      val effectiveNoTests = if cmd == "overview" && !includeTests then true else noTests
+
       val bloomCmds = Set("refs", "imports", "coverage")
       val idx = WorkspaceIndex(workspace, needBlooms = bloomCmds.contains(cmd))
       idx.index()
       val ctx = CommandContext(idx = idx, workspace = workspace, limit = limit, verbose = verbose,
-        jsonOutput = jsonOutput, kindFilter = kindFilter, noTests = noTests, pathFilter = pathFilter,
+        jsonOutput = jsonOutput, kindFilter = kindFilter, noTests = effectiveNoTests, pathFilter = pathFilter,
         contextLines = contextLines, categorize = categorize, categoryFilter = categoryFilter,
         grepPatterns = grepPatterns, countOnly = countOnly, searchMode = searchMode,
         definitionsOnly = definitionsOnly, inOwner = inOwner, ofTrait = ofTrait, implLimit = implLimit,
@@ -226,6 +245,7 @@ def parseWorkspaceAndArg(rest: List[String]): Option[(workspace: Path, arg: Stri
         focusPackage = focusPackage,
         hasMethodFilter = hasMethodFilter, extendsFilter = extendsFilter,
         bodyContainsFilter = bodyContainsFilter, expandDepth = expandDepth,
-        brief = brief, strict = strict)
+        brief = brief, strict = strict,
+        usedByFilter = usedByFilter, returnsFilter = returnsFilter, takesFilter = takesFilter)
       runCommand(cmd, cmdRest, ctx)
       Timings.report()
