@@ -29,16 +29,17 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         var fuzzyResults = ctx.idx.search(symbol).filter(s => typeKinds.contains(s.kind))
         if ctx.noTests then fuzzyResults = fuzzyResults.filter(s => !isTestFile(s.file, ctx.workspace))
         ctx.pathFilter.foreach { p => fuzzyResults = fuzzyResults.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-        // Auto-use if exactly one strong match (exact case-insensitive or prefix)
+        // Auto-use if exactly one strong match by name (exact case-insensitive or prefix)
         val lower = symbol.toLowerCase
         val strongMatches = fuzzyResults.filter { s =>
           val nl = s.name.toLowerCase
           nl == lower || nl.startsWith(lower) || lower.startsWith(nl)
         }
-        if strongMatches.size == 1 then
+        val distinctNames = strongMatches.map(_.name.toLowerCase).distinct
+        if distinctNames.size == 1 then
           val bestMatch = strongMatches.head
           System.err.println(s"""(no exact match for "$symbol" — showing ${bestMatch.name} instead)""")
-          defs = List(bestMatch)
+          defs = strongMatches.toList
         end if
       if defs.isEmpty then
         CmdResult.NotFound(
