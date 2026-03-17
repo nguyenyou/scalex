@@ -244,7 +244,8 @@ private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
 
 private def renderStringList(r: CmdResult.StringList, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
-    if r.items.nonEmpty then
+    // Skip only when output was already printed (empty items + empty header + empty emptyMessage)
+    if r.items.nonEmpty || r.header.nonEmpty || r.emptyMessage.nonEmpty then
       val arr = r.items.take(ctx.limit).map(f => s""""${jsonEscape(f)}"""").mkString("[", ",", "]")
       println(arr)
   } else {
