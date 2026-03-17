@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.18.0] — 2026-03-17
+
 ### Fixed
 - `isTestFile` now detects root-level `test/`, `tests/`, and `testing/` directories (previously required a leading `/`) (#132–#135)
 - `explain` import refs now respect `--path` and `--exclude-path` filters (previously unfiltered) (#133, #134)
