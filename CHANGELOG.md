@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.22.0] — 2026-03-17
+
 ### Added
 - `explain --brief` flag — condensed output with definition + top 3 members only; no doc, companion, inherited, impls, or imports (#164)
 - `explain` disambiguation now prints copy-paste `scalex explain pkg.Name` commands on stderr instead of just a count + generic hint (#164)
