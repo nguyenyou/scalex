@@ -171,7 +171,9 @@ def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: BloomFilter[C
 
   def traverse(t: Tree): Unit =
     visit(t)
-    t.children.foreach(traverse)
+    t match
+      case _: Defn.Def | _: Defn.Val | _: Defn.Var | _: Defn.Given | _: Defn.GivenAlias => ()
+      case _ => t.children.foreach(traverse)
 
   traverse(tree)
   (buf.toList, bloom, imports, aliases, false)
@@ -259,7 +261,19 @@ def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
         }
 
       def findAndExtract(t: Tree): Unit = t match
-        case d: Defn.Class if d.name.value == symbolName => extractFromTemplate(d.templ)
+        case d: Defn.Class if d.name.value == symbolName =>
+          // Constructor params: case class params are public vals; regular class params only if marked val/var
+          val isCaseClass = d.mods.exists(_.isInstanceOf[Mod.Case])
+          d.ctor.paramClauses.foreach { clause =>
+            clause.values.foreach { p =>
+              val isVal = isCaseClass || p.mods.exists(m => m.isInstanceOf[Mod.ValParam] || m.isInstanceOf[Mod.VarParam])
+              if isVal then
+                val tpe = p.decltpe.map(t => s": ${t.toString}").getOrElse("")
+                val kind = if p.mods.exists(_.isInstanceOf[Mod.VarParam]) then SymbolKind.Var else SymbolKind.Val
+                buf += MemberInfo(p.name.value, kind, p.pos.startLine + 1, s"val ${p.name.value}$tpe")
+            }
+          }
+          extractFromTemplate(d.templ)
         case d: Defn.Trait if d.name.value == symbolName => extractFromTemplate(d.templ)
         case d: Defn.Object if d.name.value == symbolName => extractFromTemplate(d.templ)
         case d: Defn.Enum if d.name.value == symbolName => extractFromTemplate(d.templ)

@@ -12,6 +12,11 @@
 
 ## Completed
 
+### Extraction fixes (#127)
+
+- Stop indexing local vals/defs inside method bodies — traversal skips `Defn.Def`/`Val`/`Var`/`Given`/`GivenAlias` bodies
+- Case class constructor params in `extractMembers` — case class params are public vals; regular class params only if marked `val`/`var`
+
 ### Signal vs noise (#121)
 
 - `package --definitions-only` — filter out vals/defs, show only class/trait/object/enum

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- `extractSymbols` no longer indexes local vals/defs/vars inside method bodies — traversal now stops at `Defn.Def`/`Val`/`Var`/`Given`/`GivenAlias` boundaries; matches SKILL.md documentation (#127)
+- `extractMembers` now includes case class constructor params as val members; regular class params only if marked `val`/`var` (#127)
+
 ### Added
 - `package --definitions-only` — filter to class/trait/object/enum only, same as `search --definitions-only` (#121)
 - `overview` hub types filter stdlib — `mostExtended` and `hubTypes` now skip scala/java base types (object, serializable, anyval, matchable, etc.) to surface real domain types (#121)

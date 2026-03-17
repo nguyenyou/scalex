@@ -180,6 +180,56 @@ class ExtractionSuite extends ScalexTestBase:
     assert(imports != null)
   }
 
+  // ── Local vals NOT indexed ──────────────────────────────────────────
+
+  test("extractSymbols does NOT index local vals inside def bodies") {
+    val file = workspace.resolve("src/main/scala/local_vals.scala")
+    Files.createDirectories(file.getParent)
+    Files.writeString(file,
+      """package com.example
+        |
+        |object MyService {
+        |  def process(data: String): String = {
+        |    val temp = data.trim
+        |    val result = temp.toUpperCase
+        |    result
+        |  }
+        |  val publicVal: Int = 42
+        |}
+        |""".stripMargin)
+
+    val (syms, _, _, _, _) = extractSymbols(file)
+    val names = syms.map(_.name).toSet
+    assert(names.contains("MyService"), "Should find top-level object")
+    assert(names.contains("process"), "Should find top-level def")
+    assert(names.contains("publicVal"), "Should find top-level val in object body")
+    assert(!names.contains("temp"), s"Should NOT index local val 'temp': $names")
+    assert(!names.contains("result"), s"Should NOT index local val 'result': $names")
+
+    Files.delete(file)
+  }
+
+  // ── Case class constructor params in members ──────────────────────
+
+  test("extractMembers returns case class constructor params") {
+    val members = extractMembers(
+      workspace.resolve("src/main/scala/com/example/Model.scala"),
+      "User"
+    )
+    val names = members.map(_.name).toSet
+    assert(names.contains("id"), s"Should contain case class param 'id': $names")
+    assert(names.contains("name"), s"Should contain case class param 'name': $names")
+  }
+
+  test("extractMembers does NOT return regular class constructor params without val/var") {
+    val members = extractMembers(
+      workspace.resolve("src/main/scala/com/example/UserService.scala"),
+      "UserServiceLive"
+    )
+    val names = members.map(_.name).toSet
+    assert(!names.contains("db"), s"Should NOT contain regular param 'db': $names")
+  }
+
   // ── Scala 2 dialect fallback ────────────────────────────────────────
 
   test("extractSymbols parses Scala 2 procedure syntax") {
