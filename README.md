@@ -10,6 +10,29 @@
 
 ---
 
+## Try It Now
+
+Clone the Scala 3 compiler and let Claude explore it:
+
+```bash
+git clone --depth 1 https://github.com/scala/scala3.git
+```
+
+Install the Scalex skill in Claude Code:
+
+```bash
+/plugin marketplace add nguyenyou/scalex
+/plugin install scalex@scalex-marketplace
+```
+
+Then ask Claude:
+
+> *"Use scalex to explain how the Scala 3 compiler works. Start with an overview, find the main compilation phases, and trace how a source file gets transformed into bytecode."*
+
+Claude will use Scalex to index 17.7k files in ~3s, then navigate definitions, trace implementations, and explore the compiler pipeline — all without a build server or compilation. See [Quick Start](#quick-start) for installation details.
+
+---
+
 ## The Problem
 
 AI coding agents (Claude Code, Cursor, Codex) are powerful, but they're blind in large Scala codebases. When an agent needs to find where `PaymentService` is defined, it has two options:
