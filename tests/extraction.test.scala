@@ -477,7 +477,7 @@ class ExtractionSuite extends ScalexTestBase:
   // ── doc ──────────────────────────────────────────────────────────────
 
   test("doc extracts multi-line scaladoc") {
-    val doc = extractScaladoc(
+    val doc = extractDoc(
       workspace.resolve("src/main/scala/com/example/Documented.scala"),
       7 // trait PaymentService is on line 7
     )
@@ -488,7 +488,7 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("doc extracts single-line scaladoc") {
-    val doc = extractScaladoc(
+    val doc = extractDoc(
       workspace.resolve("src/main/scala/com/example/Documented.scala"),
       9 // def processPayment is on line 9
     )
@@ -497,7 +497,7 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("doc returns None when no scaladoc") {
-    val doc = extractScaladoc(
+    val doc = extractDoc(
       workspace.resolve("src/main/scala/com/example/Documented.scala"),
       10 // def refund on line 10 — no doc
     )

@@ -129,8 +129,8 @@ class AnalysisSuite extends ScalexTestBase:
     val defs = idx.findDefinition("PaymentService")
     assert(defs.nonEmpty, "Should find PaymentService definition")
     val sym = defs.head
-    // extractScaladoc
-    val doc = extractScaladoc(sym.file, sym.line)
+    // extractDoc
+    val doc = extractDoc(sym.file, sym.line)
     assert(doc.isDefined, "Should find scaladoc for PaymentService")
     assert(doc.get.contains("processing payments"))
     // extractMembers

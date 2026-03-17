@@ -9,6 +9,6 @@ def cmdDoc(args: List[String], ctx: CommandContext): CmdResult =
           mkNotFoundWithSuggestions(symbol, ctx, "doc"))
       else
         val entries = defs.map { s =>
-          DocEntryData(s, extractScaladoc(s.file, s.line))
+          DocEntryData(s, extractDoc(s.file, s.line))
         }
         CmdResult.DocEntries(symbol, entries)

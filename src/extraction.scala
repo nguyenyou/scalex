@@ -187,7 +187,6 @@ def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomF
         input.parse[Source].get
       catch
         case _: Exception =>
-          System.err.println(s"scalex: parse failed: $file")
           return (Nil, Some(bloom), Nil, Map.empty, true)
 
   val (imports, aliases) = extractImports(tree)
@@ -211,7 +210,6 @@ def parseFile(path: Path): Option[Source] =
         Some(input.parse[Source].get)
       catch
         case _: Exception =>
-          System.err.println(s"scalex: parse failed: $path")
           None
 
 // ── Member extraction ───────────────────────────────────────────────────────
@@ -301,9 +299,9 @@ def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
       findAndExtract(tree)
       buf.toList
 
-// ── Scaladoc extraction ─────────────────────────────────────────────────────
+// ── Doc extraction (Scaladoc / Javadoc) ─────────────────────────────────────
 
-def extractScaladoc(file: Path, targetLine: Int): Option[String] =
+def extractDoc(file: Path, targetLine: Int): Option[String] =
   val lines = try Files.readAllLines(file).asScala.toArray catch
     case _: java.io.IOException => return None
   // targetLine is 1-indexed, array is 0-indexed

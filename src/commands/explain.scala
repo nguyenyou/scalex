@@ -9,7 +9,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         resolveDottedMember(symbol, ctx) match
           case Some(memberResults) =>
             val msym = memberResults.head
-            val doc = if ctx.noDoc then None else extractScaladoc(msym.file, msym.line)
+            val doc = if ctx.noDoc then None else extractDoc(msym.file, msym.line)
             return CmdResult.Explanation(msym, doc, Nil, Nil, Nil)
           case None => ()
       if defs.isEmpty then
@@ -49,7 +49,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc
-        val doc = if ctx.noDoc then None else extractScaladoc(sym.file, sym.line)
+        val doc = if ctx.noDoc then None else extractDoc(sym.file, sym.line)
         // Members (for types)
         val inheritResult = if typeKinds.contains(sym.kind) then collectInheritedMembers(sym, ctx)
           else (inherited = Nil: List[(parentName: String, parentFile: Option[java.nio.file.Path], parentPackage: String, members: List[MemberInfo])], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
