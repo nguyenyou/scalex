@@ -345,9 +345,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         Timings.phase("parse") {
           toParse.asJava.parallelStream().forEach { gf =>
             val rel = workspace.relativize(gf.path).toString
-            val (syms, bloom, imports, aliases, failed) =
-              if rel.endsWith(".java") then extractJavaSymbols(gf.path)
-              else extractSymbols(gf.path)
+            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
             toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
           }
         }
@@ -359,9 +357,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         Timings.phase("parse") {
           gitFiles.asJava.parallelStream().forEach { gf =>
             val rel = workspace.relativize(gf.path).toString
-            val (syms, bloom, imports, aliases, failed) =
-              if rel.endsWith(".java") then extractJavaSymbols(gf.path)
-              else extractSymbols(gf.path)
+            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
             queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
           }
         }

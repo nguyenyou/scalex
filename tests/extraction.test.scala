@@ -591,3 +591,99 @@ class ExtractionSuite extends ScalexTestBase:
     val body = results.head
     assert(body.sourceText.contains("createUser"), s"Body should contain test code: ${body.sourceText}")
   }
+
+  // ── Java extraction (JavaParser-based) ──────────────────────────────────
+
+  test("extractSymbols finds Java classes, interfaces, enums, methods, fields") {
+    val file = workspace.resolve("src/main/java/com/example/GenericRepository.java")
+    val (syms, _, _, _, failed) = extractSymbols(file)
+    assert(!failed, "Should parse successfully")
+    val names = syms.map(s => (s.name, s.kind))
+    assert(names.contains(("GenericRepository", SymbolKind.Class)), s"Should find class: $names")
+    assert(names.contains(("Status", SymbolKind.Enum)), s"Should find nested enum: $names")
+    assert(names.contains(("findById", SymbolKind.Def)), s"Should find method findById: $names")
+    assert(names.contains(("findAll", SymbolKind.Def)), s"Should find method findAll: $names")
+    assert(names.contains(("delete", SymbolKind.Def)), s"Should find method delete: $names")
+    assert(names.contains(("tableName", SymbolKind.Val)), s"Should find final field tableName: $names")
+    assert(names.contains(("maxResults", SymbolKind.Var)), s"Should find non-final field maxResults: $names")
+  }
+
+  test("extractSymbols extracts Java annotations") {
+    val file = workspace.resolve("src/main/java/com/example/GenericRepository.java")
+    val (syms, _, _, _, _) = extractSymbols(file)
+    val repo = syms.find(_.name == "GenericRepository").get
+    assert(repo.annotations.contains("SuppressWarnings"), s"Should have @SuppressWarnings: ${repo.annotations}")
+  }
+
+  test("extractSymbols extracts Java parents for extends + implements") {
+    val file = workspace.resolve("src/main/java/com/example/UserRepository.java")
+    val (syms, _, _, _, _) = extractSymbols(file)
+    val userRepo = syms.find(s => s.name == "UserRepository" && s.kind == SymbolKind.Class).get
+    assert(userRepo.parents.contains("GenericRepository"), s"Should extend GenericRepository: ${userRepo.parents}")
+    assert(userRepo.parents.contains("EventBus"), s"Should implement EventBus: ${userRepo.parents}")
+  }
+
+  test("extractSymbols extracts Java imports from AST") {
+    val file = workspace.resolve("src/main/java/com/example/GenericRepository.java")
+    val (_, _, imports, _, _) = extractSymbols(file)
+    assert(imports.exists(_.contains("java.util.List")), s"Should find List import: $imports")
+    assert(imports.exists(_.contains("java.util.Optional")), s"Should find Optional import: $imports")
+  }
+
+  test("extractMembers returns Java methods and fields") {
+    val file = workspace.resolve("src/main/java/com/example/GenericRepository.java")
+    val members = extractMembers(file, "GenericRepository")
+    val names = members.map(_.name).toSet
+    assert(names.contains("findById"), s"Should contain findById: $names")
+    assert(names.contains("findAll"), s"Should contain findAll: $names")
+    assert(names.contains("delete"), s"Should contain delete: $names")
+    assert(names.contains("tableName"), s"Should contain field tableName: $names")
+    assert(names.contains("maxResults"), s"Should contain field maxResults: $names")
+    // Constructor
+    assert(names.contains("<init>"), s"Should contain constructor: $names")
+    // Nested type
+    assert(names.contains("Status"), s"Should contain nested enum Status: $names")
+  }
+
+  test("extractMembers detects Java @Override") {
+    val file = workspace.resolve("src/main/java/com/example/UserRepository.java")
+    val members = extractMembers(file, "UserRepository")
+    val findById = members.find(_.name == "findById").get
+    assert(findById.isOverride, s"findById should be @Override: $findById")
+    val findByName = members.find(_.name == "findByName").get
+    assert(!findByName.isOverride, s"findByName should NOT be @Override: $findByName")
+  }
+
+  test("extractMembers returns Java enum constants") {
+    val file = workspace.resolve("src/main/java/com/example/GenericRepository.java")
+    val members = extractMembers(file, "Status")
+    val names = members.map(_.name).toSet
+    assert(names.contains("ACTIVE"), s"Should contain ACTIVE: $names")
+    assert(names.contains("INACTIVE"), s"Should contain INACTIVE: $names")
+    assert(names.contains("DELETED"), s"Should contain DELETED: $names")
+  }
+
+  test("extractBody finds Java method body") {
+    val file = workspace.resolve("src/main/java/com/example/UserRepository.java")
+    val results = extractBody(file, "findById", None)
+    assert(results.nonEmpty, "Should find findById body")
+    val body = results.head
+    assert(body.sourceText.contains("Optional.of"), s"Body should contain impl: ${body.sourceText}")
+    assert(body.ownerName == "UserRepository", s"Owner should be UserRepository: ${body.ownerName}")
+  }
+
+  test("extractBody respects Java ownerName filter") {
+    val file = workspace.resolve("src/main/java/com/example/UserRepository.java")
+    val inRepo = extractBody(file, "findById", Some("UserRepository"))
+    assert(inRepo.nonEmpty, "Should find findById in UserRepository")
+    val inOther = extractBody(file, "findById", Some("NonExistent"))
+    assert(inOther.isEmpty, "Should NOT find findById in NonExistent")
+  }
+
+  test("extractMembers dispatches to Java for .java files") {
+    val file = workspace.resolve("src/main/java/com/example/GenericRepository.java")
+    val members = extractMembers(file, "GenericRepository")
+    val names = members.map(_.name).toSet
+    assert(names.contains("findById"), s"Dispatch should work for Java: $names")
+    assert(names.contains("findAll"), s"Dispatch should work for Java: $names")
+  }

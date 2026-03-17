@@ -105,6 +105,7 @@ def extractDeps(idx: WorkspaceIndex, symbolName: String, workspace: Path, maxDep
     if defs.isEmpty then return
 
     val sym = defs.head
+    if isJavaFile(sym.file) then return
     val seenNames = mutable.HashSet.empty[String]
     seenNames += name // avoid self-reference
 
