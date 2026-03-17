@@ -56,9 +56,9 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
               mkNotFoundWithSuggestions(symbol, ctx, "explain"))
       else
         val sym = defs.head
-        // Deduplicate by name: trait+companion object = 1 match, not 2 (see #8bd6b57)
-        val distinctByName = defs.map(_.name.toLowerCase).distinct.size
-        val otherMatches = distinctByName - 1
+        // Deduplicate by (name, package): trait+companion = 1 match, cross-package = distinct (see #8bd6b57)
+        val distinctByNamePkg = defs.map(s => (s.name.toLowerCase, s.packageName)).distinct.size
+        val otherMatches = distinctByNamePkg - 1
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc

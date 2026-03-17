@@ -403,6 +403,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     annotationIndex.getOrElse(annotation.toLowerCase, Nil)
 
   def grepFiles(pattern: String, noTests: Boolean, pathFilter: Option[String],
+                excludePath: Option[String] = None,
                 timeoutMs: Long = defaultTimeoutMs): (results: List[Reference], timedOut: Boolean) =
     val regex = try java.util.regex.Pattern.compile(pattern)
     catch
@@ -412,6 +413,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     var candidates = gitFiles
     if noTests then candidates = candidates.filter(gf => !isTestFile(gf.path, workspace))
     pathFilter.foreach { p => candidates = candidates.filter(gf => matchesPath(gf.path, p, workspace)) }
+    excludePath.foreach { p => candidates = candidates.filter(gf => !matchesPath(gf.path, p, workspace)) }
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
     var grepTimedOut = false
     val results = ConcurrentLinkedQueue[Reference]()

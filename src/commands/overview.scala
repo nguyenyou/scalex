@@ -37,10 +37,10 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
         r
       }
       val distinctPkgs = filtered.map(_.packageName).distinct.size
-      (name, filtered, distinctPkgs)
+      (name = name, impls = filtered, distinctPkgs = distinctPkgs)
     }
-    .filter(_._2.nonEmpty)
-    .sortBy(t => (-t._3, -t._2.size)) // primary: distinct packages, secondary: impl count
+    .filter(_.impls.nonEmpty)
+    .sortBy(t => (-t.distinctPkgs, -t.impls.size)) // primary: distinct packages, secondary: impl count
     .take(ctx.limit)
 
   val effectiveArch = ctx.architecture || ctx.focusPackage.isDefined
@@ -109,10 +109,10 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     packageCount = allSymbols.map(_.packageName).filter(_.nonEmpty).distinct.size,
     symbolsByKind = symbolsByKind.map((k, syms) => (kind = k, count = syms.size)),
     topPackages = topPackages.map((p, syms) => (pkg = p, count = syms.size)),
-    mostExtended = mostExtended.map((n, impls, _) => (
-      name = recoverName(n, ctx.idx.symbolsByName),
-      count = impls.size,
-      signature = recoverSignature(n, ctx.idx.symbolsByName)
+    mostExtended = mostExtended.map(t => (
+      name = recoverName(t.name, ctx.idx.symbolsByName),
+      count = t.impls.size,
+      signature = recoverSignature(t.name, ctx.idx.symbolsByName)
     )),
     pkgDeps = filteredPkgDeps,
     hubTypes = hubTypes,

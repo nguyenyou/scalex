@@ -7,7 +7,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
       val (pattern, wasFixed) = fixPosixRegex(rawPattern)
       val stderrHint = if wasFixed then Some(s"""  Note: auto-corrected POSIX regex to Java regex: "$rawPattern" → "$pattern"""") else None
       val hint = if wasFixed then Some(s""","corrected":"$pattern"""") else None
-      val (results, grepTimedOut) = ctx.idx.grepFiles(pattern, ctx.noTests, ctx.pathFilter)
+      val (results, grepTimedOut) = ctx.idx.grepFiles(pattern, ctx.noTests, ctx.pathFilter, ctx.excludePath)
       if ctx.countOnly then
         val fileCount = results.map(_.file).distinct.size
         CmdResult.GrepCount(results.size, fileCount, grepTimedOut, hint, stderrHint)
