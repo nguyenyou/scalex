@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.16.0] — 2026-03-17
+
 ### Added
 - `scalex api <package>` command — show a package's public API surface by cross-referencing imports; symbols sorted by external importer count; supports `--kind`, `--no-tests`, `--path`, `--json`; zero index change, pure in-memory query (#102, #103)
 - `--brief` flag for `members` command — show names only instead of signatures (signatures are now the default) (#102)
@@ -193,7 +195,7 @@
 - Alias-aware confidence: `resolveConfidence` now checks alias mappings — searching by alias name (e.g. `refs TextAlignE`) returns High confidence instead of Low
 - Alias annotation in output: references found via alias show `[via alias Y]` suffix (e.g. `AliasClient.scala:6 — val svc: US = ??? [via alias US]`)
 
-## [1.0.0] — 2025-05-20
+## [1.0.0] — 2026-03-14
 
 ### Added
 - Initial release
