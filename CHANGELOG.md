@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.17.0] — 2026-03-17
+
 ### Fixed
 - `extractSymbols` no longer indexes local vals/defs/vars inside method bodies — traversal now stops at `Defn.Def`/`Val`/`Var`/`Given`/`GivenAlias` boundaries; matches SKILL.md documentation (#127)
 - `extractMembers` now includes case class constructor params as val members; regular class params only if marked `val`/`var` (#127)
