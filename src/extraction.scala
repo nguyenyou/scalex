@@ -553,13 +553,9 @@ private def parseJavaSource(source: String, path: Path): Option[JavaCU] =
     val parser = new JP(config)
     val result = parser.parse(source)
     if result.isSuccessful then Some(result.getResult.get())
-    else
-      System.err.println(s"scalex: java parse failed: $path")
-      None
+    else None
   catch
-    case _: Exception =>
-      System.err.println(s"scalex: java parse failed: $path")
-      None
+    case _: Exception => None
 
 private def parseJavaFile(path: Path): Option[JavaCU] =
   val source = try Files.readString(path) catch
