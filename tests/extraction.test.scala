@@ -687,3 +687,59 @@ class ExtractionSuite extends ScalexTestBase:
     assert(names.contains("findById"), s"Dispatch should work for Java: $names")
     assert(names.contains("findAll"), s"Dispatch should work for Java: $names")
   }
+
+  // ── #172: Java parser crash (Error not caught) ─────────────────────────
+
+  test("extractBody on Java file with parser error returns empty, does not crash") {
+    // BrokenRecord.java uses sealed interface + record syntax that may trigger
+    // JavaParser internal errors (NoSuchFieldError). The fix catches Error, not just Exception.
+    val file = workspace.resolve("src/main/java/com/example/BrokenRecord.java")
+    val results = extractBody(file, "Ok", None)
+    // Whether it parses or not, it must not throw — either returns results or empty
+    assert(results.size >= 0, "Should return a list (possibly empty), not crash")
+  }
+
+  test("extractSymbols on Java file with parser error does not crash") {
+    val file = workspace.resolve("src/main/java/com/example/BrokenRecord.java")
+    val (syms, _, _, _, _) = extractSymbols(file)
+    // Must not throw — either finds symbols or returns empty
+    assert(syms.size >= 0, "Should return a list (possibly empty), not crash")
+  }
+
+  // ── #172: Body finds nested local defs ─────────────────────────────────
+
+  test("extractBody finds local def nested inside a method") {
+    val file = workspace.resolve("src/main/scala/com/example/Pipeline.scala")
+    val results = extractBody(file, "runSteps", Some("Pipeline"))
+    assert(results.nonEmpty, "Should find local def runSteps inside Pipeline.execute")
+    val body = results.head
+    assert(body.sourceText.contains("def runSteps"), s"Should contain def keyword: ${body.sourceText}")
+    assert(body.sourceText.contains("remaining match"), s"Should contain body: ${body.sourceText}")
+    assert(body.ownerName == "Pipeline", s"Owner should be Pipeline: ${body.ownerName}")
+  }
+
+  test("extractBody finds local def in a different method of same class") {
+    val file = workspace.resolve("src/main/scala/com/example/Pipeline.scala")
+    val results = extractBody(file, "checkStep", Some("Pipeline"))
+    assert(results.nonEmpty, "Should find local def checkStep inside Pipeline.validate")
+    val body = results.head
+    assert(body.sourceText.contains("def checkStep"), s"Should contain def keyword: ${body.sourceText}")
+    assert(body.sourceText.contains("step.nonEmpty"), s"Should contain body: ${body.sourceText}")
+  }
+
+  test("extractBody finds local def without --in owner") {
+    val file = workspace.resolve("src/main/scala/com/example/Pipeline.scala")
+    val results = extractBody(file, "runSteps", None)
+    assert(results.nonEmpty, "Should find runSteps without owner filter")
+  }
+
+  test("extractBody finds local def nested inside wrapper call (synchronized, etc.)") {
+    // Scheduler.schedule wraps its body in synchronized { ... }
+    // The local def processBatch is nested inside that Term.Apply wrapper
+    val file = workspace.resolve("src/main/scala/com/example/Scheduler.scala")
+    val results = extractBody(file, "processBatch", Some("Scheduler"))
+    assert(results.nonEmpty, "Should find local def processBatch inside synchronized block")
+    val body = results.head
+    assert(body.sourceText.contains("def processBatch"), s"Should contain def keyword: ${body.sourceText}")
+    assert(body.sourceText.contains("batch.size"), s"Should contain body: ${body.sourceText}")
+  }

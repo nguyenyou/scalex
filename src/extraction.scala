@@ -413,12 +413,15 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
 
       def extractFromTree(t: Tree, currentOwner: String): Unit = {
         t match
-          case d: Defn.Def if d.name.value == symbolName =>
-            if ownerName.isEmpty || ownerName.contains(currentOwner) then
-              val sl = d.pos.startLine
-              val el = d.pos.endLine
-              val body = (sl to el).map(lines(_)).mkString("\n")
-              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+          case d: Defn.Def =>
+            if d.name.value == symbolName then
+              if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                val sl = d.pos.startLine
+                val el = d.pos.endLine
+                val body = (sl to el).map(lines(_)).mkString("\n")
+                buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
+            // Recurse into def body to find nested local defs
+            d.body.children.foreach(c => extractFromTree(c, currentOwner))
           case d: Defn.Val =>
             d.pats.foreach {
               case Pat.Var(name) if name.value == symbolName =>
@@ -495,7 +498,10 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
             infix.children.foreach(c => extractFromTree(c, currentOwner))
           case p: Pkg =>
             p.stats.foreach(s => extractFromTree(s, currentOwner))
-          case _ =>
+          case other =>
+            // Recurse into all other nodes (Term.Block, Term.If, etc.)
+            // to find nested local defs, vals, and vars
+            other.children.foreach(c => extractFromTree(c, currentOwner))
       }
 
       tree.children.foreach(c => extractFromTree(c, ""))
@@ -555,7 +561,7 @@ private def parseJavaSource(source: String, path: Path): Option[JavaCU] =
     if result.isSuccessful then Some(result.getResult.get())
     else None
   catch
-    case _: Exception => None
+    case _: Exception | _: Error => None
 
 private def parseJavaFile(path: Path): Option[JavaCU] =
   val source = try Files.readString(path) catch

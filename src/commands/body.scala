@@ -10,9 +10,11 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
         // If not found directly, search all files for member bodies
         ctx.inOwner match
           case Some(owner) =>
-            ctx.idx.findDefinition(owner).filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
+            filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
+              .filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
           case None =>
-            ctx.idx.symbols.filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
+            filterSymbols(ctx.idx.symbols.filter(s => typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
+              .map(_.file).distinct
       }
       // Collect (file, body) pairs
       val blocks = filesToSearch.flatMap { f =>
