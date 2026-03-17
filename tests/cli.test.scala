@@ -1058,14 +1058,13 @@ class CliSuite extends ScalexTestBase:
 
   // ── #132-135: symbols --summary JSON outputs structured data ──────────
 
-  test("symbols --summary --json outputs kind counts, not empty array") {
+  test("symbols --summary --json outputs structured symbolsByKind object") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
     val output = captureOut {
       runCommand("symbols", List("src/main/scala/com/example/Model.scala"),
         CommandContext(idx = idx, workspace = workspace, summaryMode = true, jsonOutput = true))
     }
-    assert(output.trim != "[]", s"JSON summary should not be empty array: $output")
-    assert(output.contains("class") || output.contains("enum"),
-      s"JSON summary should contain kind names: $output")
+    assert(output.contains("\"symbolsByKind\""), s"JSON should have symbolsByKind object: $output")
+    assert(output.contains("\"total\""), s"JSON should have total field: $output")
   }
