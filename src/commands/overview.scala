@@ -25,7 +25,6 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     .filter(_._1.nonEmpty).toList.sortBy(-_._2.size).take(ctx.limit)
     .map((p, s) => (pkg = p, syms = s))
 
-  val pathFilteredSymbols = allSymbols.toSet
   val mostExtended = ctx.idx.parentIndex.toList
     .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name))
     .filter((name, _) => recoverName(name, ctx.idx.symbolsByName).length > 1) // exclude single-char names

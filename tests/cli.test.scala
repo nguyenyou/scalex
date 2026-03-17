@@ -887,15 +887,16 @@ class CliSuite extends ScalexTestBase:
 
   // ── #132-135: explain disambiguation hint ────────────────────────────────
 
-  test("explain reports otherMatches when multiple definitions exist") {
+  test("explain does not report otherMatches for companion (same name)") {
     val idx = WorkspaceIndex(workspace, needBlooms = true)
     idx.index()
     val output = captureOut {
+      // UserService has trait + companion object — same name, should NOT count as "other match"
       runCommand("explain", List("UserService"),
         CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
     }
-    assert(output.contains("\"otherMatches\""),
-      s"JSON should include otherMatches field: $output")
+    assert(!output.contains("\"otherMatches\""),
+      s"Companion with same name should not produce otherMatches: $output")
   }
 
   // ── #132-135: explain --shallow ──────────────────────────────────────────
@@ -1055,15 +1056,16 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("\"signature\""), s"JSON should include signature field: $output")
   }
 
-  // ── #132-135: explain --json includes otherMatches and totalImpls ──────
+  // ── #132-135: symbols --summary JSON outputs structured data ──────────
 
-  test("explain --json includes otherMatches field when multiple matches") {
-    val idx = WorkspaceIndex(workspace, needBlooms = true)
+  test("symbols --summary --json outputs kind counts, not empty array") {
+    val idx = WorkspaceIndex(workspace)
     idx.index()
     val output = captureOut {
-      runCommand("explain", List("UserService"),
-        CommandContext(idx = idx, workspace = workspace, jsonOutput = true, implLimit = 10))
+      runCommand("symbols", List("src/main/scala/com/example/Model.scala"),
+        CommandContext(idx = idx, workspace = workspace, summaryMode = true, jsonOutput = true))
     }
-    assert(output.contains("\"otherMatches\""),
-      s"JSON should include otherMatches: $output")
+    assert(output.trim != "[]", s"JSON summary should not be empty array: $output")
+    assert(output.contains("class") || output.contains("enum"),
+      s"JSON summary should contain kind names: $output")
   }
