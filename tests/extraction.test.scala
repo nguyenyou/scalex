@@ -530,9 +530,10 @@ class ExtractionSuite extends ScalexTestBase:
     val inLive = extractBody(file, "findUser", Some("UserServiceLive"))
     assert(inLive.nonEmpty, "Should find findUser in UserServiceLive")
     assert(inLive.forall(_.ownerName == "UserServiceLive"), s"Should only be in UserServiceLive: ${inLive.map(_.ownerName)}")
-    // findUser in trait UserService is a Decl.Def (abstract), not found by extractBody
+    // findUser in trait UserService is a Decl.Def (abstract) — should be found with isAbstract=true
     val inTrait = extractBody(file, "findUser", Some("UserService"))
-    assert(inTrait.isEmpty, "Abstract Decl.Def in trait should not be found by extractBody")
+    assert(inTrait.nonEmpty, "Abstract Decl.Def in trait should be found by extractBody")
+    assert(inTrait.head.isAbstract, "Abstract Decl.Def should have isAbstract=true")
     // But the trait body itself can be extracted
     val traitBody = extractBody(file, "UserService", None)
     assert(traitBody.nonEmpty, "Should find trait UserService body")

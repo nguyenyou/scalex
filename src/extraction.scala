@@ -449,6 +449,39 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
                 buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
             // Recurse into def body to find nested local defs
             d.body.children.foreach(c => extractFromTree(c, currentOwner))
+          case d: Decl.Def =>
+            if d.name.value == symbolName then
+              if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                val sl = d.pos.startLine
+                val el = d.pos.endLine
+                val body = (sl to el).map(lines(_)).mkString("\n")
+                buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1, isAbstract = true)
+          case d: Decl.Val =>
+            d.pats.foreach {
+              case Pat.Var(name) if name.value == symbolName =>
+                if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                  val sl = d.pos.startLine
+                  val el = d.pos.endLine
+                  val body = (sl to el).map(lines(_)).mkString("\n")
+                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1, isAbstract = true)
+              case _ =>
+            }
+          case d: Decl.Var =>
+            d.pats.foreach {
+              case Pat.Var(name) if name.value == symbolName =>
+                if ownerName.isEmpty || ownerName.contains(currentOwner) then
+                  val sl = d.pos.startLine
+                  val el = d.pos.endLine
+                  val body = (sl to el).map(lines(_)).mkString("\n")
+                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1, isAbstract = true)
+              case _ =>
+            }
+          case d: Decl.Type if d.name.value == symbolName =>
+            if ownerName.isEmpty || ownerName.contains(currentOwner) then
+              val sl = d.pos.startLine
+              val el = d.pos.endLine
+              val body = (sl to el).map(lines(_)).mkString("\n")
+              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1, isAbstract = true)
           case d: Defn.Val =>
             d.pats.foreach {
               case Pat.Var(name) if name.value == symbolName =>

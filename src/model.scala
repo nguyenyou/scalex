@@ -92,7 +92,7 @@ enum Confidence:
 
 case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil, isOverride: Boolean = false, body: Option[BodyInfo] = None)
 
-case class BodyInfo(ownerName: String, symbolName: String, sourceText: String, startLine: Int, endLine: Int)
+case class BodyInfo(ownerName: String, symbolName: String, sourceText: String, startLine: Int, endLine: Int, isAbstract: Boolean = false)
 
 case class HierarchyNode(name: String, kind: Option[SymbolKind], file: Option[Path], line: Option[Int], packageName: String, isExternal: Boolean)
 case class HierarchyTree(root: HierarchyNode, parents: List[HierarchyTree], children: List[HierarchyTree], truncatedChildren: Int = 0)

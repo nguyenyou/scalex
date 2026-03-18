@@ -1662,6 +1662,35 @@ class CliSuite extends ScalexTestBase:
     assert(output.nonEmpty, s"Should produce output, not crash: $output")
   }
 
+  // ── #208: body on abstract def should show signature, not "No body found" ──
+
+  test("body --in on abstract def in trait should show signature") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // UserService.findUser is an abstract def (no body) — should show the signature
+    val output = captureOut {
+      runCommand("body", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserService")))
+    }
+    // Currently fails: returns "No body found" because extractBody only handles Defn.Def, not Decl.Def
+    assert(!output.contains("No body found"), s"Should NOT say 'No body found' for abstract def: $output")
+    assert(output.contains("findUser"), s"Should show the abstract method signature: $output")
+    assert(output.contains("UserService"), s"Should mention the owner trait: $output")
+  }
+
+  test("body on abstract def without --in should show signature") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // processPayment is abstract in PaymentService trait
+    val output = captureOut {
+      runCommand("body", List("processPayment"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("PaymentService")))
+    }
+    // Should show the abstract signature from PaymentService, not "No body found"
+    assert(!output.contains("No body found"), s"Should NOT say 'No body found' for abstract def: $output")
+    assert(output.contains("processPayment"), s"Should show signature: $output")
+  }
+
   // ── #172: parseFlags + batch per-line flag parsing ─────────────────
 
   test("parseFlags extracts --path from arg list") {

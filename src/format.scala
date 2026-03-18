@@ -495,7 +495,8 @@ private def renderSourceBlocks(r: CmdResult.SourceBlocks, ctx: CommandContext): 
         val afterJson = after.map(l => s""""$l"""").mkString("[", ",", "]")
         s""","contextBefore":$beforeJson,"contextAfter":$afterJson"""
       else ""
-      s"""{"name":"${jsonEscape(b.symbolName)}","owner":"${jsonEscape(b.ownerName)}","file":"$rel","startLine":${b.startLine},"endLine":${b.endLine},"body":"${jsonEscape(b.sourceText)}"$importsJson$contextJson}"""
+      val abstractJson = if b.isAbstract then ""","isAbstract":true""" else ""
+      s"""{"name":"${jsonEscape(b.symbolName)}","owner":"${jsonEscape(b.ownerName)}","file":"$rel","startLine":${b.startLine},"endLine":${b.endLine},"body":"${jsonEscape(b.sourceText)}"$abstractJson$importsJson$contextJson}"""
     }.mkString("[", ",", "]")
     println(arr)
   } else {
@@ -509,7 +510,9 @@ private def renderSourceBlocks(r: CmdResult.SourceBlocks, ctx: CommandContext): 
           imp.split("\n").foreach(l => println(s"  $l"))
           println()
         }
-      println(s"Body of ${b.symbolName}$ownerStr — $rel:${b.startLine}:")
+      val label = if b.isAbstract then "Signature" else "Body"
+      val abstractNote = if b.isAbstract then " (abstract, no body)" else ""
+      println(s"$label of ${b.symbolName}$ownerStr — $rel:${b.startLine}$abstractNote:")
       // Context lines before
       if r.contextLines > 0 then
         val lines = try java.nio.file.Files.readAllLines(file).asScala catch { case _: Exception => Seq.empty }
