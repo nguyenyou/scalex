@@ -28,7 +28,7 @@ Clone a project and ask Claude to explore it:
 
 Scalex will index the codebase in seconds, then navigate definitions, trace implementations, and explore the architecture — all without a build server or compilation. See [Quick Start](#quick-start) for installation details.
 
-https://github.com/user-attachments/assets/6c7ab644-6541-4e77-b354-53d47bd19af0
+https://github.com/user-attachments/assets/09391648-1e3a-409c-ad52-19afa99ea81f
 
 ---
 
