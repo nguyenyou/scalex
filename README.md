@@ -166,7 +166,7 @@ scalex api com.example                     # What does this package export?
 scalex api com.example --used-by com.web   # Coupling: what does web use from example?
 scalex summary com.example                 # Sub-packages with symbol counts
 scalex entrypoints                         # Find @main, def main, extends App, test suites
-scalex graph --render "A->B, B->C, A->D"  # Render directed graph as ASCII/Unicode art
+scalex graph --render "A->B, B->C, A->D"   # Render directed graph as ASCII/Unicode art
 scalex graph --parse < diagram.txt         # Parse ASCII diagram into boxes + edges
 
 # Understand
@@ -174,10 +174,10 @@ scalex def UserService --verbose           # Definition with signature
 scalex def UserService.findUser            # Owner.member dotted syntax
 scalex explain UserService --verbose       # One-shot: def + doc + signatures + impls
 scalex explain UserService --inherited     # Include inherited members from parents
-scalex explain UserService --no-doc       # Skip Scaladoc section
-scalex explain UserService --brief        # Definition + top 3 members only
-scalex explain UserService --related     # Show related project types from signatures
-scalex package com.example --explain     # Brief explain per type in the package
+scalex explain UserService --no-doc        # Skip Scaladoc section
+scalex explain UserService --brief         # Definition + top 3 members only
+scalex explain UserService --related       # Show related project types from signatures
+scalex package com.example --explain       # Brief explain per type in the package
 scalex members UserService --inherited     # Full API surface including parents
 scalex hierarchy UserService               # Inheritance tree (parents + children)
 
