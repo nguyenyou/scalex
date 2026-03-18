@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.25.0] — 2026-03-18
+
 ### Added
 - `members --body` / `explain --body` — inline method bodies into member listings; eliminates N follow-up `body --in` calls (#180)
 - `--max-lines N` flag — only inline bodies ≤ N lines (0 = unlimited); works with `members`, `overrides`, and `explain` (#180)
