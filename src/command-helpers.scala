@@ -76,7 +76,7 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
   if !ctx.inherited then return (inherited = Nil, parentMemberKeys = Set.empty)
   val visited = mutable.HashSet.empty[String]
   visited += sym.name.toLowerCase
-  val ownMembers = extractMembers(sym.file, sym.name).map(m => (name = m.name, kind = m.kind)).toSet
+  val ownMembers = extractMembers(sym.file, sym.name, Some(sym.kind)).map(m => (name = m.name, kind = m.kind)).toSet
   val result = mutable.ListBuffer.empty[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])]
   val allParentKeys = mutable.HashSet.empty[(name: String, kind: SymbolKind)]
 
@@ -86,7 +86,7 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
         visited += pName.toLowerCase
         val parentDefs = ctx.idx.findDefinition(pName).filter(s => typeKinds.contains(s.kind))
         parentDefs.headOption.foreach { pd =>
-          val parentMembers = extractMembers(pd.file, pd.name)
+          val parentMembers = extractMembers(pd.file, pd.name, Some(pd.kind))
           parentMembers.foreach(m => allParentKeys += ((name = m.name, kind = m.kind)))
           val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
           if filtered.nonEmpty then result += ((parentName = pd.name, parentFile = Some(pd.file), parentPackage = pd.packageName, members = filtered))
@@ -146,7 +146,7 @@ def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Opti
   else
     defs.find(d => companionKinds.contains(d.kind) && d.packageName == sym.packageName && d.file == sym.file)
       .map { compSym =>
-        val compMembers = extractMembers(compSym.file, symbol)
+        val compMembers = extractMembers(compSym.file, symbol, Some(compSym.kind))
         (sym = compSym, members = compMembers)
       }
 

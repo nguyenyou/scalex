@@ -250,11 +250,11 @@ def parseFile(path: Path): Option[Source] =
 
 // ── Member extraction ───────────────────────────────────────────────────────
 
-def extractMembers(file: Path, symbolName: String): List[MemberInfo] =
+def extractMembers(file: Path, symbolName: String, filterKind: Option[SymbolKind] = None): List[MemberInfo] =
   if isJavaFile(file) then extractJavaMembers(file, symbolName)
-  else extractScalaMembers(file, symbolName)
+  else extractScalaMembers(file, symbolName, filterKind)
 
-private def extractScalaMembers(file: Path, symbolName: String): List[MemberInfo] =
+private def extractScalaMembers(file: Path, symbolName: String, filterKind: Option[SymbolKind] = None): List[MemberInfo] =
   parseFile(file) match
     case None => Nil
     case Some(tree) =>
@@ -317,8 +317,10 @@ private def extractScalaMembers(file: Path, symbolName: String): List[MemberInfo
           case _ =>
         }
 
+      def kindMatches(k: SymbolKind): Boolean = filterKind.forall(_ == k)
+
       def findAndExtract(t: Tree): Unit = t match
-        case d: Defn.Class if d.name.value == symbolName =>
+        case d: Defn.Class if d.name.value == symbolName && kindMatches(SymbolKind.Class) =>
           // Constructor params: case class params are public vals; regular class params only if marked val/var
           val isCaseClass = d.mods.exists(_.isInstanceOf[Mod.Case])
           d.ctor.paramClauses.foreach { clause =>
@@ -331,9 +333,9 @@ private def extractScalaMembers(file: Path, symbolName: String): List[MemberInfo
             }
           }
           extractFromTemplate(d.templ)
-        case d: Defn.Trait if d.name.value == symbolName => extractFromTemplate(d.templ)
-        case d: Defn.Object if d.name.value == symbolName => extractFromTemplate(d.templ)
-        case d: Defn.Enum if d.name.value == symbolName => extractFromTemplate(d.templ)
+        case d: Defn.Trait if d.name.value == symbolName && kindMatches(SymbolKind.Trait) => extractFromTemplate(d.templ)
+        case d: Defn.Object if d.name.value == symbolName && kindMatches(SymbolKind.Object) => extractFromTemplate(d.templ)
+        case d: Defn.Enum if d.name.value == symbolName && kindMatches(SymbolKind.Enum) => extractFromTemplate(d.templ)
         case _ => t.children.foreach(findAndExtract)
 
       findAndExtract(tree)

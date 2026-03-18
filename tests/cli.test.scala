@@ -621,6 +621,85 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("No class/trait/object/enum"), s"Should report no type found: $output")
   }
 
+  // ── #184: companion object members not duplicated in members output ──
+
+  test("members: class companion shows only companion-specific members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("Pipeline"), CommandContext(idx = idx, workspace = workspace, limit = 50, verbose = true))
+    }
+    // Pipeline class has execute, validate; companion has create
+    val classSection = output.split("Companion")(0)
+    val companionSection = output.split("Companion").lift(1).getOrElse("")
+    // Class section should have execute and validate but NOT create
+    assert(classSection.contains("execute"), s"Class section should have execute: $classSection")
+    assert(classSection.contains("validate"), s"Class section should have validate: $classSection")
+    assert(!classSection.contains("def create"), s"Class section should NOT have companion's create: $classSection")
+    // Companion section should have create but NOT execute or validate
+    assert(companionSection.contains("create"), s"Companion should have create: $companionSection")
+    assert(!companionSection.contains("execute"), s"Companion should NOT duplicate class execute: $companionSection")
+    assert(!companionSection.contains("validate"), s"Companion should NOT duplicate class validate: $companionSection")
+  }
+
+  test("members: trait companion shows only companion-specific members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("Database"), CommandContext(idx = idx, workspace = workspace, limit = 50, verbose = true))
+    }
+    // Database trait has query, insert; companion object has live
+    val sections = output.split("Companion")
+    val traitSection = sections(0)
+    val companionSection = sections.lift(1).getOrElse("")
+    // Trait section should have query and insert but NOT live
+    assert(traitSection.contains("query"), s"Trait section should have query: $traitSection")
+    assert(traitSection.contains("insert"), s"Trait section should have insert: $traitSection")
+    assert(!traitSection.contains("val live"), s"Trait section should NOT have companion's live: $traitSection")
+    // Companion section should have live but NOT query or insert
+    assert(companionSection.contains("live"), s"Companion should have live: $companionSection")
+    assert(!companionSection.contains("query"), s"Companion should NOT duplicate trait query: $companionSection")
+    assert(!companionSection.contains("insert"), s"Companion should NOT duplicate trait insert: $companionSection")
+  }
+
+  test("members --json: companion members not duplicated within each section") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("Pipeline"), CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true))
+    }
+    // Both class and object Pipeline are returned, each showing the other as companion.
+    // Each member appears twice total (own in one view, companion in the other) — but
+    // before #184 fix, each appeared 4 times because extractMembers mixed class+object.
+    val createCount = "\"create\"".r.findAllIn(output).length
+    val executeCount = "\"execute\"".r.findAllIn(output).length
+    val validateCount = "\"validate\"".r.findAllIn(output).length
+    assertEquals(createCount, 2, s"create should appear twice (own + companion): $output")
+    assertEquals(executeCount, 2, s"execute should appear twice (own + companion): $output")
+    assertEquals(validateCount, 2, s"validate should appear twice (own + companion): $output")
+    // Class section should NOT list create as own (ownerKind "class")
+    assert(!output.contains("\"ownerKind\":\"class\"") || !output.matches(""".*"name":"create".*"ownerKind":"class".*"""),
+      s"create should not be owned by class: $output")
+  }
+
+  test("members: object view shows companion class members separately") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // When querying the object specifically, its own members should not include class members
+    val output = captureOut {
+      runCommand("members", List("UserService"), CommandContext(idx = idx, workspace = workspace, limit = 50, verbose = true))
+    }
+    // UserService trait: findUser, createUser; UserService object: default
+    // The object section should list "default" as own, not findUser/createUser
+    val objectSections = output.split("Members of object UserService")
+    assert(objectSections.length > 1, s"Should have object section: $output")
+    val objectBlock = objectSections(1).split("Members of ")(0) // up to next "Members of" section
+    val ownPart = objectBlock.split("Companion")(0)
+    assert(ownPart.contains("default"), s"Object own members should have default: $ownPart")
+    assert(!ownPart.contains("findUser"), s"Object own members should NOT have trait's findUser: $ownPart")
+    assert(!ownPart.contains("createUser"), s"Object own members should NOT have trait's createUser: $ownPart")
+  }
+
   // ── doc command output ──────────────────────────────────────────────
 
   test("doc command output") {

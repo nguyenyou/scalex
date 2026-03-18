@@ -13,7 +13,7 @@ def cmdMembers(args: List[String], ctx: CommandContext): CmdResult =
           val inheritResult = collectInheritedMembers(s, ctx)
           val inherited = inheritResult.inherited
           val parentKeys = inheritResult.parentMemberKeys
-          val members = extractMembers(s.file, symbol).map { m =>
+          val members = extractMembers(s.file, symbol, Some(s.kind)).map { m =>
             val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
             if ctx.withBody then enrichMemberWithBody(m2, s.file, symbol, ctx.maxBodyLines) else m2
           }

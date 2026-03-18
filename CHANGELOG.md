@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `members` companion section no longer duplicates the primary type's members — each side now shows only its own members (#184)
+
 ## [1.26.0] — 2026-03-18
 
 ### Fixed
