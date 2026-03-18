@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.29.0] — 2026-03-18
+
 ### Added
 - `members`: `--limit 0` shows all members (no truncation); `--offset N` for pagination (#198)
 
