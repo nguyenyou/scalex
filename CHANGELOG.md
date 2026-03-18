@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `body --in` now also searches the owner's file when the symbol is indexed in a different file (#197)
+
 ## [1.28.0] — 2026-03-18
 
 ### Fixed

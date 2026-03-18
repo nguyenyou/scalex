@@ -3,18 +3,22 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
     case None => CmdResult.UsageError("Usage: scalex body <symbol> [--in <owner>]")
     case Some(symbol) =>
       // Find files containing the symbol
-      var defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(kindFilter = None))
+      val defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(kindFilter = None))
+      val ownerFiles = ctx.inOwner match
+        case Some(owner) =>
+          filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
+            .filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
+        case None => Nil
       val filesToSearch = if defs.nonEmpty then {
-        defs.map(_.file).distinct
+        // When --in is specified, also include the owner's files — the symbol may
+        // be indexed in a different file but also exist as a nested def in the owner
+        (defs.map(_.file).distinct ++ ownerFiles).distinct
       } else {
-        // If not found directly, search all files for member bodies
-        ctx.inOwner match
-          case Some(owner) =>
-            filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
-              .filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
-          case None =>
-            filterSymbols(ctx.idx.symbols.filter(s => typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
-              .map(_.file).distinct
+        // If not found directly, search owner files or all type files
+        if ownerFiles.nonEmpty then ownerFiles
+        else
+          filterSymbols(ctx.idx.symbols.filter(s => typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
+            .map(_.file).distinct
       }
       // Collect (file, body) pairs
       val blocks = filesToSearch.flatMap { f =>

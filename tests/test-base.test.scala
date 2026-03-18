@@ -357,6 +357,23 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    // #197: Symbol indexed in one file, also exists as nested def in a different class
+    // "create" is already indexed as Pipeline.create. This file adds a class
+    // whose method has a local def also named "create" — body --in Assembler
+    // must find it even though "create" is indexed elsewhere.
+    writeFile("src/main/scala/com/example/Assembler.scala",
+      """package com.example
+        |
+        |class Assembler(parts: List[String]) {
+        |  def build(): String = {
+        |    def create(part: String): String = {
+        |      part.toUpperCase
+        |    }
+        |    parts.map(create).mkString(", ")
+        |  }
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")

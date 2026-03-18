@@ -191,7 +191,7 @@ scalex grep "ctx.settings" --in Run.compileUnits  # search within a specific met
 
 Extracts the full source body of a def, val, var, type, class, trait, object, or enum from the file using Scalameta spans. Eliminates ~50% of follow-up Read calls by giving the agent the actual source code inline.
 
-Use `--in <owner>` to restrict to members of a specific enclosing type — essential when the same method name exists in multiple classes. Use `-C N` to show N lines of context above and below the body span. Use `--imports` to prepend the file's import block.
+Use `--in <owner>` to restrict to members of a specific enclosing type — essential when the same method name exists in multiple classes. `--in` matches the **immediate enclosing type** (class/trait/object/enum); it finds nested defs at any method depth within that type, but does NOT cross into inner classes. For inner class members, use `--in InnerClass` directly. Use `-C N` to show N lines of context above and below the body span. Use `--imports` to prepend the file's import block.
 
 **Also works with test cases** — pass the exact test name string to extract a test body. Matches `test("name")`, `it("name")`, `describe("name")`, `"name" in { }`, and `"name" >> { }` patterns. Use `--in SuiteName` to scope to a specific suite.
 

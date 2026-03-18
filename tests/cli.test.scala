@@ -1632,6 +1632,23 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("batch.size"), s"Should contain body: $output")
   }
 
+  // ── #197: body --in finds nested def when same name is indexed elsewhere ──
+
+  test("body --in finds nested def when same name is indexed in a different file") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "create" is indexed as a top-level def in Pipeline.scala (Pipeline.create).
+    // It also exists as a local def inside Assembler.build().
+    // body create --in Assembler must search the owner's file, not just the indexed file.
+    val output = captureOut {
+      runCommand("body", List("create"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("Assembler")))
+    }
+    assert(output.contains("def create"), s"Should find local def create in Assembler: $output")
+    assert(output.contains("toUpperCase"), s"Should contain the body: $output")
+    assert(output.contains("Assembler"), s"Should mention Assembler as owner: $output")
+  }
+
   test("body on Java file does not crash with parser error") {
     val idx = WorkspaceIndex(workspace)
     idx.index()

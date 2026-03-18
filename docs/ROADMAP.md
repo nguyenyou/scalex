@@ -4,6 +4,10 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Bug fix: body --in owner file search (#197)
+
+- [x] When `--in Owner` is specified and the symbol is indexed in a different file, also search the owner's file for nested defs
+
 ### Community feedback: overview dedup & onboarding flow (#192)
 
 - [x] `overview --architecture` dedup — skip "Most extended" section when `--architecture` is active; "Hub types" already covers the same `parentIndex` data with identical sorting; applies to both text and JSON output
