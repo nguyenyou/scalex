@@ -342,9 +342,9 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
         println(s"Members of ${sec.ownerKind.toString.toLowerCase} ${r.symbol}$pkg — $rel:${sec.line}:")
         if sec.ownMembers.isEmpty then println("  (no members)")
         else {
-          println(s"  Defined in ${r.symbol}:")
-          val (shown, omitted, sk, sl) = sliceSection(sec.ownMembers, skipLeft, showLeft)
-          skipLeft = sk; showLeft = sl
+          val (shown, omitted, newSkip, newShow) = sliceSection(sec.ownMembers, skipLeft, showLeft)
+          skipLeft = newSkip; showLeft = newShow
+          if shown.nonEmpty || omitted > 0 then println(s"  Defined in ${r.symbol}:")
           shown.foreach { m =>
             val overrideMarker = if m.isOverride then "  [override]" else ""
             if !ctx.brief then
@@ -356,9 +356,9 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
           if omitted > 0 then println(s"    ... and $omitted more")
         }
         sec.inherited.foreach { (parentName, _, _, pMembers) =>
-          println(s"  Inherited from $parentName:")
-          val (shown, omitted, sk, sl) = sliceSection(pMembers, skipLeft, showLeft)
-          skipLeft = sk; showLeft = sl
+          val (shown, omitted, newSkip, newShow) = sliceSection(pMembers, skipLeft, showLeft)
+          skipLeft = newSkip; showLeft = newShow
+          if shown.nonEmpty || omitted > 0 then println(s"  Inherited from $parentName:")
           shown.foreach { m =>
             if !ctx.brief then
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
@@ -372,8 +372,8 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
           println(s"\n  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}:")
           if compMembers.isEmpty then println("    (no members)")
           else {
-            val (shown, omitted, sk, sl) = sliceSection(compMembers, skipLeft, showLeft)
-            skipLeft = sk; showLeft = sl
+            val (shown, omitted, newSkip, newShow) = sliceSection(compMembers, skipLeft, showLeft)
+            skipLeft = newSkip; showLeft = newShow
             shown.foreach { m =>
               if !ctx.brief then
                 println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
