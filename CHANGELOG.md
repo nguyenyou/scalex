@@ -6,6 +6,8 @@
 
 ### Fixed
 - `members` companion section no longer duplicates the primary type's members — each side now shows only its own members (#184)
+- `members` now uses simple name for `extractMembers` lookup instead of fully qualified name
+- `explain` now respects `--kind` filter; fixed vacuous test assertion
 
 ## [1.26.0] — 2026-03-18
 
