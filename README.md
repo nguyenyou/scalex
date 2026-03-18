@@ -399,6 +399,8 @@ Scalex is built on ideas from [Metals](https://scalameta.org/metals/) — the Sc
 
 Metals is [Apache 2.0](https://github.com/scalameta/metals/blob/main/LICENSE). Scalex does not contain code copied from Metals — the ideas were reimplemented independently.
 
+The `graph` command is ported from [**ascii-graphs**](https://github.com/scalameta/ascii-graphs) by Matt Russell — a Sugiyama-style layered graph layout engine. The original 45 Scala 2 files were consolidated into 11 Scala 3.8 files. Thanks to the ascii-graphs project for the excellent layout algorithm.
+
 Built with [Claude Code](https://claude.ai/code) powered by **Claude Opus 4.6** (1M context).
 
 ## Name
