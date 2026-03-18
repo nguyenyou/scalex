@@ -308,49 +308,85 @@ Tested on the **Scala 3 compiler** (17.7k files, 203k symbols).
 
 ### "Where is `Compiler` defined?"
 
-**Scalex** (1 call):
+**Scalex** — 1 call, **2 results**:
 ```
-scalex def Compiler --verbose --kind class
-  class  Compiler (dotty.tools) — compiler/src/.../Compiler.scala:16
+scalex def Compiler --kind class
+  class  Compiler (dotty.tools)    — compiler/src/.../Compiler.scala:16
   class  Compiler (dotty.tools.pc) — .../CompletionValue.scala:127
 ```
-Filtered to classes only. Without `--kind`, returns 31 results (vals, defs, test fixtures) — still structured with kind and package, but noisier. Grep has the same noise problem without the structure.
 
-**Grep** (2-3 calls): `class Compiler|trait Compiler|object Compiler` returns 24 results including `CompilerOptions`, `CompilerHang`, `CompilerTest` (substring matches). Needs regex refinement, still no package info.
+**Grep** — 1 call, **24 results**: `class Compiler|trait Compiler|object Compiler` matches `CompilerOptions`, `CompilerHang`, `CompilerTest`, `CompilerCommand` (substring noise). No package info, no kind filtering. Agent must write follow-up regex to exclude substrings.
 
-### "Who extends `Compiler`?"
+**Why scalex wins**: Exact name matching + `--kind` filter + package disambiguation. One call, done.
 
-**Scalex** (1 call):
+### "Show the full inheritance tree of `Compiler`"
+
+**Scalex** — 1 call, **full tree with transitive children**:
 ```
-scalex impl Compiler
-  ExpressionCompiler, residentCompiler, TASTYCompiler,
-  InteractiveCompiler, ReplCompiler, QuoteCompiler
+scalex hierarchy Compiler
+  Children:
+    ├── ExpressionCompiler — .../ExpressionCompiler.scala:18
+    ├── residentCompiler   — .../Resident.scala:28
+    ├── TASTYCompiler      — .../TASTYCompiler.scala:9
+    │   └── TASTYDecompiler    — .../TASTYDecompiler.scala:11
+    │       └── PartialTASTYDecompiler — .../PartialTASTYDecompiler.scala:9
+    ├── InteractiveCompiler — .../InteractiveCompiler.scala:10
+    ├── ReplCompiler        — .../ReplCompiler.scala:34
+    └── QuoteCompiler       — .../QuoteCompiler.scala:35
 ```
-6 results. Exact parent matching from the AST. No substring noise.
 
-**Grep**: `extends Compiler` returns 23 results — but 17 are false positives like `extends CompilerTest`, `extends CompilerCommand`, `extends CompilerCallback`. Agent must filter manually.
+**Grep** — **impossible**. `extends Compiler` returns 23 results — 17 are false positives (`extends CompilerTest`, `extends CompilerCommand`). Even after manual filtering, grep only finds *direct* subclasses. `TASTYDecompiler → PartialTASTYDecompiler` (extends `TASTYCompiler`, not `Compiler`) is invisible to grep. Agent needs 3+ follow-up calls to walk the tree manually.
 
-### "Find references and categorize them"
+**Why scalex wins**: Transitive hierarchy from the AST. Grep cannot do this at any depth.
 
-**Scalex** (1 call):
+### "What's the impact of changing `Compiler`?"
+
+**Scalex** — 1 call, **283 references**, auto-categorized and confidence-ranked:
 ```
 scalex refs Compiler --limit 5
-  Definition:  given Compiler = Compiler.make(...)       (108 total)
-  ExtendedBy:  class QuoteCompiler extends Compiler      (12 total)
-  ImportedBy:  import dotty.tools.dotc.Compiler          (16 total)
-  UsedAsType:  val compiler: Compiler                    (23 total)
-  Usage:       val compiler = new Compiler               (53 total)
-  Comment:     /** Compiler that takes...                (19 total)
+  High confidence (import-matched):
+    Definition:  class Compiler {                          (107 total)
+    ExtendedBy:  class ExpressionCompiler extends Compiler (12 total)
+    ImportedBy:  import dotty.tools.dotc.Compiler          (17 total)
+    UsedAsType:  val compiler: Compiler                    (20 total)
+    Usage:       new Compiler                              (56 total)
+    Comment:     /** Compiler that takes...                (20 total)
+  Medium confidence (wildcard import):  ...
+  Low confidence (no matching import):  ...
 ```
-278 references, auto-categorized by relationship, with import-based confidence levels.
 
-**Grep**: `grep Compiler` returns 1,130 lines, flat and unsorted. Agent must classify each one.
+**Grep** — 1 call, **1,143 lines**, flat and unsorted. Agent sees definitions, imports, type annotations, instantiations, and comments all mixed together. Needs multiple follow-up calls to classify.
 
-### The Honest Truth
+**Why scalex wins**: Categories tell the agent *how* a symbol is used (extended? imported? instantiated?), and confidence tiers surface the most relevant references first. An agent using grep needs 3-5 follow-up calls to achieve the same understanding.
 
-**Grep is faster** (~0.1s vs ~0.5s). For "does this string exist?" — use grep.
+### "Who imports `Compiler`?"
 
-**Scalex is smarter.** For "where is this defined?", "who implements this?", "what's the impact of changing this?" — scalex saves 2-5 follow-up tool calls per query.
+**Scalex** — 1 call, **1,205 files**:
+```
+scalex imports Compiler
+  .../ExpressionCompiler.scala:3 — import dotty.tools.dotc.Compiler       (explicit)
+  .../Run.scala:5                — import dotty.tools.dotc.{Driver, Run, Compiler}
+  .../WeakHashSet.scala:9        — import dotty.tools.*                    (wildcard)
+```
+
+**Grep** — 1 call, **17 files**: `import.*\bCompiler\b` only finds explicit imports. Files using `import dotty.tools.dotc.*` or `import scala.quoted.staging.*` are invisible — that's **98.6% of importers missed**.
+
+**Why scalex wins**: Wildcard import resolution. This is critical for impact analysis — you need to know *every* file that has `Compiler` in scope, not just the ones that spell it out.
+
+### When to use which
+
+| Task | Use | Why |
+|------|-----|-----|
+| "Does this string exist?" | **Grep** | Faster, no index needed |
+| "Find this error message" | **Grep** | Text search, not a symbol |
+| Config values, flag names | **Grep** | Not Scala symbols |
+| Non-`.scala` files | **Grep** | Scalex only indexes Scala |
+| "Where is X defined?" | **Scalex** | Exact match + kind + package |
+| "Who implements trait X?" | **Scalex** | AST parent matching, no substring noise |
+| "Show the class hierarchy" | **Scalex** | Transitive tree — grep can't do this |
+| "What's the impact of changing X?" | **Scalex** | Categorized refs with confidence tiers |
+| "Who imports X?" | **Scalex** | Wildcard import resolution |
+| "What does this file/package export?" | **Scalex** | `overview` and `members` commands |
 
 **Best approach: use both.** Scalex for Scala-aware navigation, Grep for text search. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
 
