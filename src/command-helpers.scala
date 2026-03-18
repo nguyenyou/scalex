@@ -174,6 +174,22 @@ def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Opti
 
 // ── Related types extraction ─────────────────────────────────────────
 
+private val stdlibTypeNames: Set[String] = Set(
+  // Scala predef auto-imports
+  "option", "list", "map", "set", "seq", "vector", "array", "either", "try",
+  "some", "none", "nil", "iterable", "iterator", "tuple",
+  // Primitives/builtins
+  "boolean", "string", "int", "long", "double", "float", "byte", "short",
+  "char", "unit", "nothing", "any", "anyref", "anyval",
+  // Common stdlib
+  "future", "promise", "duration", "instant", "bigdecimal", "bigint",
+  "throwable", "exception", "path", "file", "uri", "url",
+  // Common library types
+  "task", "uio", "rio", "zio", "urio", "stream", "chunk", "io",
+  // Overlap with stdlibParentNames
+  "product", "serializable", "matchable",
+)
+
 private val typeNamePattern = """\b[A-Z][A-Za-z0-9]+\b""".r
 
 def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: WorkspaceIndex): List[SymbolInfo] =
@@ -191,7 +207,7 @@ def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: Workspa
   // Cross-reference with index
   typeNames.foreach { name =>
     val lower = name.toLowerCase
-    if !seen.contains(lower) then
+    if !seen.contains(lower) && !stdlibTypeNames.contains(lower) then
       seen += lower
       idx.symbolsByName.get(lower) match
         case Some(syms) =>

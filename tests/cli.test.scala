@@ -2558,3 +2558,19 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("\"implCount\""), s"JSON should have implCount: $output")
     assert(output.contains("\"members\""), s"JSON should have members: $output")
   }
+
+  // ── #228: explain --related stdlib false positives ──────────────────────
+
+  test("#228: explain --related should NOT resolve stdlib names to unrelated project types") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, related = true))
+    }
+    // UserService has members: findUser(id: String): Option[User], createUser(name: String): User
+    // User is a real project type in com.example — should be related
+    assert(output.contains("User"), s"Should list User as related type: $output")
+    // Option is a stdlib type (scala.Option), NOT com.ui.Option — should NOT appear
+    assert(!output.contains("com.ui"), s"Should NOT resolve Option to com.ui.Option: $output")
+  }

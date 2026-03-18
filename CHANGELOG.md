@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `explain --related` no longer resolves stdlib/language type names (e.g. `Option`, `List`, `String`, `Future`) to unrelated project types (#228)
+
 ## [1.32.0] — 2026-03-18
 
 ### Added
