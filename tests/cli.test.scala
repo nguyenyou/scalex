@@ -1571,6 +1571,27 @@ class CliSuite extends ScalexTestBase:
       s"findUser should be ranked before createUser for query 'find': $output")
   }
 
+  test("body --in suggestions do not promote short members via reverse-contains") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // ShortNames has members: e, execute, evaluate
+    // Query "eval" — "evaluate" is a legitimate prefix match.
+    // Without the fix, "e" is ALSO promoted to prefix via reverse-prefix
+    // ("eval".startsWith("e") is true) and appears before "evaluate".
+    // With the fix, only forward checks apply: "e".startsWith("eval") is
+    // false, so "e" falls to rest and "evaluate" correctly ranks first.
+    val suggestions = mkOwnerScopedSuggestions("eval", "ShortNames",
+      CommandContext(idx = idx, workspace = workspace))
+    assert(suggestions.nonEmpty, s"Should have suggestions: $suggestions")
+    val evaluateIdx = suggestions.indexWhere(_.contains("evaluate"))
+    val eIdx = suggestions.indexWhere(s => s.contains(" e "))
+    assert(evaluateIdx >= 0, s"Should suggest evaluate: $suggestions")
+    assert(eIdx >= 0, s"Should suggest e: $suggestions")
+    // "evaluate" (prefix match) should rank before "e" (rest bucket)
+    assert(evaluateIdx < eIdx,
+      s"evaluate (prefix match) should rank before short member 'e' (rest): $suggestions")
+  }
+
   test("body dotted syntax not used when --in is already set") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
