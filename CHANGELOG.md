@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.32.0] — 2026-03-18
+
 ### Added
 - `explain --related` — show project-defined types referenced in member signatures as "Related types" section (#221)
 - `package --explain` — composite mode: brief explain per type with definition, top 3 members, and impl count (#221)
