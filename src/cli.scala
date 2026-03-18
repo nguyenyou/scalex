@@ -271,7 +271,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).
         |First run indexes the project (~3s for 14k files). Subsequent runs use cache (~300ms).
-        |Java files (.java) are indexed with lightweight regex extraction (class/interface/enum/record).
+        |Java files (.java) are indexed via JavaParser AST (class/interface/enum/record/method/field).
         |""".stripMargin)
 
     case "batch" :: rest =>

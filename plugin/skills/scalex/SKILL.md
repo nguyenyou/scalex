@@ -1,11 +1,11 @@
 ---
 name: scalex
-description: "Scala code intelligence CLI for Scala 2/3 codebases. Find definitions, implementations, usages, imports, members, scaladoc, codebase overview, package API surface, files, annotated symbols, file contents. Render directed graphs as ASCII/Unicode art and parse diagrams. Triggers: \"where is X defined\", \"who implements Y\", \"find usages of Z\", \"what methods does X have\", \"show source of X\", \"inheritance tree\", \"explain this type\", \"what changed since commit\", \"find types extending X with method Y\", \"what does this package export\", \"draw a graph\", or before renaming. Test navigation: \"what tests exist\", \"is X tested\". Use proactively exploring unfamiliar Scala code. Supports fuzzy camelCase search. Prefer scalex over grep/glob for Scala symbol lookups."
+description: "Scala/Java code intelligence CLI for Scala 2/3 and Java codebases. Find definitions, implementations, usages, imports, members, scaladoc, codebase overview, package API surface, files, annotated symbols, file contents. Render directed graphs as ASCII/Unicode art and parse diagrams. Triggers: \"where is X defined\", \"who implements Y\", \"find usages of Z\", \"what methods does X have\", \"show source of X\", \"inheritance tree\", \"explain this type\", \"what changed since commit\", \"find types extending X with method Y\", \"what does this package export\", \"draw a graph\", or before renaming. Test navigation: \"what tests exist\", \"is X tested\". Use proactively exploring unfamiliar Scala code. Supports fuzzy camelCase search. Prefer scalex over grep/glob for Scala symbol lookups."
 ---
 
-You have access to `scalex`, a Scala code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals). It parses source files via Scalameta — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
+You have access to `scalex`, a Scala/Java code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals) and Java syntax (classes, interfaces, enums, records, methods, fields). It parses Scala source files via Scalameta and Java files via JavaParser — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
 
-First run on a project indexes all git-tracked `.scala` and `.java` files (~3s for 14k files). Subsequent runs use OID-based caching and only re-parse changed files (~400-500ms). Java files are indexed via regex (class/interface/enum/record).
+First run on a project indexes all git-tracked `.scala` and `.java` files (~3s for 14k files). Subsequent runs use OID-based caching and only re-parse changed files (~400-500ms). Java files are indexed via JavaParser AST — classes, interfaces, enums, records, methods, and fields are extracted with full member support (constructors, nested types, enum constants, `@Override` detection).
 
 Scalex only works on **git-tracked files** in **Scala/Java projects**. Do not use it for non-git directories, non-JVM languages, or files that haven't been `git add`ed yet.
 
@@ -31,7 +31,7 @@ Replace `/absolute/path/to/skills/scalex` with the absolute path to the director
 
 ## What scalex indexes
 
-Scalex extracts **top-level declarations** from every git-tracked `.scala` file: classes, traits, objects, enums, defs, vals, types, givens (named only — anonymous givens are skipped), and extension groups. It also extracts **annotations** on these declarations (e.g. `@deprecated`, `@main`, `@tailrec`). Java files (`.java`) are also indexed — classes, interfaces, enums, and records are extracted via regex. Scalex does NOT index local definitions inside method bodies, method parameters, or pattern bindings.
+Scalex extracts **top-level declarations** from every git-tracked `.scala` file: classes, traits, objects, enums, defs, vals, types, givens (named only — anonymous givens are skipped), and extension groups. It also extracts **annotations** on these declarations (e.g. `@deprecated`, `@main`, `@tailrec`). Java files (`.java`) are indexed via JavaParser AST — classes, interfaces, enums, records, methods, and fields are extracted with annotations. Java `members`, `body`, and `body --in` work the same as for Scala types. Scalex does NOT index local definitions inside method bodies, method parameters, or pattern bindings.
 
 The `refs`, `imports`, and `grep` commands work differently — they do text search across files, so they find ALL textual occurrences regardless of whether the symbol is in the index.
 
@@ -170,7 +170,7 @@ scalex search process --takes String     # methods named "process" taking String
 
 ### `scalex grep <pattern> [--in <symbol>] [-e PAT]... [--count] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
 
-Regex search inside `.scala` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala files. Has a 20-second timeout for large codebases.
+Regex search inside `.scala` and `.java` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala/Java files. Has a 20-second timeout for large codebases.
 
 The pattern is a **Java regex** (not POSIX) — use `|` for alternation (not `\|`), `( )` for grouping (not `\( \)`). If you get zero results, check for POSIX-style escapes. Scalex will print a hint if it detects this.
 
@@ -405,4 +405,4 @@ If scalex returns "not found", the symbol might be a local definition (not top-l
 
 ## Why scalex over grep
 
-scalex understands Scala syntax. It finds `given` definitions, `enum` declarations, `extension` groups, and annotated symbols that grep patterns miss. It returns structured output with symbol kind, package name, and line numbers. `--categorize` provides refactoring-ready impact analysis that would require multiple grep passes. And `scalex grep` gives you regex content search with built-in `--no-tests` and `--path` filtering, eliminating the need for the Grep tool on `.scala` files entirely. For any Scala-specific navigation or search, prefer scalex — it's purpose-built for exactly this.
+scalex understands Scala and Java syntax. It finds `given` definitions, `enum` declarations, `extension` groups, Java interfaces/records, and annotated symbols that grep patterns miss. It returns structured output with symbol kind, package name, and line numbers. `--categorize` provides refactoring-ready impact analysis that would require multiple grep passes. And `scalex grep` gives you regex content search with built-in `--no-tests` and `--path` filtering, eliminating the need for the Grep tool on `.scala`/`.java` files entirely. For any Scala/Java-specific navigation or search, prefer scalex — it's purpose-built for exactly this.
