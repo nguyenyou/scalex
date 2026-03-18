@@ -4,6 +4,14 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Graph rendering and parsing
+
+- [x] Port ascii-graphs library to scalex as `graph` command
+- [x] `graph --render "A->B, B->C"` — Sugiyama-style layered ASCII/Unicode graph rendering
+- [x] `graph --parse` — parse ASCII diagrams from stdin into boxes + edges
+- [x] Flags: `--unicode`/`--no-unicode`, `--vertical`/`--horizontal`, `--rounded`, `--double`, `--json`
+- [x] Round-trip: render → parse → structured data
+
 ### Bug fix: body --in owner file search (#197)
 
 - [x] When `--in Owner` is specified and the symbol is indexed in a different file, also search the owner's file for nested defs

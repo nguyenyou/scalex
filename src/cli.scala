@@ -217,6 +217,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |  scalex api <package>            Public API surface of a package (aka: exported symbols)
         |  scalex summary <package>        Sub-packages with symbol counts   (aka: package breakdown)
         |  scalex entrypoints              Find @main, def main, extends App, test suites
+        |  scalex graph --render "A->B"    Render directed graph as ASCII/Unicode art
+        |  scalex graph --parse            Parse ASCII diagram from stdin into boxes+edges
         |
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
@@ -293,6 +295,25 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
           Timings.report()
           println()
         line = reader.readLine()
+
+    case "graph" :: _ =>
+      // graph command doesn't need workspace index — extract raw args after "graph", strip workspace flags
+      val afterGraph = args.toList.dropWhile(_ != "graph").drop(1)
+      val graphArgs = {
+        val buf = scala.collection.mutable.ListBuffer[String]()
+        var i = 0
+        while i < afterGraph.size do
+          afterGraph(i) match
+            case "-w" | "--workspace" => i += 1 // skip flag + value
+            case other => buf += other
+          i += 1
+        buf.toList
+      }
+      val workspace = resolveWorkspace(f.explicitWorkspace.getOrElse("."))
+      val dummyIdx = WorkspaceIndex(workspace, needBlooms = false)
+      val ctx = flagsToContext(f, dummyIdx, workspace)
+      val result = cmdGraph(graphArgs, ctx)
+      render(result, ctx)
 
     case cmd :: rest =>
       val (workspace, cmdRest) = f.explicitWorkspace match

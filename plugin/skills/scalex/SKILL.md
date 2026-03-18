@@ -342,8 +342,10 @@ These commands are fully documented in `references/commands.md` (next to this SK
 | `symbols <file>` | What's defined in this file? | `--summary` |
 | `packages` | List all packages | |
 | `index` | Force reindex (rarely needed) | |
+| `graph --render "A->B"` | Render directed graph as ASCII/Unicode art | `--unicode`, `--vertical`, `--rounded`, `--double` |
+| `graph --parse` | Parse ASCII diagram from stdin into boxes+edges | `--json` |
 
-Full options table is also in `references/commands.md`.
+Full options table is also in `references/commands.md`. Graph command examples with rendered output are in `references/graph-examples.md`.
 
 ## Common workflows
 

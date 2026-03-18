@@ -482,7 +482,7 @@
 
   <!-- Commands -->
   <section class="reveal">
-    <h2>29 commands. <span class="red">Zero config.</span></h2>
+    <h2>31 commands. <span class="red">Zero config.</span></h2>
     <p class="section-sub">Point it at any git repo with Scala files. Works on Scala 2 and 3, auto-detects dialect per file. Java-aware — tracks .java files for cross-language references.</p>
 
     <div class="cmd-grid">
@@ -601,6 +601,14 @@
       <div class="cmd-card">
         <div class="cmd-name">scalex entrypoints</div>
         <div class="cmd-desc">Find @main, def main(...), extends App, and test suites — all entry points in one call.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex graph --render</div>
+        <div class="cmd-desc">Render directed graph as layered ASCII/Unicode art. Supports --unicode, --horizontal, --rounded, --double.</div>
+      </div>
+      <div class="cmd-card">
+        <div class="cmd-name">scalex graph --parse</div>
+        <div class="cmd-desc">Parse ASCII diagram from stdin into boxes and edges. Supports --json for structured output.</div>
       </div>
     </div>
   </section>

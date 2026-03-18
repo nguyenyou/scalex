@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- `graph` command: render directed graphs as ASCII/Unicode art and parse diagrams back into structured data
+  - `graph --render "A->B, B->C"` — Sugiyama-style layered layout
+  - `graph --parse` — extract boxes, edges, labels from ASCII art (stdin)
+  - Flags: `--unicode`/`--no-unicode`, `--vertical`/`--horizontal`, `--rounded`, `--double`, `--json`
+  - Ported from [ascii-graphs](https://github.com/scalameta/ascii-graphs) (45 Scala 2 files consolidated into 11 Scala 3.8 files)
+
 ## [1.29.0] — 2026-03-18
 
 ### Added

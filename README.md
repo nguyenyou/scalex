@@ -176,6 +176,8 @@ scalex api com.example                     # What does this package export?
 scalex api com.example --used-by com.web   # Coupling: what does web use from example?
 scalex summary com.example                 # Sub-packages with symbol counts
 scalex entrypoints                         # Find @main, def main, extends App, test suites
+scalex graph --render "A->B, B->C, A->D"  # Render directed graph as ASCII/Unicode art
+scalex graph --parse < diagram.txt         # Parse ASCII diagram into boxes + edges
 
 # Understand
 scalex def UserService --verbose           # Definition with signature
@@ -264,6 +266,8 @@ scalex coverage <symbol>        Is this symbol tested?          (aka: test cover
 scalex api <package>            Public API surface of a package (aka: exported symbols)
 scalex summary <package>        Sub-packages with symbol counts   (aka: package breakdown)
 scalex entrypoints              Find @main, def main, extends App, test suites
+scalex graph --render "A->B"   Render directed graph as ASCII/Unicode art
+scalex graph --parse           Parse ASCII diagram from stdin into boxes+edges
 ```
 
 All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.

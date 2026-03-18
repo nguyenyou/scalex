@@ -110,6 +110,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: RefsTop          => renderRefsTop(r, ctx)
     case r: RefsSummary      => renderRefsSummary(r, ctx)
     case r: Entrypoints      => renderEntrypoints(r, ctx)
+    case r: GraphOutput      => println(r.text)
     case r: NotFound         => renderNotFound(r, ctx)
     case r: UsageError       => println(r.message)
   }

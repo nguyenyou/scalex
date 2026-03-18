@@ -219,5 +219,6 @@ enum CmdResult:
   case RefsTop(symbol: String, fileRanking: List[(file: Path, count: Int)], total: Int, timedOut: Boolean)
   case RefsSummary(symbol: String, categoryCounts: List[(category: RefCategory, count: Int)], total: Int, timedOut: Boolean)
   case Entrypoints(entries: List[EntrypointInfo], total: Int)
+  case GraphOutput(text: String)
   case NotFound(message: String, hint: NotFoundHint)
   case UsageError(message: String)
