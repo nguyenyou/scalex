@@ -96,7 +96,7 @@ Here's the architecture (generated with `scalex graph --render`):
      │
   4. Save to .scalex/index.bin
      │  Binary format with string interning.
-     │  Loads in ~275ms for 200k+ symbols.
+     │  Loads in ~225ms for 144k+ symbols.
      │
   5. Answer the query
      │  Maps build lazily — each query only pays for the indexes it needs.
@@ -107,7 +107,7 @@ Here's the architecture (generated with `scalex graph --render`):
 | Project | Files | Symbols | Cold Index | Warm Index |
 |---|---|---|---|---|
 | Production monorepo | 13,979 | 214,301 | 4.6s | 540ms |
-| Scala 3 compiler | 17,733 | 203,077 | 2.9s | 412ms |
+| Scala 3 compiler | 18,485 | 144,211 | 2.7s | 349ms |
 
 ## Quick Start
 
@@ -305,7 +305,7 @@ The biggest cost for an AI agent isn't latency — it's the number of tool calls
 
 ## Scalex vs Grep — Honest Comparison
 
-Tested on the **Scala 3 compiler** (17.7k files, 203k symbols).
+Tested on the **Scala 3 compiler** (18.5k files, 144k symbols).
 
 ### "Where is `Compiler` defined?"
 
