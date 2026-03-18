@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `overview --architecture` no longer shows duplicate "Most extended" section — hub types supersedes it (#192)
+
 ## [1.27.0] — 2026-03-18
 
 ### Fixed
