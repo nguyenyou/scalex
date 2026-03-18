@@ -270,37 +270,42 @@ All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-t
 
 ### What Makes It AI-Friendly
 
-**Fewer round-trips.** The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space.
+The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space. Scalex is designed to maximize information per call.
 
-- `explain` replaces 4-5 calls (def + doc + members + impl + imports) with one; auto-shows companion object/class members; `--verbose` shows full signatures
-- `explain --brief` gives definition + top 3 members — pairs with `batch` for lightweight multi-explore
-- `explain --expand N` recursively expands implementations — shows each subtype's members in one call
-- `explain` disambiguation prints copy-paste `scalex explain pkg.Name` commands — no guessing alternatives
-- `def pkg.Name` resolves by package-qualified name — no ambiguity, no follow-up disambiguation
-- `def Owner.member` navigates directly to a member — `def MyService.findUser` resolves without `body --in`
-- `impl Foo` finds `class Bar extends Mixin[Foo]` — type-param parent indexing discovers parametric inheritance
-- `api` shows a package's public API surface — `--used-by` filters to a specific consumer package
-- `members` auto-shows companion object/class members alongside the primary type
-- `refs --count` gives category counts in one line — fast impact triage without reading full file lists
-- `refs --top N` ranks files by reference count — surfaces heaviest users first for impact analysis
-- `entrypoints` finds all application entry points (`@main`, `def main`, `extends App`, test suites) in one call — useful for onboarding
-- `members --inherited` marks overrides with `[override]` — shows which own members shadow parent definitions
-- `body` extracts source without a Read call — eliminates ~50% of follow-up file reads
-- `refs` returns categorized results (Definition/ExtendedBy/ImportedBy/UsedAsType) — no post-processing
-- `search` ranks by import popularity; `--returns` / `--takes` filter by signature
-- `overview` defaults to `--no-tests` — production code is almost always the intent
-- `hierarchy` shows the full inheritance tree in one call — parents up, children down
-- `batch` loads the index once for multiple queries — 5 queries in ~1s instead of ~5s
+**One call, not five.** Most agent tasks require chaining grep → read → grep → read. Scalex collapses these chains:
 
-**Less noise.** Large codebases produce hundreds of results. Scalex gives the agent tools to cut through:
+- `explain` replaces 4-5 calls — definition + scaladoc + members + companion + implementations + import count, all in one response. `--expand N` recursively shows each implementation's members. `--body` inlines source code. `--inherited` merges parent members
+- `body` extracts source directly — no follow-up Read call needed. `--in Owner` disambiguates, `-C N` adds context, `--imports` prepends the file's import block
+- `members --body` inlines method bodies into the member listing — replaces N separate `body` calls
+- `batch` amortizes the ~400ms index load across multiple queries — 5 queries in ~600ms instead of ~2.5s
+- `refs --count` gives category counts in one line — fast impact triage before committing to a full read
+- `refs --top N` ranks files by reference count — surfaces the heaviest users first
 
-- `--kind`, `--path`, `--exclude-path`, `--no-tests` — filter at the source, not after
-- `--exact` / `--prefix` — `search Auth --prefix` returns ~20 results instead of 1300+
-- `--definitions-only` — only class/trait/object/enum, no val/def name collisions (works on `search` and `package`)
-- `summary` — sub-package breakdown with symbol counts; drill-down from overview to package
-- `--category` on refs — `refs Signal --category ExtendedBy` for targeted impact analysis
+**Semantic, not textual.** Scalex parses Scala ASTs, so it understands things grep fundamentally cannot:
 
-**Structured, not raw.** Every result includes symbol kind, package name, file path, and line number. `--json` on all commands for programmatic parsing. Fallback hints on "not found" suggest Grep/Glob as alternatives.
+- `refs` **categorizes** results by relationship (Definition / ExtendedBy / ImportedBy / UsedAsType / Usage / Comment) and **ranks by confidence** — high (explicit import), medium (wildcard import), low (no matching import)
+- `imports` resolves **wildcard imports** — `import dotty.tools.dotc.*` counts as importing `Compiler`. On the scala3 compiler, this finds 1,205 importers vs grep's 17 explicit mentions
+- `hierarchy` shows the **transitive inheritance tree** — parents up, children down, with depth control. Grep can only find direct `extends` mentions
+- `impl` finds **parametric inheritance** — `impl Foo` matches `class Bar extends Mixin[Foo]` via type-param parent indexing
+- `overrides` finds every implementation of a method across the class hierarchy — `overrides run --of Phase --body` shows each override's source inline
+- `ast-pattern` does **structural search** — find types that extend a trait AND have a specific method AND whose body contains a pattern, in one query
+
+**Precision filters.** Large codebases produce hundreds of results. Every command supports filtering at the source:
+
+- `--kind class`, `--path compiler/src/`, `--exclude-path sbt-test/`, `--no-tests` — composable filters on all commands
+- `--exact` / `--prefix` on search — `search Auth --prefix` returns ~20 results instead of 1300+
+- `--definitions-only` — only class/trait/object/enum, no val/def name collisions
+- `--category ExtendedBy` on refs — targeted impact analysis for a single relationship type
+
+**Self-correcting output.** Scalex is designed for agents that can't ask clarifying questions:
+
+- Every result includes **symbol kind, package name, file path, and line number** — no ambiguity about what was found
+- Disambiguation prints **ready-to-run commands** — when `explain Compiler` matches 8 types, stderr shows `scalex explain dotty.tools.Compiler`, `scalex explain scala.quoted.Compiler`, etc.
+- Package-qualified lookup — `def com.example.Cache` or partial `def cache.Cache` resolves without follow-up
+- Owner.member dotted syntax — `def MyService.findUser` navigates directly to the member
+- Fuzzy camelCase matching — `search hms` finds `HttpMessageService`
+- **Fallback hints** on "not found" — suggests `scalex grep` or Grep/Glob tools as alternatives
+- `--json` on all commands for programmatic parsing
 
 ## Scalex vs Grep — Honest Comparison
 
