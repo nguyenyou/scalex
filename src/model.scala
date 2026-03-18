@@ -116,6 +116,8 @@ case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int
 
 case class ExplainedImpl(sym: SymbolInfo, members: List[MemberInfo], subImpls: List[ExplainedImpl] = Nil)
 
+case class PackageExplainedEntry(sym: SymbolInfo, members: List[MemberInfo], implCount: Int)
+
 // ── Entrypoint types ───────────────────────────────────────────────────────
 
 case class EntrypointInfo(sym: SymbolInfo, category: EntrypointCategory, memberLine: Option[Int] = None)
@@ -151,6 +153,8 @@ case class CommandContext(
   withBody: Boolean = false, maxBodyLines: Int = 0,
   showImports: Boolean = false,
   offset: Int = 0,
+  related: Boolean = false,
+  explainMode: Boolean = false,
 ):
   val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
@@ -206,7 +210,8 @@ enum CmdResult:
     companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None,
     expandedImpls: List[ExplainedImpl] = Nil,
     otherMatches: List[String] = Nil, totalImpls: Int = 0,
-    inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])] = Nil)
+    inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])] = Nil,
+    relatedTypes: List[SymbolInfo] = Nil)
   case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
   case Scopes(file: Path, line: Int, scopes: List[ScopeInfo])
   case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])
@@ -214,6 +219,7 @@ enum CmdResult:
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
   case Packages(packages: List[String])
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
+  case PackageExplained(pkg: String, entries: List[PackageExplainedEntry], totalSymbols: Int)
   case PackageSummary(pkg: String, subPackages: List[(subPkg: String, count: Int)], totalSymbols: Int)
   case ApiSurface(pkg: String, symbols: List[(symbol: SymbolInfo, importerCount: Int)], totalInPackage: Int, internalOnly: List[String])
   case RefsTop(symbol: String, fileRanking: List[(file: Path, count: Int)], total: Int, timedOut: Boolean)

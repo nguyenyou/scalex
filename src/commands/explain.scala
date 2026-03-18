@@ -74,15 +74,23 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         // Companion lookup
         val companion = findCompanion(sym, simpleName, defs)
           .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.membersLimit)))
+        // Related types (extract from ALL members for full coverage)
+        val relatedTypes = if ctx.related && typeKinds.contains(sym.kind) then
+          val allMembers = extractMembers(sym.file, simpleName, Some(sym.kind))
+          extractRelatedTypes(allMembers, sym, ctx.idx)
+        else Nil
+
         if ctx.brief then
           // Brief mode: definition + top 3 members only
           val briefMembers = if typeKinds.contains(sym.kind) then
             extractMembers(sym.file, simpleName, Some(sym.kind)).sortBy(memberKindRank).take(3)
           else Nil
-          CmdResult.Explanation(sym, None, briefMembers, Nil, Nil, otherMatches = otherMatches)
+          CmdResult.Explanation(sym, None, briefMembers, Nil, Nil, otherMatches = otherMatches,
+            relatedTypes = relatedTypes)
         else if ctx.shallow then
           // Shallow mode: definition + members + companion only
-          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches)
+          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches,
+            relatedTypes = relatedTypes)
         else
           // Implementations
           val allImpls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx)
@@ -95,7 +103,8 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           // Import refs (apply path/exclude/noTests filters)
           val importRefs = filterRefs(ctx.idx.findImports(simpleName, timeoutMs = 3000), ctx)
           CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls,
-            otherMatches = otherMatches, totalImpls = totalImpls, inherited = inherited)
+            otherMatches = otherMatches, totalImpls = totalImpls, inherited = inherited,
+            relatedTypes = relatedTypes)
 
 private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
                         depth: Int, visited: Set[String]): List[ExplainedImpl] =

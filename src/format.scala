@@ -105,6 +105,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: GrepCount        => renderGrepCount(r, ctx)
     case r: Packages         => renderPackages(r, ctx)
     case r: PackageSymbols   => renderPackageSymbols(r, ctx)
+    case r: PackageExplained => renderPackageExplained(r, ctx)
     case r: PackageSummary   => renderPackageSummary(r, ctx)
     case r: ApiSurface       => renderApiSurface(r, ctx)
     case r: RefsTop          => renderRefsTop(r, ctx)
@@ -737,7 +738,11 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       }.mkString("[", ",", "]")
       s""","inherited":$groups"""
     else ""
-    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson$otherJson$totalImplJson$inheritedJson}""")
+    val relatedJson = if r.relatedTypes.nonEmpty then
+      val arr = r.relatedTypes.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
+      s""","relatedTypes":$arr"""
+    else ""
+    println(s"""{"definition":${jsonSymbol(sym, ctx.workspace)},"doc":$docJson,"members":$membersJson,"implementations":$implsJson,"importCount":$importCount$importRefsJson,"companion":$companionJson,"expandedImplementations":$expandedJson$otherJson$totalImplJson$inheritedJson$relatedJson}""")
   } else {
     println(s"Explanation of ${sym.kind.toString.toLowerCase} ${sym.name}$pkg:\n")
     println(s"  Definition: $rel:${sym.line}")
@@ -810,6 +815,15 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
         }
       }
       printExpanded(r.expandedImpls, "    ")
+      println()
+    }
+    if r.relatedTypes.nonEmpty then {
+      println(s"  Related types (${r.relatedTypes.size}):")
+      r.relatedTypes.foreach { s =>
+        val relFile = ctx.workspace.relativize(s.file)
+        val pkg = if s.packageName.nonEmpty then s" (${s.packageName})" else ""
+        println(s"    ${s.kind.toString.toLowerCase.padTo(5, ' ')} ${s.name}$pkg — $relFile:${s.line}")
+      }
       println()
     }
     if !ctx.shallow && !ctx.brief then
@@ -994,6 +1008,35 @@ private def renderPackageSymbols(r: CmdResult.PackageSymbols, ctx: CommandContex
             println(s"    ${s.name.padTo(30, ' ')} ${ctx.workspace.relativize(s.file)}:${s.line}")
         }
         if syms.size > ctx.limit then println(s"    ... and ${syms.size - ctx.limit} more")
+      }
+    }
+  }
+}
+
+private def renderPackageExplained(r: CmdResult.PackageExplained, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then {
+    val typesJson = r.entries.map { e =>
+      val mJson = e.members.map { m =>
+        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"}"""
+      }.mkString("[", ",", "]")
+      s"""{"definition":${jsonSymbol(e.sym, ctx.workspace)},"members":$mJson,"implCount":${e.implCount}}"""
+    }.mkString("[", ",", "]")
+    println(s"""{"package":"${jsonEscape(r.pkg)}","totalSymbols":${r.totalSymbols},"types":$typesJson}""")
+  } else {
+    if r.entries.isEmpty then {
+      println(s"""Package ${r.pkg}: (no types)""")
+    } else {
+      println(s"Package ${r.pkg} (${r.entries.size} types of ${r.totalSymbols} symbols):\n")
+      r.entries.foreach { e =>
+        val rel = ctx.workspace.relativize(e.sym.file)
+        val implSuffix = if e.implCount > 0 then s" (${e.implCount} impls)" else ""
+        println(s"  ${e.sym.kind.toString.toLowerCase} ${e.sym.name}$implSuffix — $rel:${e.sym.line}")
+        println(s"    ${e.sym.signature}")
+        if e.members.nonEmpty then
+          e.members.foreach { m =>
+            println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name}: ${m.signature.take(60)}")
+          }
+        println()
       }
     }
   }
