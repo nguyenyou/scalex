@@ -284,13 +284,25 @@ private def renderIndexStats(r: CmdResult.IndexStats, ctx: CommandContext): Unit
   }
 }
 
+private def renderInlineBody(body: Option[BodyInfo], indent: String): Unit =
+  body.foreach { b =>
+    val bodyLines = b.sourceText.split("\n")
+    bodyLines.zipWithIndex.foreach { case (line, i) =>
+      println(s"$indent${(b.startLine + i).toString.padTo(4, ' ')} | $line")
+    }
+  }
+
+private def jsonMemberBody(m: MemberInfo): String =
+  m.body.map(b => s""","body":"${jsonEscape(b.sourceText)}","bodyStartLine":${b.startLine},"bodyEndLine":${b.endLine}""").getOrElse("")
+
 private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
     val allMembers = r.sections.flatMap { sec =>
       val ownMembers = sec.ownMembers.map { m =>
         val rel = jsonEscape(ctx.workspace.relativize(sec.file).toString)
         val overrideJson = if m.isOverride then ""","isOverride":true""" else ""
-        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(r.symbol)}","ownerKind":"${sec.ownerKind.toString.toLowerCase}","package":"${jsonEscape(sec.packageName)}","inherited":false$overrideJson}"""
+        val bodyJson = m.body.map(b => s""","body":"${jsonEscape(b.sourceText)}","bodyStartLine":${b.startLine},"bodyEndLine":${b.endLine}""").getOrElse("")
+        s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}","file":"$rel","owner":"${jsonEscape(r.symbol)}","ownerKind":"${sec.ownerKind.toString.toLowerCase}","package":"${jsonEscape(sec.packageName)}","inherited":false$overrideJson$bodyJson}"""
       }
       val inheritedMembers = sec.inherited.flatMap { (parentName, parentFile, parentPackage, members) =>
         members.map { m =>
@@ -324,6 +336,7 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}$overrideMarker")
             else
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}$overrideMarker")
+            renderInlineBody(m.body, "      ")
           }
           if sec.ownMembers.size > ctx.limit then println(s"    ... and ${sec.ownMembers.size - ctx.limit} more")
         }
@@ -443,18 +456,59 @@ private def renderSourceBlocks(r: CmdResult.SourceBlocks, ctx: CommandContext): 
   if ctx.jsonOutput then {
     val arr = r.blocks.take(ctx.limit).map { (file, b) =>
       val rel = jsonEscape(ctx.workspace.relativize(file).toString)
-      s"""{"name":"${jsonEscape(b.symbolName)}","owner":"${jsonEscape(b.ownerName)}","file":"$rel","startLine":${b.startLine},"endLine":${b.endLine},"body":"${jsonEscape(b.sourceText)}"}"""
+      val importsJson = if r.showImports then
+        extractImportLines(file).map(imp => s""","imports":"${jsonEscape(imp)}"""").getOrElse("")
+      else ""
+      val contextJson = if r.contextLines > 0 then
+        val lines = try java.nio.file.Files.readAllLines(file).asScala catch { case _: Exception => Seq.empty }
+        val total = lines.size
+        val ctxStart = math.max(1, b.startLine - r.contextLines)
+        val ctxEnd = math.min(total, b.endLine + r.contextLines)
+        val before = (ctxStart until b.startLine).filter(i => i >= 1 && i <= total).map(i => jsonEscape(lines(i - 1)))
+        val after = ((b.endLine + 1) to ctxEnd).filter(i => i >= 1 && i <= total).map(i => jsonEscape(lines(i - 1)))
+        val beforeJson = before.map(l => s""""$l"""").mkString("[", ",", "]")
+        val afterJson = after.map(l => s""""$l"""").mkString("[", ",", "]")
+        s""","contextBefore":$beforeJson,"contextAfter":$afterJson"""
+      else ""
+      s"""{"name":"${jsonEscape(b.symbolName)}","owner":"${jsonEscape(b.ownerName)}","file":"$rel","startLine":${b.startLine},"endLine":${b.endLine},"body":"${jsonEscape(b.sourceText)}"$importsJson$contextJson}"""
     }.mkString("[", ",", "]")
     println(arr)
   } else {
     r.blocks.take(ctx.limit).foreach { (file, b) =>
       val ownerStr = if b.ownerName.nonEmpty then s" — ${b.ownerName}" else ""
       val rel = ctx.workspace.relativize(file)
+      // Imports block
+      if r.showImports then
+        extractImportLines(file).foreach { imp =>
+          println(s"Imports — $rel:")
+          imp.split("\n").foreach(l => println(s"  $l"))
+          println()
+        }
       println(s"Body of ${b.symbolName}$ownerStr — $rel:${b.startLine}:")
+      // Context lines before
+      if r.contextLines > 0 then
+        val lines = try java.nio.file.Files.readAllLines(file).asScala catch { case _: Exception => Seq.empty }
+        val total = lines.size
+        val ctxStart = math.max(1, b.startLine - r.contextLines)
+        (ctxStart until b.startLine).foreach { i =>
+          if i >= 1 && i <= total then
+            println(s"  ${i.toString.padTo(4, ' ')} | ${lines(i - 1)}")
+        }
+        if ctxStart < b.startLine then println("  ---")
       val bodyLines = b.sourceText.split("\n")
       bodyLines.zipWithIndex.foreach { case (line, i) =>
         println(s"  ${(b.startLine + i).toString.padTo(4, ' ')} | $line")
       }
+      // Context lines after
+      if r.contextLines > 0 then
+        val lines = try java.nio.file.Files.readAllLines(file).asScala catch { case _: Exception => Seq.empty }
+        val total = lines.size
+        val ctxEnd = math.min(total, b.endLine + r.contextLines)
+        if ctxEnd > b.endLine then println("  ---")
+        ((b.endLine + 1) to ctxEnd).foreach { i =>
+          if i >= 1 && i <= total then
+            println(s"  ${i.toString.padTo(4, ' ')} | ${lines(i - 1)}")
+        }
       println()
     }
   }
@@ -591,7 +645,8 @@ private def renderOverrideList(r: CmdResult.OverrideList, ctx: CommandContext): 
   if ctx.jsonOutput then {
     val arr = r.results.map { o =>
       val rel = jsonEscape(ctx.workspace.relativize(o.file).toString)
-      s"""{"enclosingClass":"${jsonEscape(o.enclosingClass)}","enclosingKind":"${o.enclosingKind.toString.toLowerCase}","file":"$rel","line":${o.line},"signature":"${jsonEscape(o.signature)}","package":"${jsonEscape(o.packageName)}"}"""
+      val bodyJson = o.body.map(b => s""","body":"${jsonEscape(b.sourceText)}","bodyStartLine":${b.startLine},"bodyEndLine":${b.endLine}""").getOrElse("")
+      s"""{"enclosingClass":"${jsonEscape(o.enclosingClass)}","enclosingKind":"${o.enclosingKind.toString.toLowerCase}","file":"$rel","line":${o.line},"signature":"${jsonEscape(o.signature)}","package":"${jsonEscape(o.packageName)}"$bodyJson}"""
     }.mkString("[", ",", "]")
     println(arr)
   } else {
@@ -601,6 +656,7 @@ private def renderOverrideList(r: CmdResult.OverrideList, ctx: CommandContext): 
       val pkg = if o.packageName.nonEmpty then s" (${o.packageName})" else ""
       println(s"  ${o.enclosingClass}$pkg — $rel:${o.line}")
       println(s"    ${o.signature}")
+      renderInlineBody(o.body, "    ")
     }
   }
 }
@@ -613,7 +669,8 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
     val docJson = r.doc.map(d => s""""${jsonEscape(d)}"""").getOrElse("null")
     val membersJson = r.members.map { m =>
       val overrideJson = if m.isOverride then ""","isOverride":true""" else ""
-      s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"$overrideJson}"""
+      val bodyJson = jsonMemberBody(m)
+      s"""{"name":"${jsonEscape(m.name)}","kind":"${m.kind.toString.toLowerCase}","line":${m.line},"signature":"${jsonEscape(m.signature)}"$overrideJson$bodyJson}"""
     }.mkString("[", ",", "]")
     val implsJson = r.impls.map(s => jsonSymbol(s, ctx.workspace)).mkString("[", ",", "]")
     val primaryKeys = r.members.map(m => (name = m.name, kind = m.kind)).toSet
@@ -673,6 +730,7 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
         val label = if ctx.verbose then m.signature else m.name
         val overrideMarker = if m.isOverride then "  [override]" else ""
         println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} $label$overrideMarker")
+        renderInlineBody(m.body, "      ")
       }
       println()
     }

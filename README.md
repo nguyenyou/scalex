@@ -195,10 +195,14 @@ scalex impl UserService                    # Who extends this?
 scalex imports UserService                 # Who imports this?
 scalex grep "def.*process" --no-tests      # Regex content search
 scalex body findUser --in UserServiceLive  # Extract method body without Read
+scalex body findUser --in UserServiceLive -C 3  # Body with 3 context lines
+scalex body findUser --in UserServiceLive --imports  # Body with file imports
+scalex grep "ctx.settings" --in Run        # Grep within a class body
 
 # Refine
 scalex members Signal                      # Signatures by default + companion hint
 scalex members Signal --brief              # Names only
+scalex members Signal --body --max-lines 10  # Inline bodies ≤ 10 lines
 scalex refs Cache --strict                 # No underscore/dollar false positives
 scalex deps Phase --depth 2                # Transitive dependencies
 ```

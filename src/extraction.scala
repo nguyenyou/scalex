@@ -95,6 +95,31 @@ def extractImports(tree: Tree): (imports: List[String], aliases: Map[String, Str
   visit(tree)
   (buf.toList, aliases.toMap)
 
+// ── Import line extraction ───────────────────────────────────────────────────
+
+def extractImportLines(file: Path): Option[String] =
+  val lines = try Files.readAllLines(file).asScala.toArray catch
+    case _: java.io.IOException => return None
+  parseFile(file) match
+    case None => None
+    case Some(tree) =>
+      val importRanges = mutable.ListBuffer.empty[(startLine: Int, endLine: Int)]
+      // Only collect top-level imports — use .stats (not .children which wraps in PkgBody)
+      def collectImports(stats: List[Stat]): Unit =
+        stats.foreach {
+          case i: Import =>
+            importRanges += ((startLine = i.pos.startLine, endLine = i.pos.endLine))
+          case p: Pkg => collectImports(p.stats)
+          case _ =>
+        }
+      collectImports(tree.stats)
+      if importRanges.isEmpty then None
+      else
+        val importText = importRanges.flatMap { (sl, el) =>
+          (sl to el).filter(_ < lines.length).map(lines(_))
+        }.mkString("\n")
+        Some(importText)
+
 // ── Shared raw symbol extraction ─────────────────────────────────────────────
 
 case class RawSymbol(name: String, kind: SymbolKind, line: Int, parents: List[String] = Nil, typeParamParents: List[String] = Nil, signature: String = "", annotations: List[String] = Nil)

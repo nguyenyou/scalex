@@ -100,6 +100,15 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
   (inherited = result.toList, parentMemberKeys = allParentKeys.toSet)
 }
 
+// ── Body enrichment (shared by members, overrides, explain) ─────────────────
+
+def enrichMemberWithBody(m: MemberInfo, file: java.nio.file.Path, ownerName: String, maxBodyLines: Int): MemberInfo =
+  val bodies = extractBody(file, m.name, Some(ownerName))
+  bodies.headOption match
+    case Some(b) if maxBodyLines <= 0 || (b.endLine - b.startLine + 1) <= maxBodyLines =>
+      m.copy(body = Some(b))
+    case _ => m
+
 // ── Ranking / sorting ────────────────────────────────────────────────────────
 
 def rankSymbols(symbols: List[SymbolInfo], workspace: Path): List[SymbolInfo] =

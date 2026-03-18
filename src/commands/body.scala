@@ -33,7 +33,7 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
             extractBody(f, memberName, Some(ownerName)).map(b => (file = f, body = b))
           }
           if dottedBlocks.nonEmpty then
-            return CmdResult.SourceBlocks(memberName, dottedBlocks)
+            return CmdResult.SourceBlocks(memberName, dottedBlocks, ctx.contextLines, ctx.showImports)
 
       if blocks.isEmpty then
         val msg = ctx.inOwner match
@@ -41,4 +41,4 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
           case None => s"""No body found for "$symbol""""
         CmdResult.NotFound(msg, mkNotFoundWithSuggestions(symbol, ctx, "body"))
       else
-        CmdResult.SourceBlocks(symbol, blocks)
+        CmdResult.SourceBlocks(symbol, blocks, ctx.contextLines, ctx.showImports)

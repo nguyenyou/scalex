@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+- `members --body` / `explain --body` — inline method bodies into member listings; eliminates N follow-up `body --in` calls (#180)
+- `--max-lines N` flag — only inline bodies ≤ N lines (0 = unlimited); works with `members`, `overrides`, and `explain` (#180)
+- `body -C N` — show N context lines above and below the extracted body span (#180)
+- `body --imports` — prepend the file's top-level import block to body output (#180)
+- `overrides --body` — show each override's source body inline (#180)
+- `grep --in <symbol>` — scope grep to a specific class or method body; supports `Owner.member` dot syntax (#180)
+
 ## [1.24.0] — 2026-03-18
 
 ### Improved
