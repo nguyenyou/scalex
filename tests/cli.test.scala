@@ -1537,6 +1537,22 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("No body found"), s"Should say not found: $output")
   }
 
+  test("body --in not-found suggestions are scoped to owner members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "nonExistent" doesn't exist in UserServiceLive — suggestions should list
+    // UserServiceLive's members, not unrelated global symbols
+    val output = captureOut {
+      runCommand("body", List("nonExistent"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive")))
+    }
+    assert(output.contains("No body found"), s"Should say not found: $output")
+    // Suggestions should mention members of UserServiceLive (findUser, createUser)
+    assert(output.contains("in UserServiceLive"), s"Suggestions should be scoped to owner: $output")
+    // Should NOT suggest unrelated symbols from other packages
+    assert(!output.contains("com.other"), s"Should NOT suggest unrelated symbols: $output")
+  }
+
   test("body dotted syntax not used when --in is already set") {
     val idx = WorkspaceIndex(workspace)
     idx.index()

@@ -4,6 +4,7 @@
 
 ### Fixed
 - `body` command now shows signature for abstract defs instead of "No body found" (#208)
+- `body --in` "Did you mean" suggestions now scoped to owner's members instead of unrelated global symbols (#209)
 
 ## [1.30.0] — 2026-03-18
 
