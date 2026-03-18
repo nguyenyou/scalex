@@ -14,7 +14,7 @@ object GraphLayout:
     val cycleRemovalResult = CycleRemover.removeCycles(graph)
     val (layering, _) = new LayeringCalculator[V].assignLayers(cycleRemovalResult)
     val reorderedLayering = LayerOrderingCalculator.reorder(layering)
-    val layouter = new Layouter(ToStringVertexRenderingStrategy, layoutPrefs.vertical)
+    val layouter = new Layouter(vertexRenderingStrategy, layoutPrefs.vertical)
     var drawing = layouter.layout(reorderedLayering)
     if layoutPrefs.removeKinks then drawing = KinkRemover.removeKinks(drawing)
     if layoutPrefs.elevateEdges then drawing = EdgeElevator.elevateEdges(drawing)
