@@ -678,7 +678,7 @@ class CliSuite extends ScalexTestBase:
     assertEquals(executeCount, 2, s"execute should appear twice (own + companion): $output")
     assertEquals(validateCount, 2, s"validate should appear twice (own + companion): $output")
     // Class section should NOT list create as own (ownerKind "class")
-    assert(!output.contains("\"ownerKind\":\"class\"") || !output.matches(""".*"name":"create".*"ownerKind":"class".*"""),
+    assert(!output.contains(""""name":"create","kind":"def","line":24,"signature":"def create(steps: String*): Pipeline","file":"src/main/scala/com/example/Pipeline.scala","owner":"Pipeline","ownerKind":"class""""),
       s"create should not be owned by class: $output")
   }
 

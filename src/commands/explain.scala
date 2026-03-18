@@ -66,7 +66,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val inherited = inheritResult.inherited
         val parentKeys = inheritResult.parentMemberKeys
         val members = if typeKinds.contains(sym.kind) then
-          extractMembers(sym.file, simpleName).map { m =>
+          extractMembers(sym.file, simpleName, Some(sym.kind)).map { m =>
             val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
             if ctx.withBody then enrichMemberWithBody(m2, sym.file, simpleName, ctx.maxBodyLines) else m2
           }.sortBy(memberKindRank).take(ctx.membersLimit)
@@ -77,7 +77,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         if ctx.brief then
           // Brief mode: definition + top 3 members only
           val briefMembers = if typeKinds.contains(sym.kind) then
-            extractMembers(sym.file, simpleName).sortBy(memberKindRank).take(3)
+            extractMembers(sym.file, simpleName, Some(sym.kind)).sortBy(memberKindRank).take(3)
           else Nil
           CmdResult.Explanation(sym, None, briefMembers, Nil, Nil, otherMatches = otherMatches)
         else if ctx.shallow then
@@ -105,7 +105,7 @@ private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
       val key = s"${impl.packageName}.${impl.name}".toLowerCase
       if visited.contains(key) then ExplainedImpl(impl, Nil, Nil)
       else
-        val members = extractMembers(impl.file, impl.name).sortBy(memberKindRank).take(ctx.membersLimit)
+        val members = extractMembers(impl.file, impl.name, Some(impl.kind)).sortBy(memberKindRank).take(ctx.membersLimit)
         val subImpls = filterSymbols(ctx.idx.findImplementations(impl.name), ctx).take(ctx.implLimit)
         val expanded = expandImpls(subImpls, ctx, depth + 1, visited + key)
         ExplainedImpl(impl, members, expanded)
