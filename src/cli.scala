@@ -314,6 +314,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
       val ctx = flagsToContext(f, dummyIdx, workspace)
       val result = cmdGraph(graphArgs, ctx)
       render(result, ctx)
+      Timings.report()
 
     case cmd :: rest =>
       val (workspace, cmdRest) = f.explicitWorkspace match

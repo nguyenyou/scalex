@@ -3,17 +3,17 @@
 def cmdGraph(args: List[String], ctx: CommandContext): CmdResult =
   args match
     case "--render" :: rest =>
-      val (flags, edgeParts) = parseGraphFlags(rest)
-      val edgeListStr = edgeParts.mkString(" ")
+      val parsed = parseGraphFlags(rest)
+      val edgeListStr = parsed.remaining.mkString(" ")
       if edgeListStr.isEmpty then
         CmdResult.UsageError("Usage: scalex graph --render \"V1->V2, V2->V3\"")
       else
-        renderGraphCmd(edgeListStr, flags)
+        renderGraphCmd(edgeListStr, parsed.flags)
     case "--parse" :: rest =>
-      val (flags, _) = parseGraphFlags(rest)
+      val parsed = parseGraphFlags(rest)
       val input = scala.io.Source.stdin.getLines().mkString("\n")
       if input.trim.isEmpty then CmdResult.UsageError("No input provided on stdin for --parse")
-      else parseGraphCmd(input, flags)
+      else parseGraphCmd(input, parsed.flags)
     case _ =>
       CmdResult.UsageError(
         """Usage: scalex graph --render "V1->V2, V2->V3" [--unicode|--no-unicode] [--vertical|--horizontal] [--rounded] [--double]
@@ -27,7 +27,9 @@ private case class GraphCmdFlags(
   json: Boolean = false,
 )
 
-private def parseGraphFlags(args: List[String]): (GraphCmdFlags, List[String]) =
+private case class ParsedGraphEdges(vertices: Set[String], edges: List[(String, String)])
+
+private def parseGraphFlags(args: List[String]): (flags: GraphCmdFlags, remaining: List[String]) =
   var flags = GraphCmdFlags()
   val remaining = scala.collection.mutable.ListBuffer[String]()
   var i = 0
@@ -42,12 +44,12 @@ private def parseGraphFlags(args: List[String]): (GraphCmdFlags, List[String]) =
       case "--json" => flags = flags.copy(json = true)
       case other => remaining += other
     i += 1
-  (flags, remaining.toList)
+  (flags = flags, remaining = remaining.toList)
 
 private def renderGraphCmd(edgeListStr: String, flags: GraphCmdFlags): CmdResult =
   try
-    val (vertices, edges) = parseGraphEdgeList(edgeListStr)
-    val graph = asciiGraph.Graph(vertices, edges)
+    val parsed = parseGraphEdgeList(edgeListStr)
+    val graph = asciiGraph.Graph(parsed.vertices, parsed.edges)
     val prefs = asciiGraph.LayoutPrefsImpl(
       unicode = flags.unicode,
       vertical = flags.vertical,
@@ -55,7 +57,8 @@ private def renderGraphCmd(edgeListStr: String, flags: GraphCmdFlags): CmdResult
       doubleVertices = flags.double,
     )
     val rendered = asciiGraph.GraphLayout.renderGraph(graph, layoutPrefs = prefs)
-    CmdResult.GraphOutput(rendered)
+    if flags.json then CmdResult.GraphOutput(s"""{"rendered":"${jsonEscape(rendered)}"}""")
+    else CmdResult.GraphOutput(rendered)
   catch
     case e: Exception =>
       CmdResult.UsageError(s"Error rendering graph: ${e.getMessage}")
@@ -93,7 +96,7 @@ private def parseGraphCmd(input: String, flags: GraphCmdFlags): CmdResult =
     case e: Exception =>
       CmdResult.UsageError(s"Error parsing diagram: ${e.getMessage}")
 
-private def parseGraphEdgeList(s: String): (Set[String], List[(String, String)]) =
+private def parseGraphEdgeList(s: String): ParsedGraphEdges =
   var vertices = Set[String]()
   var edges = List[(String, String)]()
   for part <- s.split(",").map(_.trim).filter(_.nonEmpty) do
@@ -104,4 +107,4 @@ private def parseGraphEdgeList(s: String): (Set[String], List[(String, String)])
       edges = edges :+ (from, to)
     else
       vertices += part.trim
-  (vertices, edges)
+  ParsedGraphEdges(vertices, edges)
