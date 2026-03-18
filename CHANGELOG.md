@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Fuzzy fallback now deprioritizes `java.*`/`javax.*`/`scala.*` packages — project-specific types rank above standard library stubs (#185)
+
 ## [1.25.0] — 2026-03-18
 
 ### Added

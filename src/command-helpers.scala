@@ -118,8 +118,14 @@ def rankSymbols(symbols: List[SymbolInfo], workspace: Path): List[SymbolInfo] =
       case SymbolKind.Type | SymbolKind.Given => 1
       case _ => 2
     val testRank = if isTestFile(s.file, workspace) then 1 else 0
+    // Deprioritize java.*/javax.*/scala.* standard library packages
+    val pkg = s.packageName.toLowerCase
+    val stdlibRank =
+      if pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg == "java" || pkg == "javax" then 2
+      else if pkg.startsWith("scala.") || pkg == "scala" then 1
+      else 0
     val pathLen = workspace.relativize(s.file).toString.length
-    (kindRank = kindRank, testRank = testRank, pathLen = pathLen)
+    (kindRank = kindRank, testRank = testRank, stdlibRank = stdlibRank, pathLen = pathLen)
   }
 
 def memberKindRank(m: MemberInfo): Int = m.kind match

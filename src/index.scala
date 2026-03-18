@@ -453,17 +453,23 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       else if lower.endsWith(n) && n.length >= 3 && n.length > lower.length / 2 then reverseContains += s
       else if camelCaseMatch(lower, s.name) then fuzzy += s
     }
-    def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, importRank: Int, pathLen: Int) =
+    def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, stdlibRank: Int, importRank: Int, pathLen: Int) =
       val kindRank = s.kind match
         case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => 0
         case SymbolKind.Object => 1
         case SymbolKind.Def | SymbolKind.Val | SymbolKind.Type => 2
         case _ => 3
       val testRank = if isTestFile(s.file, workspace) then 1 else 0
+      // Deprioritize java.*/javax.*/scala.* standard library packages
+      val pkg = s.packageName.toLowerCase
+      val stdlibRank =
+        if pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg == "java" || pkg == "javax" then 2
+        else if pkg.startsWith("scala.") || pkg == "scala" then 1
+        else 0
       // Symbols in heavily-imported types rank higher (lower importRank = better)
       val importRank = -symbolImportRank.getOrElse(s.name.toLowerCase, 0)
       val pathLen = s.file.toString.length
-      (kindRank, testRank, importRank, pathLen)
+      (kindRank, testRank, stdlibRank, importRank, pathLen)
     exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ reverseContains.toList.sortBy(searchRank) ++ fuzzy.sortBy(_.name.length).toList
 
   def fileSymbols(path: String): List[SymbolInfo] =
