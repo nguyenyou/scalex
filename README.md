@@ -132,7 +132,7 @@ Installs the binary + skill (teaches Claude when and how to use scalex) in one s
 
 Then try:
 
-> *"use scalex to explore how Signal propagation works in this codebase"*
+> *"use scalex to explore how authentication works in this codebase"*
 
 ### Other AI agents / manual install
 
