@@ -1,6 +1,6 @@
 ---
 name: benchmark
-description: "Run scalex performance benchmarks, profiling, and timing analysis. Use this skill whenever the user asks to benchmark scalex, measure performance, profile index/query times, compare before/after performance of a change, investigate bottlenecks, or mentions \"benchmark\", \"perf\", \"how fast\", \"timing\", \"hyperfine\", \"profile\", \"flame graph\", \"profiling\", \"--timings\", \"slow\", \"bottleneck\", \"regression\". Also use proactively after implementing performance improvements to verify gains. Covers 5 layers: built-in --timings, hyperfine benchmarks, async-profiler flame graphs, JFR recording, and microbenchmarks."
+description: "Run scalex performance benchmarks, profiling, and timing analysis. Use this skill whenever the user asks to benchmark scalex, measure performance, profile index/query times, compare before/after performance of a change, investigate bottlenecks, or mentions \"benchmark\", \"perf\", \"how fast\", \"timing\", \"hyperfine\", \"profile\", \"flame graph\", \"profiling\", \"--timings\", \"slow\", \"bottleneck\", \"regression\", \"memory\", \"heap\", \"GC\", \"allocation\". Also use proactively after implementing performance improvements to verify gains. Covers 6 layers: built-in --timings, hyperfine benchmarks, async-profiler flame graphs, JFR recording, microbenchmarks, and memory profiling."
 ---
 
 ## Overview
@@ -14,6 +14,7 @@ Scalex has a multi-layered profiling and benchmarking system. Pick the right lay
 | 3. async-profiler | `profiling/profile.sh` | Deep CPU/alloc/lock flame graphs to find hotspots | JVM only |
 | 4. JFR | `profiling/scalex.jfc` | GC pressure, file I/O patterns, thread utilization | JVM only |
 | 5. Microbenchmarks | `src/bench.scala` | Isolate per-function cost with warmup + statistics | JVM only |
+| 6. Memory profiling | `bench.sh memory` | Heap usage, GC pressure, peak memory across scenarios | JVM only |
 
 ## Decision guide
 
@@ -28,6 +29,10 @@ Scalex has a multi-layered profiling and benchmarking system. Pick the right lay
 **"Is there GC pressure?"** → JFR (Layer 4)
 
 **"How fast is extractSymbols on one file?"** → Microbenchmark (Layer 5)
+
+**"How much memory does indexing use?"** → Memory profiling (Layer 6)
+
+**"Is there a memory leak or GC regression?"** → Memory profiling before/after (Layer 6)
 
 ---
 
@@ -99,6 +104,7 @@ Reproducible, statistical benchmarks using [hyperfine](https://github.com/sharkd
 .claude/skills/benchmark/scripts/bench.sh query
 .claude/skills/benchmark/scripts/bench.sh diverse    # miss, heavy refs, fuzzy, grep, hierarchy
 .claude/skills/benchmark/scripts/bench.sh timings    # --timings output for cold/warm/refs
+.claude/skills/benchmark/scripts/bench.sh memory     # heap usage, GC pressure (JVM only)
 
 # Custom runs/binary
 BENCH_RUNS=10 SCALEX_BIN=./target/scalex .claude/skills/benchmark/scripts/bench.sh
@@ -236,6 +242,90 @@ scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3 --w
 | `index-cold` | Full cold index including map building |
 
 Reports: mean, median, p99, stddev, min, max per benchmark.
+
+---
+
+## Layer 6: Memory profiling (`bench.sh memory`)
+
+Measures heap usage, GC pressure, and peak memory across three scenarios: cold index (full parse), warm index (cache load), and refs query. Uses JVM GC logging via `-Xlog:gc*` — requires scala-cli (JVM mode), not native binary.
+
+### Running
+
+```bash
+# Full memory profile (cold + warm + refs)
+.claude/skills/benchmark/scripts/bench.sh memory
+```
+
+No prerequisites beyond scala-cli. Does not require hyperfine or native binary.
+
+### Output
+
+Reports per-scenario: phase timings (from `--timings`), then memory stats:
+
+```
+--- Cold index (full parse, ~17.7k files) ---
+  git-ls-files            60.7 ms  ( 1%)
+  parse                 5576.5 ms  (94%)
+  cache-save             228.7 ms  ( 4%)
+  total                 5952.2 ms
+
+  Peak pre-GC heap:        790 MB
+  Heap at exit (used):     676 MB
+  Heap at exit (committed): 1184 MB
+  GC pauses:               34
+  Total GC pause time:     185.3 ms
+```
+
+Ends with a summary table:
+
+```
+=== Memory Summary ===
+
+Scenario             Peak Heap      Exit Used    Exit Commit     GC #
+--------             ---------      ---------    -----------     ----
+Cold index              790 MB       676.2 MB      1184.0 MB       34
+Warm index              256 MB       271.8 MB       584.0 MB        2
+refs Phase               53 MB        29.7 MB        56.0 MB        0
+```
+
+### Reading the output
+
+- **Peak pre-GC heap**: Highest live heap before any GC — the true high-water mark. This is the number that determines minimum `-Xmx` for constrained environments.
+- **Heap at exit (used)**: Retained heap at process exit — the steady-state footprint of the loaded index + results.
+- **Heap at exit (committed)**: OS-committed memory — what the JVM actually reserved. Higher than "used" because G1 keeps headroom.
+- **GC pauses**: Number of young-gen collections. High count during cold index is normal (Scalameta ASTs are short-lived).
+- **Total GC pause time**: Sum of all GC pauses. Should be small relative to wall time (<5%).
+
+### What to watch for
+
+- **Cold peak > 1 GB**: `parallelStream` is creating too many concurrent ASTs. Consider batching files in chunks.
+- **Warm used > 400 MB**: Index deserialization is holding too much data. Check if lazy maps are working.
+- **Refs used > 100 MB**: Text search is accumulating results. Check if bloom filtering is effective.
+- **GC time > 10% of wall time**: GC pressure is impacting performance. Look at allocation hotspots (async-profiler alloc, Layer 3).
+
+### Baseline ranges (scala3 corpus, 17.7k files, ~38k symbols)
+
+| Scenario | Peak Heap | Exit Used | GC Pauses |
+|----------|-----------|-----------|-----------|
+| Cold index | 700-900 MB | 600-700 MB | 30-70 |
+| Warm index | 200-300 MB | 250-300 MB | 1-3 |
+| refs query | 30-60 MB | 25-35 MB | 0-1 |
+
+### Ad-hoc memory profiling
+
+For one-off measurements without the script:
+
+```bash
+# Run any scalex command with GC logging to a temp file
+scala-cli run src/ \
+  --java-opt "-Xlog:gc*=info:file=/tmp/scalex-gc.log" \
+  -- overview benchmark/scala3
+
+# Check peak heap
+grep -o '[0-9]*M->' /tmp/scalex-gc.log | sed 's/M->//' | sort -n | tail -1
+# Check exit heap
+grep "garbage-first" /tmp/scalex-gc.log | tail -1
+```
 
 ---
 
