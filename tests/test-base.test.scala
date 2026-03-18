@@ -374,6 +374,17 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    // #209: Trait with short member names for suggestion ranking tests
+    writeFile("src/main/scala/com/example/ShortNames.scala",
+      """package com.example
+        |
+        |trait ShortNames {
+        |  def e(): Unit
+        |  def execute(): Unit
+        |  def evaluate(): Unit
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")
