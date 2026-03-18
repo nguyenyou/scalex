@@ -148,6 +148,7 @@ When adding or changing commands/flags in `src/cli.scala`:
 
 - **Protected main branch**: Cannot push directly to main — all changes require a PR
 - **Zero warnings policy**: Before creating a PR, run `scala-cli compile src/ 2>&1 | grep -i warn` and verify no output. Do not ship compiler warnings.
+- **Zero deprecations policy**: Also verify with `scala-cli compile --scalac-option "-deprecation" src/ 2>&1 | grep -i warn`. Do not use deprecated APIs — find and use the replacement immediately.
 
 - **Guava group ID**: `com.google.guava:guava`, NOT `com.google.common:guava`
 - **GraalVM native image**: Guava needs `--initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies` (see `build-native.sh`)
