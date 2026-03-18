@@ -52,42 +52,32 @@ What if we took the fast parts of a language server — source-level indexing �
 
 ## How It Works
 
-Here's the architecture:
+Here's the architecture (generated with `scalex graph --render`):
 
+<!-- scalex graph --render "scalex CLI->WorkspaceIndex, WorkspaceIndex->git ls-files, WorkspaceIndex->Scalameta AST, WorkspaceIndex->.scalex/index.bin" -->
 ```
-                         ┌─────────────────┐
-                         │   scalex CLI    │
-                         │                 │
-                         │  search · def   │
-                         │  impl · refs    │
-                         │  imports · file │
-                         │  batch          │
-                         └────────┬────────┘
-                                  │
-                         ┌────────▼────────┐
-                         │  WorkspaceIndex │
-                         │                 │
-                         │  symbolsByName  │  ← lazy: O(1) def lookup
-                         │  parentIndex    │  ← lazy: trait → [implementors]
-                         │  annotationIdx  │  ← lazy: annotation → [symbols]
-                         │  filesByPath    │  ← lazy: file → [symbols]
-                         │  packages       │  ← lazy: all package names
-                         │  indexedFiles   │  ← per-file bloom filters
-                         └────────┬────────┘
-                                  │
-              ┌───────────────────┼───────────────────┐
-              │                   │                   │
-     ┌────────▼───────┐ ┌─────────▼──────┐ ┌──────────▼─────┐
-     │  Git Discovery │ │  Scalameta     │ │  Persistence   │
-     │                │ │  Parser        │ │                │
-     │  git ls-files  │ │                │ │  .scalex/      │
-     │  --stage       │ │  Source → AST  │ │  index.bin     │
-     │                │ │  → SymbolInfo  │ │                │
-     │  Returns:      │ │  → BloomFilter │ │  Binary format │
-     │  path + OID    │ │  → imports     │ │  + string      │
-     │  per file      │ │  → parents     │ │  interning     │
-     └────────────────┘ └────────────────┘ └────────────────┘
+                   ┌──────────┐
+                   │scalex CLI│
+                   └─────┬────┘
+                         │
+                         v
+                 ┌──────────────┐
+                 │WorkspaceIndex│
+                 └───┬────┬──┬──┘
+                     │    │  │
+        ┌────────────┘    │  └──────────────┐
+        │                 │                 │
+        v                 v                 v
+ ┌─────────────┐ ┌─────────────────┐ ┌────────────┐
+ │Scalameta AST│ │.scalex/index.bin│ │git ls-files│
+ └─────────────┘ └─────────────────┘ └────────────┘
 ```
+
+- **scalex CLI** — 31 commands: search, def, impl, refs, imports, members, graph, ...
+- **WorkspaceIndex** — lazy indexes: symbolsByName, parentIndex, filesByPath, bloom filters
+- **git ls-files** — `--stage` returns path + OID per tracked file (change detection)
+- **Scalameta AST** — Source → AST → SymbolInfo, BloomFilter, imports, parents
+- **.scalex/index.bin** — binary cache with string interning (skip unchanged files)
 
 ### Pipeline
 
