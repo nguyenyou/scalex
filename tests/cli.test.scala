@@ -539,6 +539,7 @@ class CliSuite extends ScalexTestBase:
     val output = out.toString
     assert(output.contains("Package dependencies"), s"Should show package dependencies section: $output")
     assert(output.contains("Hub types"), s"Should show hub types section: $output")
+    assert(!output.contains("Most extended"), s"Architecture mode should not show 'Most extended' (hub types supersedes it): $output")
   }
 
   test("overview --architecture JSON includes packageDependencies and hubTypes") {
@@ -552,6 +553,7 @@ class CliSuite extends ScalexTestBase:
     assert(output.startsWith("{"), s"JSON should start with brace: $output")
     assert(output.contains("\"packageDependencies\""), s"JSON should contain packageDependencies: $output")
     assert(output.contains("\"hubTypes\""), s"JSON should contain hubTypes: $output")
+    assert(!output.contains("\"mostExtended\""), s"Architecture JSON should not contain mostExtended (hub types supersedes it): $output")
   }
 
   // ── members JSON output ──────────────────────────────────────────────

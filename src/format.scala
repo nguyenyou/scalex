@@ -404,7 +404,7 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
       }.mkString("{", ",", "}")
       val hubJson = d.hubTypes.map((n, c, sig) => s"""{"name":"${jsonEscape(n)}","score":$c,"signature":"${jsonEscape(sig)}"}""").mkString("[", ",", "]")
       val focusPkgJson = d.focusPackage.map(p => s""","focusPackage":"${jsonEscape(p)}"""").getOrElse("")
-      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson,"packageDependencies":$depsJson,"hubTypes":$hubJson$focusPkgJson}""")
+      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"packageDependencies":$depsJson,"hubTypes":$hubJson$focusPkgJson}""")
     } else {
       println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
     }
@@ -418,10 +418,12 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     d.topPackages.foreach { (pkg, count) =>
       println(s"  ${pkg.padTo(50, ' ')} $count")
     }
-    println(s"\nMost extended (by package spread, then implementation count):")
-    d.mostExtended.foreach { (name, count, sig) =>
-      val sigHint = if sig.nonEmpty then s"  $sig" else ""
-      println(s"  ${name.padTo(30, ' ')} $count impl$sigHint")
+    if !d.hasArchitecture then {
+      println(s"\nMost extended (by package spread, then implementation count):")
+      d.mostExtended.foreach { (name, count, sig) =>
+        val sigHint = if sig.nonEmpty then s"  $sig" else ""
+        println(s"  ${name.padTo(30, ' ')} $count impl$sigHint")
+      }
     }
     if d.hasArchitecture then {
       d.focusPackage match {
