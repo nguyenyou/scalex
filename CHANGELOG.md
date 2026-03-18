@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+## [1.31.0] — 2026-03-18
+
 ### Fixed
 - `body` command now shows signature for abstract defs instead of "No body found" (#208)
 - `body --in` "Did you mean" suggestions now scoped to owner's members instead of unrelated global symbols (#209)
+
+### Changed
+- SKILL.md: `graph` command no longer auto-triggers — only runs when user explicitly asks to draw/render a graph
 
 ## [1.30.0] — 2026-03-18
 

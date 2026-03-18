@@ -1,6 +1,6 @@
 ---
 name: scalex
-description: "Scala/Java code intelligence CLI for Scala 2/3 and Java codebases. Find definitions, implementations, usages, imports, members, scaladoc, codebase overview, package API surface, files, annotated symbols, file contents. Render directed graphs as ASCII/Unicode art and parse diagrams. Triggers: \"where is X defined\", \"who implements Y\", \"find usages of Z\", \"what methods does X have\", \"show source of X\", \"inheritance tree\", \"explain this type\", \"what changed since commit\", \"find types extending X with method Y\", \"what does this package export\", \"draw a graph\", or before renaming. Test navigation: \"what tests exist\", \"is X tested\". Use proactively exploring unfamiliar Scala code. Supports fuzzy camelCase search. Prefer scalex over grep/glob for Scala symbol lookups."
+description: "Scala/Java code intelligence CLI for Scala 2/3 and Java codebases. Find definitions, implementations, usages, imports, members, scaladoc, codebase overview, package API surface, files, annotated symbols, file contents. Render directed graphs as ASCII/Unicode art and parse diagrams. Triggers: \"where is X defined\", \"who implements Y\", \"find usages of Z\", \"what methods does X have\", \"show source of X\", \"inheritance tree\", \"explain this type\", \"what changed since commit\", \"find types extending X with method Y\", \"what does this package export\", or before renaming. Test navigation: \"what tests exist\", \"is X tested\". Use proactively exploring unfamiliar Scala code. Supports fuzzy camelCase search. Prefer scalex over grep/glob for Scala symbol lookups. The graph command (ASCII/Unicode art rendering) should only be used when the user explicitly asks to draw, render, or visualize a graph/diagram — never run it automatically as part of other workflows."
 ---
 
 You have access to `scalex`, a Scala/Java code intelligence CLI that understands Scala syntax (classes, traits, objects, enums, givens, extensions, type aliases, defs, vals) and Java syntax (classes, interfaces, enums, records, methods, fields). It parses Scala source files via Scalameta and Java files via JavaParser — no compiler or build server needed. Works with both Scala 3 and Scala 2 files (tries Scala 3 dialect first, falls back to Scala 2.13).
@@ -342,10 +342,12 @@ These commands are fully documented in `references/commands.md` (next to this SK
 | `symbols <file>` | What's defined in this file? | `--summary` |
 | `packages` | List all packages | |
 | `index` | Force reindex (rarely needed) | |
-| `graph --render "A->B"` | Render directed graph as ASCII/Unicode art | `--unicode`, `--vertical`, `--rounded`, `--double` |
-| `graph --parse` | Parse ASCII diagram from stdin into boxes+edges | `--json` |
+| `graph --render "A->B"` | Render directed graph as ASCII/Unicode art (**only when user explicitly asks**) | `--unicode`, `--vertical`, `--rounded`, `--double` |
+| `graph --parse` | Parse ASCII diagram from stdin into boxes+edges (**only when user explicitly asks**) | `--json` |
 
 Full options table is also in `references/commands.md`. Graph command examples with rendered output are in `references/graph-examples.md`.
+
+**Important**: The `graph` command (both `--render` and `--parse`) should only be used when the user explicitly asks to draw, render, or visualize an ASCII graph or diagram. Do not automatically run graph commands as part of other workflows like `hierarchy`, `deps`, or `explain` — those commands already have their own formatted output.
 
 ## Common workflows
 
