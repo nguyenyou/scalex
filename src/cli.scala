@@ -32,12 +32,14 @@ case class ParsedFlags(
   takesFilter: Option[String] = None, shallow: Boolean = false, noDoc: Boolean = false,
   excludePath: Option[String] = None, topN: Option[Int] = None, summaryMode: Boolean = false,
   timingsEnabled: Boolean = false,
+  withBody: Boolean = false, maxBodyLines: Int = 0,
+  showImports: Boolean = false,
   cleanArgs: List[String] = Nil,
 )
 
 private val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
                          "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
-                         "--members-limit", "--used-by", "--returns", "--takes", "--top")
+                         "--members-limit", "--used-by", "--returns", "--takes", "--top", "--max-lines")
 
 def parseFlags(argList: List[String]): ParsedFlags =
   val limit = argList.indexOf("--limit") match
@@ -129,6 +131,11 @@ def parseFlags(argList: List[String]): ParsedFlags =
     case i => argList.lift(i + 1).flatMap(_.toIntOption)
   val summaryMode = argList.contains("--summary")
   val timingsEnabled = argList.contains("--timings")
+  val withBody = argList.contains("--body") || argList.contains("--with-bodies")
+  val maxBodyLines: Int = argList.indexOf("--max-lines") match
+    case -1 => 0
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
+  val showImports = argList.contains("--imports")
 
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
@@ -140,7 +147,7 @@ def parseFlags(argList: List[String]): ParsedFlags =
     explicitWorkspace, inOwner, ofTrait, implLimit, goUp, goDown, maxDepth, inherited, architecture,
     hasMethodFilter, extendsFilter, bodyContainsFilter, focusPackage, expandDepth, membersLimit,
     brief, strict, usedByFilter, returnsFilter, takesFilter, shallow, noDoc, excludePath, topN,
-    summaryMode, timingsEnabled, cleanArgs)
+    summaryMode, timingsEnabled, withBody, maxBodyLines, showImports, cleanArgs)
 
 private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
                            batchMode: Boolean = false, effectiveNoTests: Option[Boolean] = None): CommandContext =
@@ -157,7 +164,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
     bodyContainsFilter = f.bodyContainsFilter, expandDepth = f.expandDepth,
     membersLimit = f.membersLimit, brief = f.brief, strict = f.strict,
     usedByFilter = f.usedByFilter, returnsFilter = f.returnsFilter, takesFilter = f.takesFilter,
-    shallow = f.shallow, noDoc = f.noDoc, excludePath = f.excludePath, summaryMode = f.summaryMode)
+    shallow = f.shallow, noDoc = f.noDoc, excludePath = f.excludePath, summaryMode = f.summaryMode,
+    withBody = f.withBody, maxBodyLines = f.maxBodyLines, showImports = f.showImports)
 
 @main def main(args: String*): Unit =
   val f = parseFlags(args.toList)
@@ -216,7 +224,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |  --include-tests       Override --no-tests default for overview command
         |  --path PREFIX         Restrict results to files under PREFIX (e.g. compiler/src/)
         |  --exclude-path PREFIX Exclude files under PREFIX (e.g. --exclude-path sbt-test/)
-        |  -C N                  Show N context lines around each reference (refs, grep)
+        |  -C N                  Show N context lines around each reference (refs, grep, body)
         |  -e PATTERN            Grep: additional pattern (combine multiple with |); repeatable
         |  --count               Grep/refs: show counts only, no full results
         |  --top N               Refs: rank top N files by reference count
@@ -224,8 +232,11 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |  --prefix              Search: only exact + prefix matches
         |  --json                Output results as JSON (structured output for programmatic use)
         |  --version             Print version and exit
-        |  --in OWNER            Body: restrict to members of the given enclosing type
+        |  --in OWNER            Body/grep: restrict to members of the given enclosing type
         |  --of TRAIT            Overrides: restrict to implementations of the given trait
+        |  --body                Members/overrides/explain: inline method bodies into output
+        |  --max-lines N         Members/overrides/explain: only inline bodies ≤ N lines (0 = unlimited)
+        |  --imports             Body: prepend file's import block to output
         |  --shallow              Explain: skip implementations and import refs (definition + members only)
         |  --no-doc               Explain: suppress Scaladoc section
         |  --impl-limit N        Explain: max implementations to show (default: 5)

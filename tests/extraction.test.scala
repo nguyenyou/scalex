@@ -743,3 +743,58 @@ class ExtractionSuite extends ScalexTestBase:
     assert(body.sourceText.contains("def processBatch"), s"Should contain def keyword: ${body.sourceText}")
     assert(body.sourceText.contains("batch.size"), s"Should contain body: ${body.sourceText}")
   }
+
+  // ── extractImportLines ───────────────────────────────────────────────
+
+  test("extractImportLines returns top-level imports") {
+    val file = workspace.resolve("src/main/scala/com/client/AliasClient.scala")
+    val result = extractImportLines(file)
+    assert(result.isDefined, "Should find imports")
+    val imports = result.get
+    assert(imports.contains("import com.example.UserService as US"), s"Should contain alias import: $imports")
+    assert(imports.contains("import com.example.{Database as DB}"), s"Should contain grouped import: $imports")
+  }
+
+  test("extractImportLines returns None for file with no imports") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val result = extractImportLines(file)
+    assert(result.isEmpty, "File without imports should return None")
+  }
+
+  test("extractImportLines returns None for nonexistent file") {
+    val file = workspace.resolve("nonexistent.scala")
+    val result = extractImportLines(file)
+    assert(result.isEmpty, "Nonexistent file should return None")
+  }
+
+  test("extractImportLines does not include local imports inside methods") {
+    // Create a temp file with both top-level and local imports
+    val content = """package com.test
+      |
+      |import java.util.List
+      |
+      |object Foo {
+      |  def bar(): Unit = {
+      |    import java.util.Map
+      |    println("hello")
+      |  }
+      |}
+      |""".stripMargin
+    val file = workspace.resolve("src/main/scala/com/test/LocalImportTest.scala")
+    java.nio.file.Files.createDirectories(file.getParent)
+    java.nio.file.Files.writeString(file, content)
+
+    val result = extractImportLines(file)
+    assert(result.isDefined, "Should find top-level imports")
+    val imports = result.get
+    assert(imports.contains("import java.util.List"), s"Should contain top-level import: $imports")
+    assert(!imports.contains("import java.util.Map"), s"Should NOT contain local import: $imports")
+  }
+
+  test("extractImportLines handles multiple top-level imports") {
+    val file = workspace.resolve("src/main/scala/com/client/ExplicitClient.scala")
+    val result = extractImportLines(file)
+    assert(result.isDefined, "Should find imports")
+    val imports = result.get
+    assert(imports.contains("import com.example.UserService"), s"Should contain import: $imports")
+  }

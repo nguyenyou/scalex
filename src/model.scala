@@ -90,14 +90,14 @@ enum Confidence:
 
 // ── Member / body / hierarchy types ─────────────────────────────────────────
 
-case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil, isOverride: Boolean = false)
+case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil, isOverride: Boolean = false, body: Option[BodyInfo] = None)
 
 case class BodyInfo(ownerName: String, symbolName: String, sourceText: String, startLine: Int, endLine: Int)
 
 case class HierarchyNode(name: String, kind: Option[SymbolKind], file: Option[Path], line: Option[Int], packageName: String, isExternal: Boolean)
 case class HierarchyTree(root: HierarchyNode, parents: List[HierarchyTree], children: List[HierarchyTree], truncatedChildren: Int = 0)
 
-case class OverrideInfo(file: Path, line: Int, enclosingClass: String, enclosingKind: SymbolKind, signature: String, packageName: String)
+case class OverrideInfo(file: Path, line: Int, enclosingClass: String, enclosingKind: SymbolKind, signature: String, packageName: String, body: Option[BodyInfo] = None)
 
 case class ScopeInfo(name: String, kind: String, line: Int)
 
@@ -148,6 +148,8 @@ case class CommandContext(
   noDoc: Boolean = false,
   excludePath: Option[String] = None,
   summaryMode: Boolean = false,
+  withBody: Boolean = false, maxBodyLines: Int = 0,
+  showImports: Boolean = false,
 ):
   val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
@@ -194,7 +196,7 @@ enum CmdResult:
   case MemberSections(symbol: String, sections: List[MemberSectionData])
   case DocEntries(symbol: String, entries: List[DocEntryData])
   case Overview(data: OverviewData)
-  case SourceBlocks(symbol: String, blocks: List[(file: Path, body: BodyInfo)])
+  case SourceBlocks(symbol: String, blocks: List[(file: Path, body: BodyInfo)], contextLines: Int = 0, showImports: Boolean = false)
   case TestSuites(suites: List[TestSuiteResult], showBody: Boolean, emptyMessage: String = "No test suites found")
   case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String])
   case HierarchyResult(symbol: String, tree: HierarchyTree)

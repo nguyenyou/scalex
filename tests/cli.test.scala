@@ -1630,3 +1630,476 @@ class CliSuite extends ScalexTestBase:
     }
     assert(!output.contains("UserServiceTest"), s"Should not show test suites with --no-tests: $output")
   }
+
+  // ── #180: members --body ──────────────────────────────────────────────
+
+  test("members --body inlines method bodies") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, withBody = true))
+    }
+    // Should show inline body for processPayment
+    assert(output.contains("processPayment"), s"Should list processPayment: $output")
+    assert(output.contains("| "), s"Should have body lines with | separator: $output")
+    assert(output.contains("true"), s"Should contain body text 'true' from processPayment: $output")
+  }
+
+  test("members --body --max-lines filters large bodies") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("Pipeline"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, withBody = true, maxBodyLines = 5))
+    }
+    // validate is 4 lines — should get a body (within limit of 5)
+    // execute is >5 lines — should NOT get a body
+    assert(output.contains("validate"), s"Should list validate: $output")
+    assert(output.contains("execute"), s"Should list execute: $output")
+    // validate body should be inlined (4 lines <= 5 max)
+    assert(output.contains("checkStep"), s"Should inline validate body: $output")
+    // execute should NOT have its body inlined
+    assert(!output.contains("runSteps(steps)"), s"Should NOT inline execute body (too many lines): $output")
+  }
+
+  test("members --body --json includes body fields") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true, withBody = true))
+    }
+    assert(output.contains("\"body\":\""), s"JSON should contain body field: $output")
+    assert(output.contains("\"bodyStartLine\":"), s"JSON should contain bodyStartLine: $output")
+    assert(output.contains("\"bodyEndLine\":"), s"JSON should contain bodyEndLine: $output")
+  }
+
+  test("members --body without flag does not include bodies") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50))
+    }
+    // Should list members but no body lines
+    assert(output.contains("processPayment"), s"Should list members: $output")
+    assert(!output.contains("| "), s"Should NOT have body lines: $output")
+  }
+
+  // ── #180: overrides --body ────────────────────────────────────────────
+
+  test("overrides --body inlines override bodies") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overrides", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, withBody = true, ofTrait = Some("UserService")))
+    }
+    assert(output.contains("findUser"), s"Should find overrides: $output")
+    // Should show inline body for the overriding implementations
+    assert(output.contains("| "), s"Should have inline body lines: $output")
+  }
+
+  test("overrides --body --max-lines filters large override bodies") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Use maxBodyLines = 0 (unlimited) — all override bodies should appear
+    val output = captureOut {
+      runCommand("overrides", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, withBody = true, maxBodyLines = 0, ofTrait = Some("UserService")))
+    }
+    assert(output.contains("| "), s"Should have body lines with unlimited maxBodyLines: $output")
+  }
+
+  test("overrides --body --json includes body fields") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overrides", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true, withBody = true, ofTrait = Some("UserService")))
+    }
+    assert(output.contains("\"body\":\""), s"JSON should contain body: $output")
+    assert(output.contains("\"bodyStartLine\":"), s"JSON should contain bodyStartLine: $output")
+  }
+
+  test("overrides without --body does not include body fields in JSON") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overrides", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true, ofTrait = Some("UserService")))
+    }
+    assert(!output.contains("\"body\":"), s"JSON should NOT contain body without --body: $output")
+  }
+
+  // ── #180: explain --body ──────────────────────────────────────────────
+
+  test("explain --body inlines member bodies") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, withBody = true))
+    }
+    assert(output.contains("Members"), s"Should have Members section: $output")
+    assert(output.contains("| "), s"Should have inline body lines: $output")
+  }
+
+  test("explain --body --max-lines limits body size") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("Pipeline"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, withBody = true, maxBodyLines = 1))
+    }
+    // With maxBodyLines=1, multi-line methods should not have bodies inlined
+    // But single-line vals/defs should
+    assert(output.contains("Members"), s"Should have Members section: $output")
+  }
+
+  test("explain --body --json includes body in members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true, withBody = true))
+    }
+    assert(output.contains("\"body\":\""), s"JSON should contain body in members: $output")
+    assert(output.contains("\"bodyStartLine\":"), s"JSON should contain bodyStartLine: $output")
+  }
+
+  test("explain --body alias --with-bodies works") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // --with-bodies is parsed as withBody = true
+    val f = parseFlags(List("explain", "PaymentServiceLive", "--with-bodies"))
+    assert(f.withBody, "--with-bodies should set withBody = true")
+  }
+
+  // ── #180: body -C N (context lines) ───────────────────────────────────
+
+  test("body -C N shows context lines around body span") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive"), contextLines = 2))
+    }
+    assert(output.contains("---"), s"Should have --- separator between context and body: $output")
+    assert(output.contains("findUser"), s"Should contain the body: $output")
+    // Should have context lines before and/or after
+    val lines = output.split("\n")
+    val bodyLineCount = lines.count(_.contains("| "))
+    assert(bodyLineCount > 1, s"Should have body + context lines: $output")
+  }
+
+  test("body -C 0 shows no context lines") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive"), contextLines = 0))
+    }
+    assert(!output.contains("---"), s"Should NOT have --- separator without context: $output")
+    assert(output.contains("findUser"), s"Should contain the body: $output")
+  }
+
+  test("body -C N JSON includes contextBefore and contextAfter") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive"),
+          contextLines = 1, jsonOutput = true))
+    }
+    assert(output.contains("\"contextBefore\":["), s"JSON should have contextBefore: $output")
+    assert(output.contains("\"contextAfter\":["), s"JSON should have contextAfter: $output")
+  }
+
+  test("body -C N JSON has no context fields when contextLines=0") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive"),
+          contextLines = 0, jsonOutput = true))
+    }
+    assert(!output.contains("\"contextBefore\""), s"JSON should NOT have contextBefore without -C: $output")
+    assert(!output.contains("\"contextAfter\""), s"JSON should NOT have contextAfter without -C: $output")
+  }
+
+  // ── #180: body --imports ──────────────────────────────────────────────
+
+  test("body --imports prepends file imports") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("findUser"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive"), showImports = true))
+    }
+    // UserService.scala has no top-level imports, so nothing should be prepended
+    // But the body should still be shown
+    assert(output.contains("findUser"), s"Should contain body: $output")
+  }
+
+  test("body --imports shows imports from file with imports") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // ExplicitClient.scala has "import com.example.UserService"
+    val output = captureOut {
+      runCommand("body", List("ExplicitClient"),
+        CommandContext(idx = idx, workspace = workspace, showImports = true))
+    }
+    assert(output.contains("Imports"), s"Should show imports header: $output")
+    assert(output.contains("import com.example.UserService"), s"Should show import: $output")
+  }
+
+  test("body --imports JSON includes imports field") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // AliasClient.scala has import statements with as-syntax
+    val output = captureOut {
+      runCommand("body", List("AliasClient"),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true, showImports = true))
+    }
+    assert(output.contains("\"imports\":\""), s"JSON should contain imports field: $output")
+    assert(output.contains("UserService as US"), s"JSON imports should contain alias import: $output")
+  }
+
+  test("body --imports excludes local imports inside methods") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // ExplicitClient.scala has only a top-level import — no local imports
+    val output = captureOut {
+      runCommand("body", List("ExplicitClient"),
+        CommandContext(idx = idx, workspace = workspace, showImports = true))
+    }
+    assert(output.contains("import com.example.UserService"), s"Should show top-level import: $output")
+    // Should NOT show any random local imports from other files
+    assert(!output.contains("import com.other"), s"Should NOT show non-existing imports: $output")
+  }
+
+  test("body without --imports does not show imports") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("AliasClient"),
+        CommandContext(idx = idx, workspace = workspace, showImports = false))
+    }
+    assert(!output.contains("Imports —"), s"Should NOT show imports header: $output")
+  }
+
+  // ── #180: grep --in <symbol> ──────────────────────────────────────────
+
+  test("grep --in scopes search to class body") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("def"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("PaymentServiceLive")))
+    }
+    // Should only find defs inside PaymentServiceLive, not globally
+    assert(output.contains("processPayment"), s"Should find processPayment in PaymentServiceLive: $output")
+    assert(output.contains("refund"), s"Should find refund in PaymentServiceLive: $output")
+    // Should NOT contain defs from other classes
+    assert(!output.contains("Pipeline"), s"Should NOT find Pipeline: $output")
+    assert(!output.contains("Scheduler"), s"Should NOT find Scheduler: $output")
+  }
+
+  test("grep --in with dotted Owner.member scopes to method body") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("remaining"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("Pipeline.runSteps")))
+    }
+    // runSteps mentions "remaining" in its body
+    assert(output.contains("remaining"), s"Should find 'remaining' inside Pipeline.runSteps: $output")
+  }
+
+  test("grep --in returns empty for nonexistent owner") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("def"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("NonExistentClass")))
+    }
+    assert(output.contains("0 found") || output.contains("No matches"),
+      s"Should find no results for nonexistent owner: $output")
+  }
+
+  test("grep --in --count shows count only") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("def"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("PaymentServiceLive"), countOnly = true))
+    }
+    // Should show count, not full results
+    assert(output.contains("match"), s"Should show match count: $output")
+  }
+
+  test("grep --in header includes owner name") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("def"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("PaymentServiceLive")))
+    }
+    assert(output.contains("PaymentServiceLive"), s"Header should mention the scoped owner: $output")
+  }
+
+  test("grep without --in searches globally") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("processPayment"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    // Global grep should find it
+    assert(output.contains("processPayment"), s"Global grep should find processPayment: $output")
+    // Should NOT mention "in <owner>" in header
+    assert(!output.contains(" in "), s"Global grep header should not have 'in': $output")
+  }
+
+  // ── #180: extractImportLines ──────────────────────────────────────────
+
+  test("extractImportLines returns top-level imports only") {
+    val file = workspace.resolve("src/main/scala/com/client/AliasClient.scala")
+    val result = extractImportLines(file)
+    assert(result.isDefined, s"Should find imports in AliasClient.scala")
+    val imports = result.get
+    assert(imports.contains("import com.example.UserService as US"), s"Should contain alias import: $imports")
+    assert(imports.contains("import com.example.{Database as DB}"), s"Should contain grouped import: $imports")
+  }
+
+  test("extractImportLines returns None for file without imports") {
+    val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
+    val result = extractImportLines(file)
+    assert(result.isEmpty, "File without imports should return None")
+  }
+
+  test("extractImportLines excludes local imports inside methods") {
+    // Create a temp file directly (no git needed — extractImportLines reads any file)
+    val file = workspace.resolve("src/main/scala/com/example/WithLocalImport.scala")
+    java.nio.file.Files.createDirectories(file.getParent)
+    java.nio.file.Files.writeString(file,
+      """package com.example
+        |
+        |import com.example.User
+        |
+        |object WithLocalImport {
+        |  def doStuff(): Unit = {
+        |    import com.other.Helper
+        |    Helper.formatUser(User("1", "test"))
+        |  }
+        |}
+        |""".stripMargin)
+
+    val result = extractImportLines(file)
+    assert(result.isDefined, "Should find top-level imports")
+    val imports = result.get
+    assert(imports.contains("import com.example.User"), s"Should contain top-level import: $imports")
+    assert(!imports.contains("import com.other.Helper"), s"Should NOT contain local import: $imports")
+  }
+
+  // ── #180: parseFlags for new flags ────────────────────────────────────
+
+  test("parseFlags parses --body flag") {
+    val f = parseFlags(List("members", "Foo", "--body"))
+    assert(f.withBody, "--body should be true")
+  }
+
+  test("parseFlags parses --with-bodies alias") {
+    val f = parseFlags(List("explain", "Foo", "--with-bodies"))
+    assert(f.withBody, "--with-bodies should set withBody = true")
+  }
+
+  test("parseFlags parses --max-lines flag with argument") {
+    val f = parseFlags(List("members", "Foo", "--body", "--max-lines", "20"))
+    assert(f.withBody, "--body should be true")
+    assertEquals(f.maxBodyLines, 20)
+  }
+
+  test("parseFlags --max-lines defaults to 0") {
+    val f = parseFlags(List("members", "Foo", "--body"))
+    assertEquals(f.maxBodyLines, 0)
+  }
+
+  test("parseFlags parses --imports flag") {
+    val f = parseFlags(List("body", "Foo", "--imports"))
+    assert(f.showImports, "--imports should be true")
+  }
+
+  test("parseFlags --imports defaults to false") {
+    val f = parseFlags(List("body", "Foo"))
+    assert(!f.showImports, "--imports should default to false")
+  }
+
+  test("parseFlags --max-lines is excluded from cleanArgs") {
+    val f = parseFlags(List("members", "Foo", "--body", "--max-lines", "10"))
+    assert(!f.cleanArgs.contains("--max-lines"), "--max-lines should be excluded from cleanArgs")
+    assert(!f.cleanArgs.contains("10"), "10 (max-lines value) should be excluded from cleanArgs")
+    assert(f.cleanArgs.contains("Foo"), "Foo should remain in cleanArgs")
+  }
+
+  // ── #180: body -C N + --imports combined ──────────────────────────────
+
+  test("body -C N and --imports combined") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Use ExplicitClient — has imports and is not at the very start of the file
+    val output = captureOut {
+      runCommand("body", List("ExplicitClient"),
+        CommandContext(idx = idx, workspace = workspace, contextLines = 1, showImports = true))
+    }
+    // Should have imports section
+    assert(output.contains("Imports"), s"Should show imports header: $output")
+    assert(output.contains("import com.example.UserService"), s"Should show import: $output")
+    // Body should be shown
+    assert(output.contains("ExplicitClient"), s"Should show body: $output")
+  }
+
+  test("body -C N and --imports JSON combined") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("ExplicitClient"),
+        CommandContext(idx = idx, workspace = workspace, contextLines = 1, showImports = true, jsonOutput = true))
+    }
+    assert(output.contains("\"imports\":\""), s"JSON should have imports field: $output")
+    assert(output.contains("\"contextBefore\":["), s"JSON should have contextBefore: $output")
+    assert(output.contains("\"contextAfter\":["), s"JSON should have contextAfter: $output")
+  }
+
+  // ── #180: enrichMemberWithBody helper ─────────────────────────────────
+
+  test("enrichMemberWithBody returns body when within max-lines") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val file = workspace.resolve("src/main/scala/com/example/Documented.scala")
+    val member = MemberInfo("processPayment", SymbolKind.Def, 8, "def processPayment(amount: BigDecimal): Boolean")
+    val enriched = enrichMemberWithBody(member, file, "PaymentServiceLive", 5)
+    assert(enriched.body.isDefined, s"Should have body: $enriched")
+    assert(enriched.body.get.sourceText.contains("true"), s"Body should contain 'true': ${enriched.body}")
+  }
+
+  test("enrichMemberWithBody returns no body when over max-lines") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val file = workspace.resolve("src/main/scala/com/example/Pipeline.scala")
+    val member = MemberInfo("execute", SymbolKind.Def, 4, "def execute(): Unit")
+    // execute is a multi-line method, setting maxBodyLines=1 should exclude it
+    val enriched = enrichMemberWithBody(member, file, "Pipeline", 1)
+    assert(enriched.body.isEmpty, s"Should NOT have body when over max-lines: $enriched")
+  }
+
+  test("enrichMemberWithBody with maxBodyLines=0 means unlimited") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val file = workspace.resolve("src/main/scala/com/example/Pipeline.scala")
+    val member = MemberInfo("execute", SymbolKind.Def, 4, "def execute(): Unit")
+    val enriched = enrichMemberWithBody(member, file, "Pipeline", 0)
+    assert(enriched.body.isDefined, s"maxBodyLines=0 should mean unlimited: $enriched")
+  }

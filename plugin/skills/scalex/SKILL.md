@@ -106,7 +106,7 @@ scalex imports PaymentService
 scalex imports PaymentService --no-tests
 ```
 
-### `scalex members <symbol> [--verbose] [--brief] [--inherited] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — list members
+### `scalex members <symbol> [--verbose] [--brief] [--body] [--max-lines N] [--inherited] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — list members
 
 Lists member declarations (def, val, var, type) inside a class, trait, object, or enum body. Parses source on-the-fly — NOT stored in the index, so no index bloat. Single file parse is <50ms. Shows full signatures by default; use `--brief` for names only.
 
@@ -114,11 +114,14 @@ Lists member declarations (def, val, var, type) inside a class, trait, object, o
 
 Use `--inherited` to walk the extends chain and include members from parent types — gives the full API surface in one call. Own members that shadow parent members are marked `[override]` in text output (JSON: `"isOverride":true`). Child overrides win when the same member exists in both parent and child.
 
+Use `--body` to inline method bodies into the listing — eliminates N follow-up `body --in` calls. Use `--max-lines N` to only inline bodies ≤ N lines (0 = unlimited).
+
 ```bash
 scalex members PaymentService                    # show all defs/vals with signatures (default)
 scalex members PaymentService --brief            # names only, no signatures
 scalex members PaymentService --no-tests         # exclude test definitions
 scalex members PaymentServiceLive --inherited    # own members + inherited from parents
+scalex members Compiler --body --max-lines 20    # inline method bodies ≤ 20 lines
 ```
 ```
 Members of trait PaymentService (com.example) — src/.../PaymentService.scala:3:
@@ -223,13 +226,13 @@ scalex annotated tailrec --path core/src/      # @tailrec defs in core
   def       legacyProcess (com.example) — .../Legacy.scala:45
 ```
 
-### `scalex grep <pattern> [-e PAT]... [--count] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
+### `scalex grep <pattern> [--in <symbol>] [-e PAT]... [--count] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
 
 Regex search inside `.scala` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala files. Has a 20-second timeout for large codebases.
 
 The pattern is a **Java regex** (not POSIX) — use `|` for alternation (not `\|`), `( )` for grouping (not `\( \)`). If you get zero results, check for POSIX-style escapes. Scalex will print a hint if it detects this.
 
-Use `-e` to search multiple patterns in one call — they're combined with `|`. Use `--count` to get match/file counts without full output (great for triaging before reading all results). Use `-C N` to show context lines around each match.
+Use `-e` to search multiple patterns in one call — they're combined with `|`. Use `--count` to get match/file counts without full output (great for triaging before reading all results). Use `-C N` to show context lines around each match. Use `--in <symbol>` to scope the grep to a specific class or method body — supports `Owner.member` dot syntax.
 
 ```bash
 scalex grep "def.*process" --no-tests          # find method-like patterns
@@ -237,17 +240,18 @@ scalex grep "ctx\.settings" --path compiler/src/ -C 2  # with context
 scalex grep "TODO|FIXME|HACK"                  # find code markers
 scalex grep -e "Ystop" -e "stopAfter" --path compiler/src/  # multi-pattern
 scalex grep "isRunnable" --count               # count only: "31 matches across 15 files"
+scalex grep "ctx.settings" --in Run.compileUnits  # search within a specific method
 ```
 ```
   src/main/scala/Service.scala:45 — def processPayment(amount: BigDecimal): Unit =
   src/main/scala/Handler.scala:12 — override def processRequest(req: Request): Response =
 ```
 
-### `scalex body <symbol> [--in <owner>] [--no-tests] [--path PREFIX] [--limit N]` — show source body
+### `scalex body <symbol> [--in <owner>] [-C N] [--imports] [--no-tests] [--path PREFIX] [--limit N]` — show source body
 
 Extracts the full source body of a def, val, var, type, class, trait, object, or enum from the file using Scalameta spans. Eliminates ~50% of follow-up Read calls by giving the agent the actual source code inline.
 
-Use `--in <owner>` to restrict to members of a specific enclosing type — essential when the same method name exists in multiple classes.
+Use `--in <owner>` to restrict to members of a specific enclosing type — essential when the same method name exists in multiple classes. Use `-C N` to show N lines of context above and below the body span. Use `--imports` to prepend the file's import block.
 
 **Also works with test cases** — pass the exact test name string to extract a test body. Matches `test("name")`, `it("name")`, `describe("name")`, `"name" in { }`, and `"name" >> { }` patterns. Use `--in SuiteName` to scope to a specific suite.
 
@@ -255,6 +259,8 @@ Use `--in <owner>` to restrict to members of a specific enclosing type — essen
 scalex body findUser --in UserServiceLive    # method body in specific class
 scalex body UserService                       # full trait body
 scalex body "findUser returns None" --in UserServiceTest  # test case body
+scalex body doCompile --in Driver -C 5       # body with 5 context lines
+scalex body doCompile --in Driver --imports  # body with file imports prepended
 ```
 ```
 Body of findUser returns None — UserServiceTest — src/.../UserServiceTest.scala:4:
@@ -284,15 +290,16 @@ Hierarchy of class UserServiceLive (com.example) — .../UserService.scala:8:
     (none)
 ```
 
-### `scalex overrides <method> [--of <trait>] [--limit N]` — find overrides
+### `scalex overrides <method> [--of <trait>] [--body] [--max-lines N] [--limit N]` — find overrides
 
 Finds all implementations of a specific method across classes — checks each implementor's members for the matching method name.
 
-Use `--of <trait>` to restrict to implementations of a specific trait. Without it, searches all types.
+Use `--of <trait>` to restrict to implementations of a specific trait. Without it, searches all types. Use `--body` to show each override's source body inline. Use `--max-lines N` to only inline bodies ≤ N lines.
 
 ```bash
 scalex overrides findUser --of UserService  # implementations of findUser in UserService impls
 scalex overrides process                    # all types with a method named "process"
+scalex overrides run --of Phase --body --max-lines 30  # show each override's body
 ```
 ```
 Overrides of findUser (in implementations of UserService) — 2 found:
@@ -302,11 +309,11 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--verbose] [--brief] [--shallow] [--no-doc] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--brief] [--body] [--max-lines N] [--shallow] [--no-doc] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
 
 One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
-`--verbose` shows member signatures instead of just names. `--brief` gives the most condensed output: definition + top 3 members only — no doc, companion, inherited, impls, or imports; pairs with `batch` for lightweight multi-explore. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--no-doc` suppresses the Scaladoc section — useful when exploring many types rapidly and doc dominates output. `--inherited` merges parent members into the output with provenance markers — shows the full API surface including inherited members. `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, disambiguation prints ready-to-run `scalex explain pkg.Name` commands on stderr — copy-paste to resolve.
+`--verbose` shows member signatures instead of just names. `--brief` gives the most condensed output: definition + top 3 members only — no doc, companion, inherited, impls, or imports; pairs with `batch` for lightweight multi-explore. `--body` inlines method bodies into the member listing — eliminates N follow-up `body --in` calls; combine with `--max-lines N` to only show bodies ≤ N lines. `--shallow` skips implementations and import refs entirely (definition + members + companion only — useful for understanding a type's API without output blowup). `--no-doc` suppresses the Scaladoc section — useful when exploring many types rapidly and doc dominates output. `--inherited` merges parent members into the output with provenance markers — shows the full API surface including inherited members. `--impl-limit N` controls how many implementations to show (default: 5); when more exist, shows "(showing N of M — use --impl-limit to adjust)". `--members-limit N` controls how many members to show per type (default: 10). Members are sorted by kind: classes/traits first, then defs, then vals, then types. `--expand N` recursively expands each implementation N levels deep, showing their members and sub-implementations — eliminates N follow-up explains. Auto-shows **companion** object/class with its members when applicable; companion members that duplicate primary members are collapsed. When import count <= 10, the actual importing files are shown inline; otherwise shows count + hint. If the exact symbol isn't found, `explain` tries a fuzzy match and auto-shows the best type match with a hint. If the symbol matches a package name instead, falls back to `summary` automatically. When multiple definitions match, disambiguation prints ready-to-run `scalex explain pkg.Name` commands on stderr — copy-paste to resolve.
 
 ```bash
 scalex explain UserService                  # full summary with companion
@@ -590,14 +597,17 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--include-tests` | Override --no-tests default for overview command |
 | `--path PREFIX` | Restrict results to files under PREFIX (e.g. `compiler/src/`) |
 | `--exclude-path PREFIX` | Exclude files under PREFIX (e.g. `--exclude-path sbt-test/`) |
-| `-C N` | Show N context lines around each reference (refs, grep) |
+| `-C N` | Show N context lines around each reference (refs, grep, body) |
 | `-e PATTERN` | Grep: additional pattern (repeatable); combined with `\|` |
 | `--count` | Grep/refs: show counts only, no full results |
 | `--top N` | Refs: rank top N files by reference count (impact analysis) |
 | `--exact` | Search: only exact name matches (case-insensitive) |
 | `--prefix` | Search: only exact + prefix matches |
-| `--in OWNER` | Body: restrict to members of the given enclosing type |
+| `--in OWNER` | Body/grep: restrict to members of the given enclosing type |
 | `--of TRAIT` | Overrides: restrict to implementations of the given trait |
+| `--body` | Members/overrides/explain: inline method bodies into output |
+| `--max-lines N` | Members/overrides/explain: only inline bodies ≤ N lines (0 = unlimited) |
+| `--imports` | Body: prepend file's import block to output |
 | `--shallow` | Explain: skip implementations and import refs (definition + members only) |
 | `--impl-limit N` | Explain: max implementations to show (default: 5) |
 | `--members-limit N` | Explain: max members to show per type (default: 10) |
@@ -642,7 +652,13 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"Show me the source code of method X"** → `scalex body X --in MyClass` — use `--in` when the name exists in multiple classes
 
-**"Give me everything about this type"** → `scalex explain MyTrait` — one-shot composite: def + doc + members + companion + impls + import count (saves 4-5 round-trips). Use `--expand 1` to also see each implementation's members. Use `--brief` for condensed output (definition + top 3 members)
+**"Give me everything about this type"** → `scalex explain MyTrait` — one-shot composite: def + doc + members + companion + impls + import count (saves 4-5 round-trips). Use `--expand 1` to also see each implementation's members. Use `--brief` for condensed output (definition + top 3 members). Use `--body` to inline method bodies
+
+**"Show me a class with all method bodies"** → `scalex members Compiler --body --max-lines 20` — inline bodies ≤ 20 lines; eliminates N follow-up `body --in` calls
+
+**"How do different types implement method X?"** → `scalex overrides run --of Phase --body` — show each override's source body inline
+
+**"Search within a specific class"** → `scalex grep "pattern" --in ClassName` — restrict grep to the class body; supports `Owner.member` dot syntax
 
 **"Quick-explore 3-5 types"** → `echo -e "explain Foo --brief\nexplain Bar --brief\nexplain Baz --brief" | scalex batch` — lightweight multi-explain in one call
 

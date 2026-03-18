@@ -67,7 +67,8 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val parentKeys = inheritResult.parentMemberKeys
         val members = if typeKinds.contains(sym.kind) then
           extractMembers(sym.file, simpleName).map { m =>
-            if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
+            val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
+            if ctx.withBody then enrichMemberWithBody(m2, sym.file, simpleName, ctx.maxBodyLines) else m2
           }.sortBy(memberKindRank).take(ctx.membersLimit)
         else Nil
         // Companion lookup

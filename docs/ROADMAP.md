@@ -4,6 +4,16 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Community feedback: composite output modes to reduce round trips (#180)
+
+- [x] `members --body` / `explain --body` — inline method bodies into member listings; combine existing `members` extraction with `body` span extraction in the same file pass; `--max-lines N` to skip large bodies
+- [x] `body -C N` — context lines above/below the extracted span (line arithmetic around existing span)
+- [x] `body --imports` — prepend the file's import block to body output (extract top-level `Import` nodes from same AST)
+- [x] `overrides --body` — show each override's body inline; `overrides` already locates symbols + files, reuse `extractBody` on each; `--max-lines N` to cap
+- [x] `grep --in <symbol>` — scope grep to a specific class/method body; parse AST to find symbol span, restrict grep to those line ranges; supports `Owner.member` dot syntax
+- [ ] Fix `explain` disambiguation to respect `--path` — verify `--path` filters before disambiguation (may already work correctly)
+- [ ] `explain --near <file>` — parse file's import block to rank/resolve ambiguous candidates (nice-to-have)
+
 ### On-the-fly local definition fallback (#176)
 
 - [ ] When `def` returns 0 results, use bloom filters to find candidate files, parse them on-the-fly, and search for local defs/vals/vars inside method bodies matching the query name
