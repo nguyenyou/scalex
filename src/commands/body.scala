@@ -43,6 +43,13 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
         val msg = ctx.inOwner match
           case Some(owner) => s"""No body found for "$symbol" in $owner"""
           case None => s"""No body found for "$symbol""""
-        CmdResult.NotFound(msg, mkNotFoundWithSuggestions(symbol, ctx, "body"))
+        val hint = mkNotFoundWithSuggestions(symbol, ctx, "body")
+        // When --in is specified, replace global suggestions with owner-scoped members
+        val scopedHint = ctx.inOwner match
+          case Some(owner) =>
+            val scoped = mkOwnerScopedSuggestions(symbol, owner, ctx)
+            if scoped.nonEmpty then hint.copy(suggestions = scoped) else hint
+          case None => hint
+        CmdResult.NotFound(msg, scopedHint)
       else
         CmdResult.SourceBlocks(symbol, blocks, ctx.contextLines, ctx.showImports)

@@ -1549,8 +1549,26 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("No body found"), s"Should say not found: $output")
     // Suggestions should mention members of UserServiceLive (findUser, createUser)
     assert(output.contains("in UserServiceLive"), s"Suggestions should be scoped to owner: $output")
-    // Should NOT suggest unrelated symbols from other packages
-    assert(!output.contains("com.other"), s"Should NOT suggest unrelated symbols: $output")
+    assert(output.contains("findUser") || output.contains("createUser"),
+      s"Suggestions should include actual owner members: $output")
+    // Should NOT suggest symbols from unrelated types (e.g. Helper.formatUser)
+    assert(!output.contains("formatUser"), s"Should NOT suggest unrelated symbols: $output")
+  }
+
+  test("body --in not-found suggestions are ranked by similarity") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // "find" should rank findUser higher than createUser
+    val output = captureOut {
+      runCommand("body", List("find"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive")))
+    }
+    // findUser should appear before createUser since "find" is a prefix of "findUser"
+    val findIdx = output.indexOf("findUser")
+    val createIdx = output.indexOf("createUser")
+    assert(findIdx >= 0, s"Should suggest findUser: $output")
+    assert(findIdx < createIdx || createIdx < 0,
+      s"findUser should be ranked before createUser for query 'find': $output")
   }
 
   test("body dotted syntax not used when --in is already set") {

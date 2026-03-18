@@ -13,23 +13,35 @@ def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
 // ── Suggestions for not-found ────────────────────────────────────────────────
 
 def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
-  // When --in is specified, suggest members of the owner instead of global search results
-  val suggestions = ctx.inOwner match
-    case Some(owner) =>
-      val ownerDefs = filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
-        .filter(s => typeKinds.contains(s.kind))
-      val members = ownerDefs.flatMap(s => extractMembers(s.file, s.name, Some(s.kind)))
-      members.take(5).map { m =>
-        s"${m.kind.toString.toLowerCase} ${m.name} in $owner"
-      }
-    case None =>
-      var results = ctx.idx.search(symbol)
-      if ctx.noTests then results = results.filter(s => !isTestFile(s.file, ctx.workspace))
-      results.take(5).map { s =>
-        s"${s.kind.toString.toLowerCase} ${s.name} (${s.packageName})"
-      }
+  var results = ctx.idx.search(symbol)
+  if ctx.noTests then results = results.filter(s => !isTestFile(s.file, ctx.workspace))
+  val suggestions = results.take(5).map { s =>
+    s"${s.kind.toString.toLowerCase} ${s.name} (${s.packageName})"
+  }
   NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode,
     symbol.contains("/") || symbol.startsWith("."), suggestions)
+
+/** Build owner-scoped suggestions ranked by similarity to `symbol`. */
+def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext): List[String] =
+  val ownerDefs = filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
+    .filter(s => typeKinds.contains(s.kind))
+  val members = ownerDefs.headOption.toList.flatMap(s => extractMembers(s.file, s.name, Some(s.kind)))
+  // Rank by similarity: exact > prefix > contains > rest
+  val lower = symbol.toLowerCase
+  val exact = mutable.ListBuffer.empty[MemberInfo]
+  val prefix = mutable.ListBuffer.empty[MemberInfo]
+  val contains = mutable.ListBuffer.empty[MemberInfo]
+  val rest = mutable.ListBuffer.empty[MemberInfo]
+  members.foreach { m =>
+    val n = m.name.toLowerCase
+    if n == lower then exact += m
+    else if n.startsWith(lower) || lower.startsWith(n) then prefix += m
+    else if n.contains(lower) || lower.contains(n) then contains += m
+    else rest += m
+  }
+  (exact.toList ++ prefix.toList ++ contains.toList ++ rest.toList).take(5).map { m =>
+    s"${m.kind.toString.toLowerCase} ${m.name} in $owner"
+  }
 
 // ── Package resolution (shared by package, api, summary) ────────────────────
 
