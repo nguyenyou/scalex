@@ -8,6 +8,11 @@
 
 - [x] When `--in Owner` is specified and the symbol is indexed in a different file, also search the owner's file for nested defs
 
+### Community feedback: members pagination (#198)
+
+- [x] `members --limit 0` — show all members without truncation
+- [x] `members --offset N` — skip first N members for pagination
+
 ### Community feedback: overview dedup & onboarding flow (#192)
 
 - [x] `overview --architecture` dedup — skip "Most extended" section when `--architecture` is active; "Hub types" already covers the same `parentIndex` data with identical sorting; applies to both text and JSON output

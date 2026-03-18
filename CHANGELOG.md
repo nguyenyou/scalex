@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- `members`: `--limit 0` shows all members (no truncation); `--offset N` for pagination (#198)
+
 ### Fixed
 - `body --in` now also searches the owner's file when the symbol is indexed in a different file (#197)
 

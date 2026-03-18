@@ -108,7 +108,7 @@ scalex imports PaymentService
 scalex imports PaymentService --no-tests
 ```
 
-### `scalex members <symbol> [--verbose] [--brief] [--body] [--max-lines N] [--inherited] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — list members
+### `scalex members <symbol> [--verbose] [--brief] [--body] [--max-lines N] [--inherited] [--kind K] [--no-tests] [--path PREFIX] [--limit N] [--offset N]` — list members
 
 Lists member declarations (def, val, var, type) inside a class, trait, object, or enum body. Parses source on-the-fly — NOT stored in the index, so no index bloat. Single file parse is <50ms. Shows full signatures by default; use `--brief` for names only.
 
@@ -124,6 +124,8 @@ scalex members PaymentService --brief            # names only, no signatures
 scalex members PaymentService --no-tests         # exclude test definitions
 scalex members PaymentServiceLive --inherited    # own members + inherited from parents
 scalex members Compiler --body --max-lines 20    # inline method bodies ≤ 20 lines
+scalex members Trees --limit 0                   # show all members (no truncation)
+scalex members Trees --offset 20 --limit 20      # paginate: show members 21-40
 ```
 ```
 Members of trait PaymentService (com.example) — src/.../PaymentService.scala:3:

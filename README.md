@@ -207,7 +207,7 @@ scalex refs Cache --strict                 # No underscore/dollar false positive
 scalex deps Phase --depth 2                # Transitive dependencies
 ```
 
-All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N`.
+All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--limit N` (0 = unlimited), and `--offset N`.
 
 ## Run Without Installing
 
@@ -266,7 +266,7 @@ scalex summary <package>        Sub-packages with symbol counts   (aka: package 
 scalex entrypoints              Find @main, def main, extends App, test suites
 ```
 
-All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
+All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--limit N` (0 = unlimited), and `--offset N`. See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
 
 ### What Makes It AI-Friendly
 

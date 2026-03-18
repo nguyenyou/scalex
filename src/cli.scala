@@ -34,12 +34,13 @@ case class ParsedFlags(
   timingsEnabled: Boolean = false,
   withBody: Boolean = false, maxBodyLines: Int = 0,
   showImports: Boolean = false,
+  offset: Int = 0,
   cleanArgs: List[String] = Nil,
 )
 
 private val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
                          "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
-                         "--members-limit", "--used-by", "--returns", "--takes", "--top", "--max-lines")
+                         "--members-limit", "--used-by", "--returns", "--takes", "--top", "--max-lines", "--offset")
 
 def parseFlags(argList: List[String]): ParsedFlags =
   val limit = argList.indexOf("--limit") match
@@ -136,6 +137,9 @@ def parseFlags(argList: List[String]): ParsedFlags =
     case -1 => 0
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
   val showImports = argList.contains("--imports")
+  val offset: Int = argList.indexOf("--offset") match
+    case -1 => 0
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
 
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
@@ -147,7 +151,7 @@ def parseFlags(argList: List[String]): ParsedFlags =
     explicitWorkspace, inOwner, ofTrait, implLimit, goUp, goDown, maxDepth, inherited, architecture,
     hasMethodFilter, extendsFilter, bodyContainsFilter, focusPackage, expandDepth, membersLimit,
     brief, strict, usedByFilter, returnsFilter, takesFilter, shallow, noDoc, excludePath, topN,
-    summaryMode, timingsEnabled, withBody, maxBodyLines, showImports, cleanArgs)
+    summaryMode, timingsEnabled, withBody, maxBodyLines, showImports, offset, cleanArgs)
 
 private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
                            batchMode: Boolean = false, effectiveNoTests: Option[Boolean] = None): CommandContext =
@@ -165,7 +169,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
     membersLimit = f.membersLimit, brief = f.brief, strict = f.strict,
     usedByFilter = f.usedByFilter, returnsFilter = f.returnsFilter, takesFilter = f.takesFilter,
     shallow = f.shallow, noDoc = f.noDoc, excludePath = f.excludePath, summaryMode = f.summaryMode,
-    withBody = f.withBody, maxBodyLines = f.maxBodyLines, showImports = f.showImports)
+    withBody = f.withBody, maxBodyLines = f.maxBodyLines, showImports = f.showImports,
+    offset = f.offset)
 
 @main def main(args: String*): Unit =
   val f = parseFlags(args.toList)
@@ -213,7 +218,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
-        |  --limit N             Max results (default: 20)
+        |  --limit N             Max results (default: 20, 0 = unlimited)
+        |  --offset N            Skip first N results (for pagination, default: 0)
         |  --kind K              Filter by kind: class, trait, object, def, val, type, enum, given, extension
         |  --verbose             Show signatures and extends clauses
         |  --categorize, -c      Group refs by category (default; kept for backwards compatibility)

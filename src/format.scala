@@ -296,6 +296,12 @@ private def jsonMemberBody(m: MemberInfo): String =
   m.body.map(b => s""","body":"${jsonEscape(b.sourceText)}","bodyStartLine":${b.startLine},"bodyEndLine":${b.endLine}""").getOrElse("")
 
 private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContext): Unit = {
+  def page[A](items: List[A]): List[A] =
+    val dropped = items.drop(ctx.offset)
+    if ctx.limit == 0 then dropped else dropped.take(ctx.limit)
+  def remaining[A](items: List[A]): Int =
+    items.size - ctx.offset - page(items).size
+
   if ctx.jsonOutput then {
     val allMembers = r.sections.flatMap { sec =>
       val ownMembers = sec.ownMembers.map { m =>
@@ -318,7 +324,7 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
       }
       ownMembers ++ inheritedMembers ++ companionMembers
     }
-    println(allMembers.take(ctx.limit).mkString("[", ",", "]"))
+    println(page(allMembers).mkString("[", ",", "]"))
   } else {
     if r.sections.isEmpty then {
       println(s"""No class/trait/object/enum "${r.symbol}" found""")
@@ -330,7 +336,7 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
         if sec.ownMembers.isEmpty then println("  (no members)")
         else {
           println(s"  Defined in ${r.symbol}:")
-          sec.ownMembers.take(ctx.limit).foreach { m =>
+          page(sec.ownMembers).foreach { m =>
             val overrideMarker = if m.isOverride then "  [override]" else ""
             if !ctx.brief then
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}$overrideMarker")
@@ -338,30 +344,33 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}$overrideMarker")
             renderInlineBody(m.body, "      ")
           }
-          if sec.ownMembers.size > ctx.limit then println(s"    ... and ${sec.ownMembers.size - ctx.limit} more")
+          val r1 = remaining(sec.ownMembers)
+          if r1 > 0 then println(s"    ... and $r1 more")
         }
         sec.inherited.foreach { (parentName, _, _, pMembers) =>
           println(s"  Inherited from $parentName:")
-          pMembers.take(ctx.limit).foreach { m =>
+          page(pMembers).foreach { m =>
             if !ctx.brief then
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
             else
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
           }
-          if pMembers.size > ctx.limit then println(s"    ... and ${pMembers.size - ctx.limit} more")
+          val r2 = remaining(pMembers)
+          if r2 > 0 then println(s"    ... and $r2 more")
         }
         sec.companion.foreach { (compSym, compMembers) =>
           val compRel = ctx.workspace.relativize(compSym.file)
           println(s"\n  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}:")
           if compMembers.isEmpty then println("    (no members)")
           else {
-            compMembers.take(ctx.limit).foreach { m =>
+            page(compMembers).foreach { m =>
               if !ctx.brief then
                 println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
               else
                 println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
             }
-            if compMembers.size > ctx.limit then println(s"    ... and ${compMembers.size - ctx.limit} more")
+            val r3 = remaining(compMembers)
+            if r3 > 0 then println(s"    ... and $r3 more")
           }
         }
       }
