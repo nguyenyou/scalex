@@ -1,4 +1,5 @@
 import scala.jdk.CollectionConverters.*
+import scala.util.boundary, boundary.break
 
 def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
   val patternOpt = if ctx.grepPatterns.nonEmpty then Some(ctx.grepPatterns.mkString("|"))
@@ -41,12 +42,12 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
               emptyMessage = s"""No matches for "$pattern"$suffix""",
               stderrHint = stderrHint)
 
-private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (results: List[Reference], timedOut: Boolean) = {
+private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (results: List[Reference], timedOut: Boolean) = boundary {
   val regex = try java.util.regex.Pattern.compile(pattern)
   catch
     case e: java.util.regex.PatternSyntaxException =>
       Console.err.println(s"Invalid regex: ${e.getMessage}")
-      return (Nil, false)
+      break((Nil, false))
 
   // Split Owner.member if present
   val (ownerName, memberName) = if owner.contains(".") then
@@ -58,7 +59,7 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
   var ownerDefs = filterSymbols(ctx.idx.findDefinition(ownerName), ctx.copy(kindFilter = None))
   if ownerDefs.isEmpty then
     ownerDefs = filterSymbols(ctx.idx.symbols.filter(s => s.name == ownerName && typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
-  if ownerDefs.isEmpty then return (Nil, false)
+  if ownerDefs.isEmpty then break((Nil, false))
 
   val results = scala.collection.mutable.ListBuffer.empty[Reference]
   ownerDefs.foreach { sym =>
@@ -69,7 +70,7 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
 
     bodies.foreach { b =>
       val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch
-        case _: java.io.IOException => return (Nil, false)
+        case _: java.io.IOException => break((Nil, false))
       // Grep within the body span
       var lineIdx = b.startLine - 1 // 0-indexed
       val endIdx = math.min(b.endLine, lines.size) // 1-indexed inclusive -> exclusive in 0-indexed
