@@ -2217,3 +2217,125 @@ class CliSuite extends ScalexTestBase:
     val enriched = enrichMemberWithBody(member, file, "Pipeline", 0)
     assert(enriched.body.isDefined, s"maxBodyLines=0 should mean unlimited: $enriched")
   }
+
+  // ── #198: members --limit 0 and --offset ──────────────────────────────
+
+  test("members --limit 0 shows all members without truncation") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 0))
+    }
+    // PaymentServiceLive has 5 members
+    assert(output.contains("processPayment"), s"Should show processPayment: $output")
+    assert(output.contains("refund"), s"Should show refund: $output")
+    assert(output.contains("maxRetries"), s"Should show maxRetries: $output")
+    assert(output.contains("lastError"), s"Should show lastError: $output")
+    assert(output.contains("TransactionId"), s"Should show TransactionId: $output")
+    assert(!output.contains("... and"), s"Should NOT have truncation message: $output")
+  }
+
+  test("members --limit truncates and shows remainder") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 2))
+    }
+    // Should show 2 members and truncation message
+    assert(output.contains("... and 3 more"), s"Should show '... and 3 more': $output")
+  }
+
+  test("members --offset skips first N members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Get all members first to know the order
+    val allOutput = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 0))
+    }
+    val allLines = allOutput.linesIterator.filter { l =>
+      l.contains("    def  ") || l.contains("    val  ") || l.contains("    var  ") || l.contains("    type ")
+    }.toList
+
+    // Now get with offset=2, limit=0 — should skip first 2
+    val offsetOutput = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 0, offset = 2))
+    }
+    val offsetLines = offsetOutput.linesIterator.filter { l =>
+      l.contains("    def  ") || l.contains("    val  ") || l.contains("    var  ") || l.contains("    type ")
+    }.toList
+
+    assertEquals(offsetLines.size, allLines.size - 2, s"Offset 2 should skip 2 members.\nAll: $allLines\nOffset: $offsetLines")
+  }
+
+  test("members --offset with --limit paginates correctly") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 2, offset = 1))
+    }
+    // PaymentServiceLive has 5 members; offset=1, limit=2 → show 2, skip 1, remaining=2
+    assert(output.contains("... and 2 more"), s"Should show '... and 2 more': $output")
+  }
+
+  test("members --offset beyond member count shows no members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 0, offset = 100))
+    }
+    // All 5 members skipped — no member lines should appear
+    assert(!output.contains("processPayment"), s"Should NOT show any members: $output")
+    assert(!output.contains("... and"), s"Should NOT show truncation: $output")
+  }
+
+  test("members --limit 0 --json shows all members") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 0, jsonOutput = true))
+    }
+    assert(output.startsWith("["), s"JSON should start with bracket: $output")
+    // Count JSON entries — PaymentServiceLive has 5 members
+    val memberCount = "\"name\":".r.findAllIn(output).size
+    assertEquals(memberCount, 5, s"Should have all 5 members in JSON: $output")
+  }
+
+  test("members --offset --json paginates correctly") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = 2, offset = 1, jsonOutput = true))
+    }
+    val memberCount = "\"name\":".r.findAllIn(output).size
+    assertEquals(memberCount, 2, s"Should have 2 members in JSON with offset=1 limit=2: $output")
+  }
+
+  test("parseFlags parses --offset flag") {
+    val f = parseFlags(List("members", "Foo", "--offset", "10"))
+    assertEquals(f.offset, 10)
+  }
+
+  test("parseFlags --offset defaults to 0") {
+    val f = parseFlags(List("members", "Foo"))
+    assertEquals(f.offset, 0)
+  }
+
+  test("parseFlags --offset is excluded from cleanArgs") {
+    val f = parseFlags(List("members", "Foo", "--offset", "5"))
+    assert(!f.cleanArgs.contains("--offset"), "--offset should be excluded from cleanArgs")
+    assert(!f.cleanArgs.contains("5"), "5 (offset value) should be excluded from cleanArgs")
+    assert(f.cleanArgs.contains("Foo"), "Foo should remain in cleanArgs")
+  }
+
+  test("parseFlags --limit 0 is parsed correctly") {
+    val f = parseFlags(List("members", "Foo", "--limit", "0"))
+    assertEquals(f.limit, 0)
+  }
