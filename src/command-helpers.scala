@@ -35,8 +35,8 @@ def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext)
   members.foreach { m =>
     val n = m.name.toLowerCase
     if n == lower then exact += m
-    else if n.startsWith(lower) || lower.startsWith(n) then prefix += m
-    else if n.contains(lower) || lower.contains(n) then contains += m
+    else if n.startsWith(lower) then prefix += m
+    else if n.contains(lower) then contains += m
     else rest += m
   }
   (exact.toList ++ prefix.toList ++ contains.toList ++ rest.toList).take(5).map { m =>
