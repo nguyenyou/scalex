@@ -700,6 +700,22 @@ class CliSuite extends ScalexTestBase:
     assert(!ownPart.contains("createUser"), s"Object own members should NOT have trait's createUser: $ownPart")
   }
 
+  test("members: qualified name should return same members as simple name") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val simpleOutput = captureOut {
+      runCommand("members", List("Pipeline"), CommandContext(idx = idx, workspace = workspace, limit = 50, verbose = true))
+    }
+    val qualifiedOutput = captureOut {
+      runCommand("members", List("com.example.Pipeline"), CommandContext(idx = idx, workspace = workspace, limit = 50, verbose = true))
+    }
+    // Both should find the same members — qualified name should not break extractMembers
+    assert(simpleOutput.contains("execute"), s"Simple name should find execute: $simpleOutput")
+    assert(qualifiedOutput.contains("execute"), s"Qualified name should find execute: $qualifiedOutput")
+    assert(qualifiedOutput.contains("validate"), s"Qualified name should find validate: $qualifiedOutput")
+    assert(qualifiedOutput.contains("create"), s"Qualified name should find companion create: $qualifiedOutput")
+  }
+
   // ── doc command output ──────────────────────────────────────────────
 
   test("doc command output") {
