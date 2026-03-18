@@ -10,6 +10,13 @@
 - `overrides --body` — show each override's source body inline (#180)
 - `grep --in <symbol>` — scope grep to a specific class or method body; supports `Owner.member` dot syntax (#180)
 
+### Changed
+- SKILL.md restructured: 693 → 404 lines; low-traffic commands and options table moved to `references/commands.md` for progressive disclosure (#180)
+- `explain` flag docs restructured from wall-of-text paragraph to bulleted list (#180)
+
+### Fixed
+- `-e PATTERN` options table entry now correctly says `|` (Java regex), not `\|` (POSIX) (#180)
+
 ## [1.24.0] — 2026-03-18
 
 ### Improved
