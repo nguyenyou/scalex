@@ -301,7 +301,8 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--flat` | Refs: flat list instead of categorized (overrides default) |
 | `--definitions-only` | Search: only return class/trait/object/enum definitions |
 | `--category CAT` | Refs: filter to a single category (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment) |
-| `--limit N` | Max results (default: 20) |
+| `--limit N` | Max results (default: 20, 0 = unlimited) |
+| `--offset N` | Members: skip first N results for pagination (default: 0) |
 | `--kind K` | Filter by kind: class, trait, object, def, val, type, enum, given, extension |
 | `--no-tests` | Exclude test files (test/, tests/, testing/, bench-*, *Spec.scala, etc.) |
 | `--include-tests` | Override --no-tests default for overview command |

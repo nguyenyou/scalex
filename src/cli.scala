@@ -45,7 +45,9 @@ private val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--pat
 def parseFlags(argList: List[String]): ParsedFlags =
   val limit = argList.indexOf("--limit") match
     case -1 => 20
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(20)
+    case i =>
+      val v = argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(20)
+      if v == 0 then Int.MaxValue else v
   val kindFilter = argList.indexOf("--kind") match
     case -1 => None
     case i => argList.lift(i + 1)
@@ -219,7 +221,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |Options:
         |  -w, --workspace PATH  Set workspace path (default: current directory)
         |  --limit N             Max results (default: 20, 0 = unlimited)
-        |  --offset N            Skip first N results (for pagination, default: 0)
+        |  --offset N            Members: skip first N results for pagination (default: 0)
         |  --kind K              Filter by kind: class, trait, object, def, val, type, enum, given, extension
         |  --verbose             Show signatures and extends clauses
         |  --categorize, -c      Group refs by category (default; kept for backwards compatibility)

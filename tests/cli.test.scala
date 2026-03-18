@@ -2225,7 +2225,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val output = captureOut {
       runCommand("members", List("PaymentServiceLive"),
-        CommandContext(idx = idx, workspace = workspace, limit = 0))
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue))
     }
     // PaymentServiceLive has 5 members
     assert(output.contains("processPayment"), s"Should show processPayment: $output")
@@ -2253,16 +2253,16 @@ class CliSuite extends ScalexTestBase:
     // Get all members first to know the order
     val allOutput = captureOut {
       runCommand("members", List("PaymentServiceLive"),
-        CommandContext(idx = idx, workspace = workspace, limit = 0))
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue))
     }
     val allLines = allOutput.linesIterator.filter { l =>
       l.contains("    def  ") || l.contains("    val  ") || l.contains("    var  ") || l.contains("    type ")
     }.toList
 
-    // Now get with offset=2, limit=0 — should skip first 2
+    // Now get with offset=2, limit=unlimited — should skip first 2
     val offsetOutput = captureOut {
       runCommand("members", List("PaymentServiceLive"),
-        CommandContext(idx = idx, workspace = workspace, limit = 0, offset = 2))
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, offset = 2))
     }
     val offsetLines = offsetOutput.linesIterator.filter { l =>
       l.contains("    def  ") || l.contains("    val  ") || l.contains("    var  ") || l.contains("    type ")
@@ -2287,7 +2287,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val output = captureOut {
       runCommand("members", List("PaymentServiceLive"),
-        CommandContext(idx = idx, workspace = workspace, limit = 0, offset = 100))
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, offset = 100))
     }
     // All 5 members skipped — no member lines should appear
     assert(!output.contains("processPayment"), s"Should NOT show any members: $output")
@@ -2299,7 +2299,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     val output = captureOut {
       runCommand("members", List("PaymentServiceLive"),
-        CommandContext(idx = idx, workspace = workspace, limit = 0, jsonOutput = true))
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, jsonOutput = true))
     }
     assert(output.startsWith("["), s"JSON should start with bracket: $output")
     // Count JSON entries — PaymentServiceLive has 5 members
@@ -2335,7 +2335,7 @@ class CliSuite extends ScalexTestBase:
     assert(f.cleanArgs.contains("Foo"), "Foo should remain in cleanArgs")
   }
 
-  test("parseFlags --limit 0 is parsed correctly") {
+  test("parseFlags --limit 0 is converted to Int.MaxValue") {
     val f = parseFlags(List("members", "Foo", "--limit", "0"))
-    assertEquals(f.limit, 0)
+    assertEquals(f.limit, Int.MaxValue)
   }

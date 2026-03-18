@@ -296,11 +296,14 @@ private def jsonMemberBody(m: MemberInfo): String =
   m.body.map(b => s""","body":"${jsonEscape(b.sourceText)}","bodyStartLine":${b.startLine},"bodyEndLine":${b.endLine}""").getOrElse("")
 
 private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContext): Unit = {
-  def page[A](items: List[A]): List[A] =
-    val dropped = items.drop(ctx.offset)
-    if ctx.limit == 0 then dropped else dropped.take(ctx.limit)
-  def remaining[A](items: List[A]): Int =
-    items.size - ctx.offset - page(items).size
+  // Slice a section's items using global running counters (skipLeft, showLeft).
+  // Returns (shown items, count of items in this section omitted by the limit).
+  def sliceSection[A](items: List[A], skipLeft: Int, showLeft: Int): (shown: List[A], omitted: Int, newSkip: Int, newShow: Int) =
+    val toSkip = skipLeft.min(items.size)
+    val available = items.drop(toSkip)
+    val toShow = showLeft.min(available.size)
+    val shown = available.take(toShow)
+    (shown = shown, omitted = available.size - toShow, newSkip = skipLeft - toSkip, newShow = showLeft - toShow)
 
   if ctx.jsonOutput then {
     val allMembers = r.sections.flatMap { sec =>
@@ -324,11 +327,15 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
       }
       ownMembers ++ inheritedMembers ++ companionMembers
     }
-    println(page(allMembers).mkString("[", ",", "]"))
+    val paged = allMembers.drop(ctx.offset).take(ctx.limit)
+    println(paged.mkString("[", ",", "]"))
   } else {
     if r.sections.isEmpty then {
       println(s"""No class/trait/object/enum "${r.symbol}" found""")
     } else {
+      // Running counters for global pagination across all sections
+      var skipLeft = ctx.offset
+      var showLeft = ctx.limit
       r.sections.foreach { sec =>
         val rel = ctx.workspace.relativize(sec.file)
         val pkg = if sec.packageName.nonEmpty then s" (${sec.packageName})" else ""
@@ -336,7 +343,9 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
         if sec.ownMembers.isEmpty then println("  (no members)")
         else {
           println(s"  Defined in ${r.symbol}:")
-          page(sec.ownMembers).foreach { m =>
+          val (shown, omitted, sk, sl) = sliceSection(sec.ownMembers, skipLeft, showLeft)
+          skipLeft = sk; showLeft = sl
+          shown.foreach { m =>
             val overrideMarker = if m.isOverride then "  [override]" else ""
             if !ctx.brief then
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}$overrideMarker")
@@ -344,33 +353,34 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}$overrideMarker")
             renderInlineBody(m.body, "      ")
           }
-          val r1 = remaining(sec.ownMembers)
-          if r1 > 0 then println(s"    ... and $r1 more")
+          if omitted > 0 then println(s"    ... and $omitted more")
         }
         sec.inherited.foreach { (parentName, _, _, pMembers) =>
           println(s"  Inherited from $parentName:")
-          page(pMembers).foreach { m =>
+          val (shown, omitted, sk, sl) = sliceSection(pMembers, skipLeft, showLeft)
+          skipLeft = sk; showLeft = sl
+          shown.foreach { m =>
             if !ctx.brief then
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
             else
               println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
           }
-          val r2 = remaining(pMembers)
-          if r2 > 0 then println(s"    ... and $r2 more")
+          if omitted > 0 then println(s"    ... and $omitted more")
         }
         sec.companion.foreach { (compSym, compMembers) =>
           val compRel = ctx.workspace.relativize(compSym.file)
           println(s"\n  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}:")
           if compMembers.isEmpty then println("    (no members)")
           else {
-            page(compMembers).foreach { m =>
+            val (shown, omitted, sk, sl) = sliceSection(compMembers, skipLeft, showLeft)
+            skipLeft = sk; showLeft = sl
+            shown.foreach { m =>
               if !ctx.brief then
                 println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
               else
                 println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.name.padTo(30, ' ')} :${m.line}")
             }
-            val r3 = remaining(compMembers)
-            if r3 > 0 then println(s"    ... and $r3 more")
+            if omitted > 0 then println(s"    ... and $omitted more")
           }
         }
       }
