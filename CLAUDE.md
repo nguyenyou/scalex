@@ -147,10 +147,13 @@ When adding or changing commands/flags in `src/cli.scala`:
 ## Gotchas
 
 - **Protected main branch**: Cannot push directly to main — all changes require a PR
+- **Zero warnings policy**: Before creating a PR, run `scala-cli compile src/ 2>&1 | grep -i warn` and verify no output. Do not ship compiler warnings.
 
 - **Guava group ID**: `com.google.guava:guava`, NOT `com.google.common:guava`
 - **GraalVM native image**: Guava needs `--initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies` (see `build-native.sh`)
 - **No `.par` in Scala 3.8**: Use `list.asJava.parallelStream()` instead of `list.par`
+- **No non-local `return` in Scala 3.8**: `return` inside lambdas/closures is deprecated. Use `scala.util.boundary` + `boundary.break` instead. This includes `return` inside `.foreach`, `.map`, `try`/`catch` blocks inside lambdas, etc.
+- **Scalameta `Pkg.children` wraps stats in `PkgBody`**: Use `pkg.stats` to access direct children (Import, Defn.Class, etc.), not `pkg.children` which nests them inside a `PkgBody` wrapper node.
 - **Scalameta Tree**: `.collect` doesn't work on Tree in Scala 3 — use manual `traverse` + `visit` pattern
 - **Anonymous givens**: Only named givens are indexed; anonymous givens are skipped
 - **`refs`/`imports` use text search**: They use bloom filters to shortlist candidate files, then do word-boundary text matching. They are NOT index-based and have a 20-second timeout.
