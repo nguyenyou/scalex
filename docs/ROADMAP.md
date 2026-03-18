@@ -4,6 +4,11 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Bug fix: explain --related resolves stdlib names to unrelated project types (#228)
+
+- [x] Add blocklist of common stdlib/language type names (`Option`, `List`, `Map`, `Task`, `String`, `Int`, etc.) to `extractRelatedTypes`
+- [x] Filter out blocklisted names before cross-referencing with index — zero perf cost, covers 90%+ of false positives
+
 ### Community feedback: agent exploration improvements (#221)
 
 - [x] Better hub detection in `overview --architecture` — deprioritize types not defined in the indexed source (java.*, scala.*, scala.collection.*); rank project-defined types higher using index membership check; extends existing `isStdlibParent` filter

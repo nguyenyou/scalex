@@ -374,6 +374,13 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    // #228: Project type with stdlib-collision name for related-types false positive test
+    writeFile("src/main/scala/com/ui/Option.scala",
+      """package com.ui
+        |
+        |class Option(val label: String, val value: String)
+        |""".stripMargin)
+
     // #209: Trait with short member names for suggestion ranking tests
     writeFile("src/main/scala/com/example/ShortNames.scala",
       """package com.example
