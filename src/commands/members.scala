@@ -2,6 +2,7 @@ def cmdMembers(args: List[String], ctx: CommandContext): CmdResult =
   args.headOption match
     case None => CmdResult.UsageError("Usage: scalex members <Symbol>")
     case Some(symbol) =>
+      val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
       val defs = filterSymbols(ctx.idx.findDefinition(symbol).filter(s => typeKinds.contains(s.kind)), ctx)
 
       if defs.isEmpty then
@@ -13,12 +14,12 @@ def cmdMembers(args: List[String], ctx: CommandContext): CmdResult =
           val inheritResult = collectInheritedMembers(s, ctx)
           val inherited = inheritResult.inherited
           val parentKeys = inheritResult.parentMemberKeys
-          val members = extractMembers(s.file, symbol, Some(s.kind)).map { m =>
+          val members = extractMembers(s.file, simpleName, Some(s.kind)).map { m =>
             val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
-            if ctx.withBody then enrichMemberWithBody(m2, s.file, symbol, ctx.maxBodyLines) else m2
+            if ctx.withBody then enrichMemberWithBody(m2, s.file, simpleName, ctx.maxBodyLines) else m2
           }
           // Companion lookup
-          val companion = findCompanion(s, symbol, ctx.idx.findDefinition(symbol).filter(d => typeKinds.contains(d.kind)))
+          val companion = findCompanion(s, simpleName, ctx.idx.findDefinition(symbol).filter(d => typeKinds.contains(d.kind)))
           MemberSectionData(
             file = s.file,
             ownerKind = s.kind,
