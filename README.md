@@ -73,7 +73,7 @@ Here's the architecture (generated with `scalex graph --render`):
  └─────────────┘ └─────────────────┘ └────────────┘
 ```
 
-- **scalex CLI** — 31 commands: search, def, impl, refs, imports, members, graph, ...
+- **scalex CLI** — 30 commands: search, def, impl, refs, imports, members, graph, ...
 - **WorkspaceIndex** — lazy indexes: symbolsByName, parentIndex, filesByPath, bloom filters
 - **git ls-files** — `--stage` returns path + OID per tracked file (change detection)
 - **Scalameta AST** — Source → AST → SymbolInfo, BloomFilter, imports, parents

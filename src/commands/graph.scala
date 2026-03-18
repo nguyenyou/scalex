@@ -4,16 +4,18 @@ def cmdGraph(args: List[String], ctx: CommandContext): CmdResult =
   args match
     case "--render" :: rest =>
       val parsed = parseGraphFlags(rest)
+      val flags = if ctx.jsonOutput then parsed.flags.copy(json = true) else parsed.flags
       val edgeListStr = parsed.remaining.mkString(" ")
       if edgeListStr.isEmpty then
         CmdResult.UsageError("Usage: scalex graph --render \"V1->V2, V2->V3\"")
       else
-        renderGraphCmd(edgeListStr, parsed.flags)
+        renderGraphCmd(edgeListStr, flags)
     case "--parse" :: rest =>
       val parsed = parseGraphFlags(rest)
+      val flags = if ctx.jsonOutput then parsed.flags.copy(json = true) else parsed.flags
       val input = scala.io.Source.stdin.getLines().mkString("\n")
       if input.trim.isEmpty then CmdResult.UsageError("No input provided on stdin for --parse")
-      else parseGraphCmd(input, parsed.flags)
+      else parseGraphCmd(input, flags)
     case _ =>
       CmdResult.UsageError(
         """Usage: scalex graph --render "V1->V2, V2->V3" [--unicode|--no-unicode] [--vertical|--horizontal] [--rounded] [--double]
