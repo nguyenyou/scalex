@@ -2339,3 +2339,63 @@ class CliSuite extends ScalexTestBase:
     val f = parseFlags(List("members", "Foo", "--limit", "0"))
     assertEquals(f.limit, Int.MaxValue)
   }
+
+  // ── Orphan header suppression ──────────────────────────────────────────
+
+  test("members --offset suppresses 'Defined in' header when all own members skipped") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, offset = 100))
+    }
+    assert(!output.contains("Defined in"), s"Should NOT show 'Defined in' header when all members skipped: $output")
+  }
+
+  test("members --offset suppresses 'Inherited from' header when all inherited skipped") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("UserServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, offset = 100, inherited = true))
+    }
+    assert(!output.contains("Inherited from"), s"Should NOT show 'Inherited from' header when all inherited skipped: $output")
+  }
+
+  test("members --offset suppresses companion header when all companion members skipped") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("Pipeline"),
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, offset = 100, verbose = true))
+    }
+    assert(!output.contains("Companion"), s"Should NOT show Companion header when all companion members skipped: $output")
+  }
+
+  test("members --offset shows companion header when own members skipped but companion visible") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // Database trait has 2 own members (query, insert) + companion with live
+    // offset=2 skips own members, companion should still show
+    val output = captureOut {
+      runCommand("members", List("Database"),
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, offset = 2, verbose = true))
+    }
+    val sections = output.split("Members of")
+    // Find the trait section (not the object section)
+    val traitOutput = sections.find(_.contains("trait")).getOrElse("")
+    assert(!traitOutput.contains("Defined in"), s"Should NOT show 'Defined in' — own members skipped: $traitOutput")
+    assert(traitOutput.contains("Companion"), s"Should show Companion — still has visible members: $traitOutput")
+    assert(traitOutput.contains("live"), s"Companion live should be visible: $traitOutput")
+  }
+
+  test("members top-level header still shows when offset skips all content") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("PaymentServiceLive"),
+        CommandContext(idx = idx, workspace = workspace, limit = Int.MaxValue, offset = 100))
+    }
+    // Top-level header identifies the matched type — always shown
+    assert(output.contains("Members of"), s"Top-level 'Members of' header should always show: $output")
+  }

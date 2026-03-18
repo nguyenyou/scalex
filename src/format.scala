@@ -369,11 +369,14 @@ private def renderMemberSections(r: CmdResult.MemberSections, ctx: CommandContex
         }
         sec.companion.foreach { (compSym, compMembers) =>
           val compRel = ctx.workspace.relativize(compSym.file)
-          println(s"\n  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}:")
-          if compMembers.isEmpty then println("    (no members)")
-          else {
+          if compMembers.isEmpty then {
+            println(s"\n  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}:")
+            println("    (no members)")
+          } else {
             val (shown, omitted, newSkip, newShow) = sliceSection(compMembers, skipLeft, showLeft)
             skipLeft = newSkip; showLeft = newShow
+            if shown.nonEmpty || omitted > 0 then
+              println(s"\n  Companion ${compSym.kind.toString.toLowerCase} ${compSym.name} — $compRel:${compSym.line}:")
             shown.foreach { m =>
               if !ctx.brief then
                 println(s"    ${m.kind.toString.toLowerCase.padTo(5, ' ')} ${m.signature.padTo(50, ' ')} :${m.line}")
