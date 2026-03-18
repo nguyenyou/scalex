@@ -176,6 +176,8 @@ scalex explain UserService --verbose       # One-shot: def + doc + signatures + 
 scalex explain UserService --inherited     # Include inherited members from parents
 scalex explain UserService --no-doc       # Skip Scaladoc section
 scalex explain UserService --brief        # Definition + top 3 members only
+scalex explain UserService --related     # Show related project types from signatures
+scalex package com.example --explain     # Brief explain per type in the package
 scalex members UserService --inherited     # Full API surface including parents
 scalex hierarchy UserService               # Inheritance tree (parents + children)
 

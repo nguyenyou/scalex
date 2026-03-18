@@ -4,6 +4,12 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Community feedback: agent exploration improvements (#221)
+
+- [x] Better hub detection in `overview --architecture` — deprioritize types not defined in the indexed source (java.*, scala.*, scala.collection.*); rank project-defined types higher using index membership check; extends existing `isStdlibParent` filter
+- [x] `explain --related` — extract type names from member signatures (param types, return types, field types), cross-reference with index to find definitions, list as "Related types" section; cuts agent exploration round-trips in half
+- [x] `package --explain` — composite mode: run `explain --brief` for each definition in the package; batch-style output (definition + top members + impl count per type); single command replaces N sequential `explain` calls
+
 ### Graph rendering and parsing
 
 - [x] Port ascii-graphs library to scalex as `graph` command

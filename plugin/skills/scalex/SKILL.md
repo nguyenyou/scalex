@@ -251,7 +251,7 @@ Overrides of findUser (in implementations of UserService) — 2 found:
     def findUser(id: String): Option[User]
 ```
 
-### `scalex explain <symbol> [--verbose] [--brief] [--body] [--max-lines N] [--shallow] [--no-doc] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
+### `scalex explain <symbol> [--verbose] [--brief] [--body] [--max-lines N] [--shallow] [--no-doc] [--related] [--inherited] [--impl-limit N] [--members-limit N] [--expand N] [--no-tests] [--path PREFIX] [--exclude-path PREFIX]` — composite summary
 
 One-shot summary that eliminates 4-5 round-trips per type. Orchestrates: definition + scaladoc + members (top 10) + companion object/class + implementations (top N) + import files. Supports **package-qualified names** (e.g. `explain com.example.Cache`) and **Owner.member dotted syntax** (e.g. `explain MyService.findUser`).
 
@@ -261,6 +261,7 @@ Flag reference:
 - `--body`: inline method bodies into the member listing; combine with `--max-lines N` to cap body size
 - `--shallow`: skip implementations and import refs (definition + members + companion only)
 - `--no-doc`: suppress the Scaladoc section — useful when exploring many types rapidly
+- `--related`: show project-defined types referenced in member signatures (param types, return types, field types) — tells you what to explore next
 - `--inherited`: merge parent members into output with provenance markers — full API surface
 - `--impl-limit N`: max implementations to show (default: 5)
 - `--members-limit N`: max members per type (default: 10); sorted by kind: classes/traits first, then defs, vals, types
@@ -279,6 +280,7 @@ scalex explain UserService --expand 1       # expand impls with their members
 scalex explain UserService --inherited     # include inherited members from parents
 scalex explain UserService --no-doc       # skip Scaladoc section
 scalex explain UserService --brief        # definition + top 3 members only
+scalex explain UserService --related     # show related project types from signatures
 ```
 ```
 Explanation of trait UserService (com.example):
@@ -329,7 +331,7 @@ These commands are fully documented in `references/commands.md` (next to this SK
 | `overview` | Codebase summary: symbols by kind, top packages, most-extended types (hidden in `--architecture` mode — hub types supersedes) | `--architecture`, `--focus-package` |
 | `file <query>` | Find files by name (fuzzy camelCase match) | |
 | `annotated <ann>` | Find symbols with a specific annotation | `--kind K` |
-| `package <pkg>` | All symbols in a package, grouped by kind | `--definitions-only`, `--verbose` |
+| `package <pkg>` | All symbols in a package, grouped by kind | `--definitions-only`, `--verbose`, `--explain` |
 | `api <pkg>` | Public API surface (externally imported symbols) | `--used-by PKG` |
 | `summary <pkg>` | Sub-packages with symbol counts | |
 | `deps <symbol>` | What does this symbol depend on? (reverse of `refs`) | `--depth N` |
@@ -376,6 +378,10 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"How do different types implement method X?"** → `scalex overrides run --of Phase --body` — show each override's source body inline
 
 **"Search within a specific class"** → `scalex grep "pattern" --in ClassName` — restrict grep to the class body; supports `Owner.member` dot syntax
+
+**"What types should I explore next?"** → `scalex explain UserService --related` — shows project-defined types from member signatures (User, Database, etc.)
+
+**"Explore all types in a package at once"** → `scalex package com.example --explain` — brief explain per type: definition + top 3 members + impl count, replaces N sequential `explain` calls
 
 **"Quick-explore 3-5 types"** → `echo -e "explain Foo --brief\nexplain Bar --brief\nexplain Baz --brief" | scalex batch` — lightweight multi-explain in one call
 

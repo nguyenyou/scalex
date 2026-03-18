@@ -172,6 +172,36 @@ def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Opti
         (sym = compSym, members = compMembers)
       }
 
+// ── Related types extraction ─────────────────────────────────────────
+
+private val typeNamePattern = """\b[A-Z][A-Za-z0-9]+\b""".r
+
+def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: WorkspaceIndex): List[SymbolInfo] =
+  val selfLower = sym.name.toLowerCase
+  val seen = mutable.HashSet.empty[String]
+  seen += selfLower
+  val result = mutable.ListBuffer.empty[SymbolInfo]
+  // Extract type names from member signatures
+  val typeNames = mutable.HashSet.empty[String]
+  members.foreach { m =>
+    typeNamePattern.findAllIn(m.signature).foreach(typeNames += _)
+  }
+  // Also extract from parent names
+  sym.parents.foreach(typeNames += _)
+  // Cross-reference with index
+  typeNames.foreach { name =>
+    val lower = name.toLowerCase
+    if !seen.contains(lower) then
+      seen += lower
+      idx.symbolsByName.get(lower) match
+        case Some(syms) =>
+          syms.find(s => typeKinds.contains(s.kind)).foreach { s =>
+            result += s
+          }
+        case None => ()
+  }
+  result.toList.sortBy(_.name)
+
 // ── Package helpers ──────────────────────────────────────────────────────────
 
 def symbolsInPackage(pkg: String, symbols: List[SymbolInfo]): List[SymbolInfo] =

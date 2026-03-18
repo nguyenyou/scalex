@@ -2483,3 +2483,78 @@ class CliSuite extends ScalexTestBase:
     // Top-level header identifies the matched type — always shown
     assert(output.contains("Members of"), s"Top-level 'Members of' header should always show: $output")
   }
+
+  // ── #221: better hub detection ────────────────────────────────────────
+
+  test("overview --architecture hub types exclude stdlib-package-only types") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 20, architecture = true))
+    }
+    // Serializable is a stdlib type — should not appear as hub type
+    assert(!output.contains("Serializable"),
+      s"Hub types should not include Serializable (stdlib): $output")
+  }
+
+  // ── #221: explain --related ───────────────────────────────────────────
+
+  test("explain --related shows project-defined types from member signatures") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, related = true))
+    }
+    assert(output.contains("Related types"), s"Should show Related types section: $output")
+    assert(output.contains("User"), s"Should list User as related type: $output")
+  }
+
+  test("explain --related JSON includes relatedTypes array") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, related = true, jsonOutput = true))
+    }
+    assert(output.contains("\"relatedTypes\""), s"JSON should contain relatedTypes: $output")
+    assert(output.contains("\"User\""), s"relatedTypes should contain User: $output")
+  }
+
+  test("explain without --related does not show Related types") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("UserService"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(!output.contains("Related types"), s"Should not show Related types without flag: $output")
+  }
+
+  // ── #221: package --explain ───────────────────────────────────────────
+
+  test("package --explain shows types with members and impl counts") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("package", List("com.example"),
+        CommandContext(idx = idx, workspace = workspace, explainMode = true))
+    }
+    assert(output.contains("types of"), s"Should show type/symbol counts: $output")
+    assert(output.contains("UserService"), s"Should list UserService: $output")
+    assert(output.contains("impls"), s"Should show impl counts: $output")
+  }
+
+  test("package --explain JSON structure") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("package", List("com.example"),
+        CommandContext(idx = idx, workspace = workspace, explainMode = true, jsonOutput = true))
+    }
+    assert(output.contains("\"package\":\"com.example\""), s"JSON should have package: $output")
+    assert(output.contains("\"totalSymbols\""), s"JSON should have totalSymbols: $output")
+    assert(output.contains("\"types\""), s"JSON should have types array: $output")
+    assert(output.contains("\"implCount\""), s"JSON should have implCount: $output")
+    assert(output.contains("\"members\""), s"JSON should have members: $output")
+  }

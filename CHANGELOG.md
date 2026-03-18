@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- `explain --related` — show project-defined types referenced in member signatures as "Related types" section (#221)
+- `package --explain` — composite mode: brief explain per type with definition, top 3 members, and impl count (#221)
+
+### Improved
+- `overview --architecture` — better hub detection: expanded stdlib name list (~30 more types) and new `isStdlibPackageOnly` filter excludes types only defined in java.*/scala.* packages (#221)
+
 ## [1.31.0] — 2026-03-18
 
 ### Fixed

@@ -2,11 +2,33 @@ import scala.collection.mutable
 
 private val stdlibParentNames = Set(
   "product", "serializable", "anyval", "anyref", "any", "matchable",
-  "equals", "object", "enum", "throwable", "exception"
+  "equals", "object", "enum", "throwable", "exception",
+  // Java exceptions / errors
+  "runtimeexception", "ioexception", "illegalargumentexception",
+  "illegalstateexception", "unsupportedoperationexception",
+  "nullpointerexception", "classcastexception", "indexoutofboundsexception",
+  "error", "assertionerror", "stackoverflowerror", "outofmemoryerror",
+  // Java interfaces
+  "comparable", "cloneable", "autocloseable", "closeable",
+  "runnable", "callable", "iterable", "iterator",
+  // Scala function types
+  "function0", "function1", "function2", "function3", "partialfunction",
+  // Scala collections as parents
+  "seq", "list", "map", "set", "option",
 )
 
 private def isStdlibParent(name: String): Boolean =
   stdlibParentNames.contains(name.toLowerCase)
+
+/** Returns true if ALL definitions of `lowerName` in `symbolsByName` are in stdlib packages. */
+private def isStdlibPackageOnly(lowerName: String, symbolsByName: Map[String, List[SymbolInfo]]): Boolean =
+  symbolsByName.get(lowerName) match
+    case None => false
+    case Some(syms) => syms.forall { s =>
+      val pkg = s.packageName.toLowerCase
+      pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg.startsWith("scala.") ||
+        pkg == "java" || pkg == "javax" || pkg == "scala"
+    }
 
 private def recoverName(lower: String, symbolsByName: Map[String, List[SymbolInfo]]): String =
   symbolsByName.get(lower).flatMap(_.headOption).map(_.name).getOrElse(lower)
@@ -23,7 +45,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     .map((p, s) => (pkg = p, syms = s))
 
   val mostExtended = ctx.idx.parentIndex.toList
-    .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name))
+    .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) && !isStdlibPackageOnly(name, ctx.idx.symbolsByName))
     .filter((name, _) => recoverName(name, ctx.idx.symbolsByName).length > 1) // exclude single-char names
     .map { (name, impls) =>
       val filtered = filterSymbols(impls, ctx)
@@ -77,6 +99,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     val refCounts = mutable.HashMap.empty[String, (count: Int, distinctPkgs: Int)]
     ctx.idx.parentIndex.foreach { (name, impls) =>
       if ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) &&
+         !isStdlibPackageOnly(name, ctx.idx.symbolsByName) &&
          recoverName(name, ctx.idx.symbolsByName).length > 1 then
         val filtered = filterSymbols(impls, ctx)
         if filtered.nonEmpty then
