@@ -198,7 +198,7 @@
 | Project | Files | Symbols | Cold Index | Warm Index |
 |---|---|---|---|---|
 | Production monorepo | 13,979 | 214,301 | 4.6s | 540ms |
-| Scala 3 compiler | 17,733 | 203,077 | 2.9s | 412ms |
+| Scala 3 compiler | 18,485 | 144,211 | 2.7s | 349ms |
 
 ### Post-v1 features
 
