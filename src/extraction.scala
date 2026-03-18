@@ -109,7 +109,7 @@ def extractImportLines(file: Path): Option[String] =
         stats.foreach {
           case i: Import =>
             importRanges += ((startLine = i.pos.startLine, endLine = i.pos.endLine))
-          case p: Pkg => collectImports(p.stats)
+          case p: Pkg => collectImports(p.body.stats)
           case _ =>
         }
       collectImports(tree.stats)
@@ -261,7 +261,7 @@ private def extractScalaMembers(file: Path, symbolName: String, filterKind: Opti
       val buf = mutable.ListBuffer.empty[MemberInfo]
 
       def extractFromTemplate(templ: Template): Unit =
-        templ.stats.foreach {
+        templ.body.stats.foreach {
           case d: Defn.Def =>
             val params = formatParamClauses(d.paramClauses)
             val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
@@ -409,11 +409,11 @@ def extractTests(file: Path): List[TestSuiteInfo] = {
       def findSuites(t: Tree): Unit = {
         t match
           case d: Defn.Class =>
-            val tests = collectTests(d.templ.stats, d.name.value)
+            val tests = collectTests(d.templ.body.stats, d.name.value)
             if tests.nonEmpty then
               suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests)
           case d: Defn.Object =>
-            val tests = collectTests(d.templ.stats, d.name.value)
+            val tests = collectTests(d.templ.body.stats, d.name.value)
             if tests.nonEmpty then
               suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests)
           case _ =>
@@ -481,28 +481,28 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
               val el = d.pos.endLine
               val body = (sl to el).map(lines(_)).mkString("\n")
               buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
           case d: Defn.Trait =>
             if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
               val sl = d.pos.startLine
               val el = d.pos.endLine
               val body = (sl to el).map(lines(_)).mkString("\n")
               buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
           case d: Defn.Object =>
             if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
               val sl = d.pos.startLine
               val el = d.pos.endLine
               val body = (sl to el).map(lines(_)).mkString("\n")
               buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
           case d: Defn.Enum =>
             if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
               val sl = d.pos.startLine
               val el = d.pos.endLine
               val body = (sl to el).map(lines(_)).mkString("\n")
               buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.stats.foreach(s => extractFromTree(s, d.name.value))
+            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
           case app: Term.Apply =>
             extractTestName(app) match
               case Some((name, _)) if name == symbolName =>
@@ -524,7 +524,7 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
               case _ =>
             infix.children.foreach(c => extractFromTree(c, currentOwner))
           case p: Pkg =>
-            p.stats.foreach(s => extractFromTree(s, currentOwner))
+            p.body.stats.foreach(s => extractFromTree(s, currentOwner))
           case other =>
             // Recurse into all other nodes (Term.Block, Term.If, etc.)
             // to find nested local defs, vals, and vars
