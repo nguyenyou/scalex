@@ -14,15 +14,15 @@ def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
         case Some(resolvedPkg) =>
           var symbols = filterSymbols(ctx.idx.symbols.filter(_.packageName == resolvedPkg), ctx)
           if ctx.explainMode then
-            val types = symbols.filter(s => typeKinds.contains(s.kind))
-              .sortBy(s => (kindRankMap(s.kind), s.name))
-              .take(ctx.limit)
+            val allTypes = symbols.filter(s => typeKinds.contains(s.kind))
+              .sortBy(s => (kindRank = kindRankMap(s.kind), name = s.name))
+            val types = allTypes.take(ctx.limit)
             val entries = types.map { s =>
               val members = extractMembers(s.file, s.name, Some(s.kind)).sortBy(memberKindRank).take(3)
-              val implCount = ctx.idx.findImplementations(s.name).size
+              val implCount = filterSymbols(ctx.idx.findImplementations(s.name), ctx).size
               PackageExplainedEntry(s, members, implCount)
             }
-            CmdResult.PackageExplained(resolvedPkg, entries, symbols.size)
+            CmdResult.PackageExplained(resolvedPkg, entries, symbols.size, allTypes.size)
           else
             if ctx.definitionsOnly then
               symbols = symbols.filter(s => typeKinds.contains(s.kind))
