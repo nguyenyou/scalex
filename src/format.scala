@@ -396,7 +396,6 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
     val kindJson = d.symbolsByKind.map((k, c) => s""""${k.toString.toLowerCase}":$c""").mkString("{", ",", "}")
     val pkgJson = d.topPackages.map((p, c) => s"""{"package":"${jsonEscape(p)}","count":$c}""").mkString("[", ",", "]")
-    val extJson = d.mostExtended.map((n, c, sig) => s"""{"name":"${jsonEscape(n)}","implementations":$c,"signature":"${jsonEscape(sig)}"}""").mkString("[", ",", "]")
     if d.hasArchitecture then {
       val depsJson = d.pkgDeps.map { (pkg, deps) =>
         val dArr = deps.map(dep => s""""${jsonEscape(dep)}"""").mkString("[", ",", "]")
@@ -406,6 +405,7 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
       val focusPkgJson = d.focusPackage.map(p => s""","focusPackage":"${jsonEscape(p)}"""").getOrElse("")
       println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"packageDependencies":$depsJson,"hubTypes":$hubJson$focusPkgJson}""")
     } else {
+      val extJson = d.mostExtended.map((n, c, sig) => s"""{"name":"${jsonEscape(n)}","implementations":$c,"signature":"${jsonEscape(sig)}"}""").mkString("[", ",", "]")
       println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
     }
   } else {

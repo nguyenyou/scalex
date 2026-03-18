@@ -6,7 +6,7 @@
 
 ### Community feedback: overview dedup & onboarding flow (#192)
 
-- [ ] `overview --architecture` dedup — skip "Most extended" section when `--architecture` is active; "Hub types" already covers the same `parentIndex` data with identical sorting; applies to both text and JSON output
+- [x] `overview --architecture` dedup — skip "Most extended" section when `--architecture` is active; "Hub types" already covers the same `parentIndex` data with identical sorting; applies to both text and JSON output
 - ~~`tour` composite command~~ — nice idea but hard to get right; auto-selecting which types to explain risks wrong choices and bloated output; AI agents already do selective sequential calls (`overview` → pick interesting types → `explain`), which adapts better than a fixed composite
 
 ### Community feedback: composite output modes to reduce round trips (#180)
