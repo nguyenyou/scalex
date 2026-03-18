@@ -1021,7 +1021,8 @@ private def renderPackageExplained(r: CmdResult.PackageExplained, ctx: CommandCo
       }.mkString("[", ",", "]")
       s"""{"definition":${jsonSymbol(e.sym, ctx.workspace)},"members":$mJson,"implCount":${e.implCount}}"""
     }.mkString("[", ",", "]")
-    println(s"""{"package":"${jsonEscape(r.pkg)}","totalSymbols":${r.totalSymbols},"types":$typesJson}""")
+    val truncatedJson = if r.totalTypes > r.entries.size then s""","totalTypes":${r.totalTypes},"truncated":true""" else ""
+    println(s"""{"package":"${jsonEscape(r.pkg)}","totalSymbols":${r.totalSymbols},"types":$typesJson$truncatedJson}""")
   } else {
     if r.entries.isEmpty then {
       println(s"""Package ${r.pkg}: (no types)""")
@@ -1038,6 +1039,8 @@ private def renderPackageExplained(r: CmdResult.PackageExplained, ctx: CommandCo
           }
         println()
       }
+      if r.totalTypes > r.entries.size then
+        println(s"  ... and ${r.totalTypes - r.entries.size} more types (use --limit to adjust)")
     }
   }
 }

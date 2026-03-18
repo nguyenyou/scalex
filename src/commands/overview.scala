@@ -13,8 +13,6 @@ private val stdlibParentNames = Set(
   "runnable", "callable", "iterable", "iterator",
   // Scala function types
   "function0", "function1", "function2", "function3", "partialfunction",
-  // Scala collections as parents
-  "seq", "list", "map", "set", "option",
 )
 
 private def isStdlibParent(name: String): Boolean =

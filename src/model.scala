@@ -219,7 +219,7 @@ enum CmdResult:
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
   case Packages(packages: List[String])
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
-  case PackageExplained(pkg: String, entries: List[PackageExplainedEntry], totalSymbols: Int)
+  case PackageExplained(pkg: String, entries: List[PackageExplainedEntry], totalSymbols: Int, totalTypes: Int)
   case PackageSummary(pkg: String, subPackages: List[(subPkg: String, count: Int)], totalSymbols: Int)
   case ApiSurface(pkg: String, symbols: List[(symbol: SymbolInfo, importerCount: Int)], totalInPackage: Int, internalOnly: List[String])
   case RefsTop(symbol: String, fileRanking: List[(file: Path, count: Int)], total: Int, timedOut: Boolean)

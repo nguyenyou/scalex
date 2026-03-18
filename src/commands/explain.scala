@@ -60,31 +60,30 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
         val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
         // Scaladoc
         val doc = if ctx.noDoc then None else extractDoc(sym.file, sym.line)
+        // Extract raw members once — reused for members, related, and brief
+        val rawMembers = if typeKinds.contains(sym.kind) then
+          extractMembers(sym.file, simpleName, Some(sym.kind))
+        else Nil
         // Members (for types)
         val inheritResult = if typeKinds.contains(sym.kind) then collectInheritedMembers(sym, ctx)
           else (inherited = Nil: List[(parentName: String, parentFile: Option[java.nio.file.Path], parentPackage: String, members: List[MemberInfo])], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
         val inherited = inheritResult.inherited
         val parentKeys = inheritResult.parentMemberKeys
-        val members = if typeKinds.contains(sym.kind) then
-          extractMembers(sym.file, simpleName, Some(sym.kind)).map { m =>
-            val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
-            if ctx.withBody then enrichMemberWithBody(m2, sym.file, simpleName, ctx.maxBodyLines) else m2
-          }.sortBy(memberKindRank).take(ctx.membersLimit)
-        else Nil
+        val members = rawMembers.map { m =>
+          val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
+          if ctx.withBody then enrichMemberWithBody(m2, sym.file, simpleName, ctx.maxBodyLines) else m2
+        }.sortBy(memberKindRank).take(ctx.membersLimit)
         // Companion lookup
         val companion = findCompanion(sym, simpleName, defs)
           .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.membersLimit)))
-        // Related types (extract from ALL members for full coverage)
+        // Related types (use raw members for full coverage)
         val relatedTypes = if ctx.related && typeKinds.contains(sym.kind) then
-          val allMembers = extractMembers(sym.file, simpleName, Some(sym.kind))
-          extractRelatedTypes(allMembers, sym, ctx.idx)
+          extractRelatedTypes(rawMembers, sym, ctx.idx)
         else Nil
 
         if ctx.brief then
           // Brief mode: definition + top 3 members only
-          val briefMembers = if typeKinds.contains(sym.kind) then
-            extractMembers(sym.file, simpleName, Some(sym.kind)).sortBy(memberKindRank).take(3)
-          else Nil
+          val briefMembers = rawMembers.sortBy(memberKindRank).take(3)
           CmdResult.Explanation(sym, None, briefMembers, Nil, Nil, otherMatches = otherMatches,
             relatedTypes = relatedTypes)
         else if ctx.shallow then
