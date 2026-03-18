@@ -2540,7 +2540,7 @@ class CliSuite extends ScalexTestBase:
       runCommand("package", List("com.example"),
         CommandContext(idx = idx, workspace = workspace, explainMode = true))
     }
-    assert(output.contains("types of"), s"Should show type/symbol counts: $output")
+    assert(output.contains("types") && output.contains("symbols"), s"Should show type/symbol counts: $output")
     assert(output.contains("UserService"), s"Should list UserService: $output")
     assert(output.contains("impls"), s"Should show impl counts: $output")
   }

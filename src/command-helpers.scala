@@ -200,7 +200,7 @@ def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: Workspa
           }
         case None => ()
   }
-  result.toList.sortBy(_.name)
+  result.toList.sortBy(_.name).take(10)
 
 // ── Package helpers ──────────────────────────────────────────────────────────
 

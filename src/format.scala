@@ -1027,7 +1027,11 @@ private def renderPackageExplained(r: CmdResult.PackageExplained, ctx: CommandCo
     if r.entries.isEmpty then {
       println(s"""Package ${r.pkg}: (no types)""")
     } else {
-      println(s"Package ${r.pkg} (${r.entries.size} types of ${r.totalSymbols} symbols):\n")
+      val typeHeader = if r.totalTypes > r.entries.size then
+        s"showing ${r.entries.size} of ${r.totalTypes} types, ${r.totalSymbols} symbols"
+      else
+        s"${r.entries.size} types of ${r.totalSymbols} symbols"
+      println(s"Package ${r.pkg} ($typeHeader):\n")
       r.entries.foreach { e =>
         val rel = ctx.workspace.relativize(e.sym.file)
         val implSuffix = if e.implCount > 0 then s" (${e.implCount} impls)" else ""

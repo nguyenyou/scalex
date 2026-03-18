@@ -331,7 +331,7 @@ These commands are fully documented in `references/commands.md` (next to this SK
 | `overview` | Codebase summary: symbols by kind, top packages, most-extended types (hidden in `--architecture` mode — hub types supersedes) | `--architecture`, `--focus-package` |
 | `file <query>` | Find files by name (fuzzy camelCase match) | |
 | `annotated <ann>` | Find symbols with a specific annotation | `--kind K` |
-| `package <pkg>` | All symbols in a package, grouped by kind | `--definitions-only`, `--verbose`, `--explain` |
+| `package <pkg>` | All symbols in a package, grouped by kind | `--definitions-only`, `--verbose`, `--explain`, `--limit N` |
 | `api <pkg>` | Public API surface (externally imported symbols) | `--used-by PKG` |
 | `summary <pkg>` | Sub-packages with symbol counts | |
 | `deps <symbol>` | What does this symbol depend on? (reverse of `refs`) | `--depth N` |
