@@ -6,8 +6,8 @@
 
 ### Bug fix: explain --related resolves stdlib names to unrelated project types (#228)
 
-- [x] Add blocklist of common stdlib/language type names (`Option`, `List`, `Map`, `Task`, `String`, `Int`, etc.) to `extractRelatedTypes`
-- [x] Filter out blocklisted names before cross-referencing with index — zero perf cost, covers 90%+ of false positives
+- [x] Hybrid `isStdlibType` check: minimal predef set (`Option`, `List`, `Map`, etc.) + package-based filtering via index for non-predef names
+- [x] Project-defined types with library names (`Task`, `Stream`, `IO`, etc.) correctly surface; only Scala predef auto-imports and unindexed stdlib types are suppressed
 
 ### Community feedback: agent exploration improvements (#221)
 

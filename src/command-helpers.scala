@@ -180,7 +180,7 @@ def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Opti
 // to define a namesake (e.g. com.ui.Option). Library types like Task, Stream, IO
 // are intentionally excluded: projects commonly define their own.
 private val predefTypeNames: Set[String] = Set(
-  "option", "list", "map", "set", "seq", "vector", "array", "either", "try",
+  "option", "list", "map", "set", "seq", "vector", "array", "either",
   "some", "none", "nil", "iterable", "iterator", "tuple",
   "boolean", "string", "int", "long", "double", "float", "byte", "short",
   "char", "unit", "nothing", "any", "anyref", "anyval",
