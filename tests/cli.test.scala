@@ -2569,8 +2569,9 @@ class CliSuite extends ScalexTestBase:
         CommandContext(idx = idx, workspace = workspace, related = true))
     }
     // UserService has members: findUser(id: String): Option[User], createUser(name: String): User
+    assert(output.contains("Related types"), s"Should show Related types section: $output")
     // User is a real project type in com.example — should be related
-    assert(output.contains("User"), s"Should list User as related type: $output")
+    assert(output.contains("User (com.example)"), s"Should list User as related type: $output")
     // Option is a stdlib type (scala.Option), NOT com.ui.Option — should NOT appear
     assert(!output.contains("com.ui"), s"Should NOT resolve Option to com.ui.Option: $output")
   }
