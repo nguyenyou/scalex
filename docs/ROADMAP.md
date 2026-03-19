@@ -4,6 +4,10 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Concise overview mode (#248)
+
+- [x] `overview --concise` — fixed-size summary (~60 lines) regardless of codebase size; compact header, inline symbols, top packages, dep stats (not full graph), hub types, drill-down hints; implies `--architecture`
+
 ### Bug fix: Owner.Member dotted syntax fails for nested classes (#239)
 
 - [x] Owner-qualified fallback in `findDefinition` — resolves `Outer.Inner` by finding owner type, then filtering symbols by same file; fixes `members`, `hierarchy`, `def`, `explain` automatically

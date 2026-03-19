@@ -54,7 +54,7 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
     .sortBy(t => (primary = -t.distinctPkgs, secondary = -t.impls.size))
     .take(ctx.limit)
 
-  val effectiveArch = ctx.architecture || ctx.focusPackage.isDefined
+  val effectiveArch = ctx.architecture || ctx.focusPackage.isDefined || ctx.concise
 
   // Architecture: compute package dependency graph from imports
   val archPkgDeps: Map[String, Set[String]] = if effectiveArch then {

@@ -37,6 +37,7 @@ case class ParsedFlags(
   offset: Int = 0,
   related: Boolean = false,
   explainMode: Boolean = false,
+  concise: Boolean = false,
   cleanArgs: List[String] = Nil,
 )
 
@@ -146,6 +147,7 @@ def parseFlags(argList: List[String]): ParsedFlags =
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
   val related = argList.contains("--related")
   val explainMode = argList.contains("--explain")
+  val concise = argList.contains("--concise")
 
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
@@ -158,7 +160,7 @@ def parseFlags(argList: List[String]): ParsedFlags =
     hasMethodFilter, extendsFilter, bodyContainsFilter, focusPackage, expandDepth, membersLimit,
     brief, strict, usedByFilter, returnsFilter, takesFilter, shallow, noDoc, excludePath, topN,
     summaryMode, timingsEnabled, withBody, maxBodyLines, showImports, offset, related, explainMode,
-    cleanArgs)
+    concise, cleanArgs)
 
 private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
                            batchMode: Boolean = false, effectiveNoTests: Option[Boolean] = None): CommandContext =
@@ -177,7 +179,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
     usedByFilter = f.usedByFilter, returnsFilter = f.returnsFilter, takesFilter = f.takesFilter,
     shallow = f.shallow, noDoc = f.noDoc, excludePath = f.excludePath, summaryMode = f.summaryMode,
     withBody = f.withBody, maxBodyLines = f.maxBodyLines, showImports = f.showImports,
-    offset = f.offset, related = f.related, explainMode = f.explainMode)
+    offset = f.offset, related = f.related, explainMode = f.explainMode, concise = f.concise)
 
 @main def main(args: String*): Unit =
   val f = parseFlags(args.toList)
@@ -267,6 +269,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |  --related             Explain: show project-defined types referenced in member signatures
         |  --explain             Package: brief explain per type (definition + top 3 members + impl count)
         |  --architecture        Overview: show package dependency graph and hub types
+        |  --concise             Overview: fixed-size summary (~60 lines) with top packages, hub types, dep stats
         |  --focus-package PKG   Overview: scope dependency graph to a single package
         |  --has-method NAME     AST pattern: match types that have a method with NAME
         |  --extends TRAIT       AST pattern: match types that extend TRAIT
