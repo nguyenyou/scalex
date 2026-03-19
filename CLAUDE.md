@@ -129,8 +129,9 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 
 ### Step 3: Plugin version bump
 5. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
-6. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
-7. Commit, push to main
+6. Update `CHECKSUM_scalex_*` values in `scalex-cli` — get hashes from `checksums.txt` or individual `.sha256` release assets (`gh release download vX.Y.Z -p checksums.txt -O -`)
+7. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
+8. Commit, push to main
 
 Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`), NOT inside `plugin/`.
 
@@ -160,3 +161,4 @@ When adding or changing commands/flags in `src/cli.scala`:
 - **`refs`/`imports` use text search**: They use bloom filters to shortlist candidate files, then do word-boundary text matching. They are NOT index-based and have a 20-second timeout.
 - **Scala 3 indentation in `WorkspaceIndex`**: Deeply nested code can break method boundaries — use brace syntax for nested blocks
 - **Test fixture file counts**: Tests hardcode file counts — adding/removing fixtures requires updating all count assertions
+- **GitHub Actions SHA pinning**: All actions in `release.yml` are pinned to commit SHAs. To verify/update: `git ls-remote --refs https://github.com/<owner>/<repo>.git refs/tags/<tag>`. Never trust SHAs from memory or LLM output without verifying.

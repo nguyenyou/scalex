@@ -10,6 +10,11 @@ set -euo pipefail
 EXPECTED_VERSION="1.34.0"
 REPO="nguyenyou/scalex"
 
+# Expected SHA-256 checksums for each artifact (updated each release alongside EXPECTED_VERSION)
+CHECKSUM_scalex_macos_arm64="76f993d9ebb000ab2d518c6d51d2225144392f1e98de1f7a2cc04fc6949e3738"
+CHECKSUM_scalex_macos_x64="8fabf84f291b28114a138a1199c7f17632fbcba3812266de21f15099ddc4bf08"
+CHECKSUM_scalex_linux_x64="c2124fe1558215da7e8d13154c322aa64613ec33a095abb9b8b88b8a88cd574c"
+
 # Cache location: follow XDG spec (like Mill uses ~/.cache/mill/download/)
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/scalex"
 
@@ -42,6 +47,20 @@ curl -f -L -o "$TMP" "${BASE_URL}/${ARTIFACT}" || {
   echo "scalex: download failed. Visit https://github.com/${REPO}/releases" >&2
   exit 1
 }
+
+# Verify checksum
+CHECKSUM_VAR="CHECKSUM_${ARTIFACT//-/_}"
+EXPECTED_HASH="${!CHECKSUM_VAR}"
+if [ -n "$EXPECTED_HASH" ]; then
+  ACTUAL_HASH=$(shasum -a 256 "$TMP" | awk '{print $1}')
+  if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+    echo "scalex: checksum verification FAILED" >&2
+    echo "  expected: $EXPECTED_HASH" >&2
+    echo "  actual:   $ACTUAL_HASH" >&2
+    echo "  The downloaded binary may have been tampered with." >&2
+    exit 1
+  fi
+fi
 
 # Install atomically
 chmod +x "$TMP"

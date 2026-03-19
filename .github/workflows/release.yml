@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -27,15 +29,15 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: graalvm/setup-graalvm@v1
+      - uses: graalvm/setup-graalvm@03e8abf916fd0e281b2efe7b2da3378bb0a1d085 # v1
         with:
           java-version: '21'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: VirtusLab/scala-cli-setup@v1
+      - uses: VirtusLab/scala-cli-setup@59e308800210b0414d2d7190068c80021e1b3e5d # v1
         with:
           power: true
           jvm: graalvm-java21
@@ -54,7 +56,7 @@ jobs:
       - name: Generate checksum
         run: shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -65,14 +67,30 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: artifacts
 
       - name: Make binaries executable
         run: chmod +x artifacts/*/scalex-macos-* artifacts/*/scalex-linux-*
+
+      - name: Generate combined checksums
+        run: |
+          cd artifacts
+          shasum -a 256 */scalex-macos-arm64 */scalex-macos-x64 */scalex-linux-x64 | sed 's|[^/]*/||' > ../checksums.txt
+          cd ..
+          echo "Generated checksums.txt:"
+          cat checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: |
+            artifacts/*/scalex-macos-arm64
+            artifacts/*/scalex-macos-x64
+            artifacts/*/scalex-linux-x64
 
       - name: Extract changelog
         id: changelog
@@ -84,8 +102,9 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           files: |
             artifacts/*/scalex-*
+            checksums.txt
           body: ${{ steps.changelog.outputs.body }}
