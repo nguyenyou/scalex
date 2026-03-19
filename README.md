@@ -77,6 +77,8 @@ What if we took the fast parts of a language server — source-level indexing �
 
 ## Design Principles
 
+Scalex is built on a simple bet: AI agents don't need a compiler — they need fast navigation. Language servers like Metals give you type-checked precision, but require a build server, full compilation, and minutes of startup. Scalex takes only the source-level indexing layer — definitions, references, implementations, hierarchy — and parses it directly from source with Scalameta. No build, no classpath, no daemon. The tradeoff: when two packages both define a class called `Config`, scalex can't tell which one `extends Config` refers to — that requires type resolution. The upside: clone any repo, index 17k files in seconds, and start navigating immediately.
+
 - **One command = one answer.** No multi-step reasoning, no regex construction.
 - **Structured output.** Symbol kind, package, file path, line number. Not raw text.
 - **Scala 2 and 3.** Enums, givens, extensions, implicit classes, procedure syntax — auto-detected per file. Java files (`.java`) are also indexed with lightweight regex extraction (class/interface/enum/record).
