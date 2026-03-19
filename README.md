@@ -13,7 +13,6 @@
 ## Table of Contents
 
 - [Why Scalex?](#why-scalex)
-- [Try It Now](#try-it-now)
 - [The Problem](#the-problem)
 - [Design Principles](#design-principles)
 - [How It Works](#how-it-works)
@@ -22,8 +21,6 @@
 - [Commands](#commands)
 - [What Makes It AI-Friendly](#what-makes-it-ai-friendly)
 - [Scalex vs Grep — Honest Comparison](#scalex-vs-grep--honest-comparison)
-- [Run Without Installing](#run-without-installing)
-- [Build From Source](#build-from-source)
 - [Credits](#credits)
 - [Name](#name)
 - [Mascot](#mascot)
@@ -35,31 +32,22 @@
 
 1. **No build server. Nothing to leak.** No daemon, no background process, no socket. No build server silently eating RAM, leaking threads, or grinding your CPU. The index is a single file in your repo — when scalex exits, nothing is left running. See [how it works](#how-it-works).
 
-2. **Zero setup. Just works.** Install the skill, point it at any git repo, start navigating. No build files, no config, no "import build" dialog, no "connecting to build server". Clone a repo you've never seen and explore it in seconds. See [try it now](#try-it-now).
+2. **Zero setup. Just works.** Install the skill, point it at any git repo, start navigating. No build files, no config, no "import build" dialog, no "connecting to build server". Clone a repo you've never seen and explore it in seconds. See [quick start](#quick-start).
 
 3. **Smarter than grep.** Categorized references with confidence ranking. Wildcard import resolution (finds 1,205 importers where grep finds 17). Transitive inheritance trees. Structural AST search. Things grep fundamentally cannot do. See the [honest comparison](#scalex-vs-grep--honest-comparison) for real examples.
 
-4. **One call, not five.** `explain` returns definition + scaladoc + members + implementations + import count in one shot. `refs --count` triages impact in one line. Designed to minimize tool calls — the biggest cost for AI agents isn't latency, it's the number of round trips. See [what makes it AI-friendly](#what-makes-it-ai-friendly) for the full picture.
+4. **Composite commands.** `explain` returns definition + scaladoc + members + implementations + import count in one shot. `refs --count` triages impact in one line. Designed to minimize tool calls — the biggest cost for AI agents isn't latency, it's the number of round trips. See [what makes it AI-friendly](#what-makes-it-ai-friendly) for the full picture.
 
 ---
 
-## Try It Now
-
-Install the Scalex skill in Claude Code:
-
-```bash
-/plugin marketplace add nguyenyou/scalex
-/plugin install scalex@scalex-marketplace
-```
-
-Clone a project and ask Claude to explore it:
+After [installing](#quick-start), clone a project and ask Claude to explore it:
 
 | Project | Clone | Prompt |
 |---|---|---|
 | **Scala 3 compiler** | `git clone --depth 1 https://github.com/scala/scala3.git` | *"Use scalex to explore how the Scala 3 compiler turns source file into bytecode."* |
 | **Scala.js** | `git clone --depth 1 https://github.com/scala-js/scala-js.git` | *"Use scalex to explore how Scala.js turns Scala code into JavaScript."* |
 
-Scalex will index the codebase in seconds, then navigate definitions, trace implementations, and explore the architecture — all without a build server or compilation. See [Quick Start](#quick-start) for installation details.
+Scalex indexes the codebase in seconds, then navigates definitions, traces implementations, and explores the architecture — all without a build server or compilation.
 
 https://github.com/user-attachments/assets/09391648-1e3a-409c-ad52-19afa99ea81f
 
@@ -73,16 +61,14 @@ AI coding agents (Claude Code, Cursor, Codex) are powerful, but they're blind in
 
 2. **Metals LSP** — smart, but heavy. Requires a build server, full compilation, minutes of startup. Designed for humans in IDEs, not agents making quick tool calls.
 
-What if we took the fast parts of a language server — source-level indexing — and threw away everything that requires compilation? An AI agent doesn't need type inference or completions. It needs **navigation**: definitions, references, implementations. All of this can be done by parsing source directly, without ever running a compiler.
-
 ## Design Principles
 
-Scalex is built on a simple bet: AI agents don't need a compiler — they need fast navigation. Language servers like Metals give you type-checked precision, but require a build server, full compilation, and minutes of startup. Scalex takes only the source-level indexing layer — definitions, references, implementations, hierarchy — and parses it directly from source with Scalameta. No build, no classpath, no daemon. The tradeoff: when two packages both define a class called `Config`, scalex can't tell which one `extends Config` refers to — that requires type resolution. The upside: clone any repo, index 17k files in seconds, and start navigating immediately.
+Scalex takes only the source-level indexing layer of a language server — definitions, references, implementations, hierarchy — and parses it directly from source with Scalameta. No build, no classpath, no daemon. The tradeoff: when two packages both define a class called `Config`, scalex can't tell which one `extends Config` refers to — that requires type resolution. The upside: clone any repo, index 17k files in seconds, and start navigating immediately.
 
 - **One command = one answer.** No multi-step reasoning, no regex construction.
 - **Structured output.** Symbol kind, package, file path, line number. Not raw text.
-- **Scala 2 and 3.** Enums, givens, extensions, implicit classes, procedure syntax — auto-detected per file. Java files (`.java`) are also indexed with lightweight regex extraction (class/interface/enum/record).
-- **Zero setup.** Point it at a git repo. No build files, no config, no compilation.
+- **Scala 2 and 3.** Enums, givens, extensions, implicit classes, procedure syntax — auto-detected per file.
+- **Java files.** `.java` files are also indexed with lightweight regex extraction (class/interface/enum/record).
 - **Honest about limits.** When it can't find something, it tells the agent what to try next.
 
 ## How It Works
@@ -185,6 +171,29 @@ curl -fsSL https://raw.githubusercontent.com/nguyenyou/scalex/main/plugin/skills
 
 Place the `scalex/` folder wherever your agent reads skills from.
 
+### Run without installing
+
+If you have [scala-cli](https://scala-cli.virtuslab.org/) installed:
+
+```bash
+git clone https://github.com/nguyenyou/scalex.git
+scala-cli run scalex/src/ -- search /path/to/project MyClass
+```
+
+No build step. Downloads dependencies on first run (~5s), then starts in ~1s.
+
+### Build from source
+
+Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.graalvm.org/):
+
+```bash
+git clone https://github.com/nguyenyou/scalex.git
+cd scalex
+./build-native.sh
+# Output: ~30MB standalone binary, no JVM needed
+cp scalex ~/.local/bin/scalex
+```
+
 ## Usage Examples
 
 ```bash
@@ -235,8 +244,6 @@ scalex members Signal --body --max-lines 10  # Inline bodies ≤ 10 lines
 scalex refs Cache --strict                 # No underscore/dollar false positives
 scalex deps Phase --depth 2                # Transitive dependencies
 ```
-
-All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N` (0 = unlimited).
 
 ## Commands
 
@@ -402,29 +409,6 @@ scalex imports Compiler
 | "What does this file/package export?" | **Scalex** | `overview` and `members` commands |
 
 **Best approach: use both.** Scalex for Scala-aware navigation, Grep for text search. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
-
-## Run Without Installing
-
-If you have [scala-cli](https://scala-cli.virtuslab.org/) installed:
-
-```bash
-git clone https://github.com/nguyenyou/scalex.git
-scala-cli run scalex/src/ -- search /path/to/project MyClass
-```
-
-No build step. Downloads dependencies on first run (~5s), then starts in ~1s.
-
-## Build From Source
-
-Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.graalvm.org/):
-
-```bash
-git clone https://github.com/nguyenyou/scalex.git
-cd scalex
-./build-native.sh
-# Output: ~30MB standalone binary, no JVM needed
-cp scalex ~/.local/bin/scalex
-```
 
 ## Credits
 
