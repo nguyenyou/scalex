@@ -404,6 +404,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"Find tests for X / show me tests about X"** → `scalex tests extractBody` — filter by name + show bodies inline in one command
 
+**"Orient in a huge codebase (10k+ files)"** → `scalex overview --concise` — fixed-size ~60-line summary with top packages, dep stats, hub types; use `--focus-package PKG` to drill into a specific package
+
 **"Is this function tested?"** → `scalex coverage extractBody` — refs in test files only, with count + locations
 
 **"How many places reference X?"** → `scalex refs X --count` — category counts without full file lists

@@ -448,7 +448,8 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
   } else if ctx.concise then {
     // Fixed-size concise output: ~60 lines regardless of codebase size
     val conciseLimit = 10
-    println(s"Project: ${d.fileCount} files, ${d.symbolCount} symbols, ${d.packageCount} packages\n")
+    val focusNote = d.focusPackage.map(p => s" (scoped to $p)").getOrElse("")
+    println(s"Project: ${d.fileCount} files, ${d.symbolCount} symbols, ${d.packageCount} packages$focusNote\n")
 
     // Symbols by kind — single compact line
     val kindLine = d.symbolsByKind.map((k, c) => s"${c} ${k.toString.toLowerCase}").mkString(", ")
@@ -459,8 +460,8 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     d.topPackages.take(conciseLimit).foreach { (pkg, count) =>
       println(s"  ${pkg.padTo(50, ' ')} $count")
     }
-    if d.topPackages.size > conciseLimit then
-      println(s"  ... and ${d.topPackages.size - conciseLimit} more (use overview --architecture for full list)")
+    if d.packageCount > conciseLimit then
+      println(s"  ... and ${d.packageCount - conciseLimit} more (use overview --limit N to show more)")
 
     // Package dependency summary — stats + top connectors, NOT full graph
     if d.pkgDeps.nonEmpty then {
