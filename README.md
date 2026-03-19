@@ -10,6 +10,18 @@
 
 ---
 
+## Why Scalex?
+
+1. **No build server. Nothing to leak.** No daemon, no background process, no socket. No sbt/Metals silently eating RAM, leaking threads, or grinding your CPU. The index is a single file in your repo — when scalex exits, it's gone.
+
+2. **Zero setup. Just works.** Install the skill, point it at any git repo, start navigating. No build files, no config, no "import build" dialog, no "connecting to build server". Clone a repo you've never seen and explore it in seconds.
+
+3. **Smarter than grep.** Categorized references with confidence ranking. Wildcard import resolution (finds 1,205 importers where grep finds 17). Transitive inheritance trees. Structural AST search. Things grep fundamentally cannot do.
+
+4. **One call, not five.** `explain` returns definition + scaladoc + members + implementations + import count in one shot. `refs --count` triages impact in one line. Designed to minimize tool calls — the biggest cost for AI agents isn't latency, it's the number of round trips.
+
+---
+
 ## Try It Now
 
 Install the Scalex skill in Claude Code:
