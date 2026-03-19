@@ -174,23 +174,33 @@ def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Opti
 
 // ── Related types extraction ─────────────────────────────────────────
 
-private val stdlibTypeNames: Set[String] = Set(
-  // Scala predef auto-imports
+// Scala predef auto-imports: always in scope, almost never redefined by projects.
+// Extracted type names from signatures are unqualified — for these universal names,
+// the reference is virtually always to the stdlib version even if a project happens
+// to define a namesake (e.g. com.ui.Option). Library types like Task, Stream, IO
+// are intentionally excluded: projects commonly define their own.
+private val predefTypeNames: Set[String] = Set(
   "option", "list", "map", "set", "seq", "vector", "array", "either", "try",
   "some", "none", "nil", "iterable", "iterator", "tuple",
-  // Primitives/builtins
   "boolean", "string", "int", "long", "double", "float", "byte", "short",
   "char", "unit", "nothing", "any", "anyref", "anyval",
-  // Common stdlib
-  "future", "promise", "duration", "instant", "bigdecimal", "bigint",
-  "throwable", "exception", "path", "file", "uri", "url",
-  // Common library types
-  "task", "uio", "rio", "zio", "urio", "stream", "chunk", "io",
-  // Overlap with stdlibParentNames
-  "product", "serializable", "matchable",
 )
 
 private val typeNamePattern = """\b[A-Z][A-Za-z0-9]+\b""".r
+
+/** True if `lowerName` is unlikely to refer to a project-defined type:
+  * either it's a Scala predef auto-import, not in the index at all (unindexed
+  * stdlib type), or all definitions live in stdlib packages. */
+private def isStdlibType(lowerName: String, symbolsByName: Map[String, List[SymbolInfo]]): Boolean =
+  predefTypeNames.contains(lowerName) || {
+    symbolsByName.get(lowerName) match
+      case None => true // not in index → unindexed stdlib type
+      case Some(syms) => syms.forall { s =>
+        val pkg = s.packageName.toLowerCase
+        pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg.startsWith("scala.") ||
+          pkg == "java" || pkg == "javax" || pkg == "scala"
+      }
+  }
 
 def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: WorkspaceIndex): List[SymbolInfo] =
   val selfLower = sym.name.toLowerCase
@@ -204,17 +214,18 @@ def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: Workspa
   }
   // Also extract from parent names
   sym.parents.foreach(typeNames += _)
-  // Cross-reference with index
+  // Cross-reference with index — skip names that are only defined in stdlib packages
   typeNames.foreach { name =>
     val lower = name.toLowerCase
-    if !seen.contains(lower) && !stdlibTypeNames.contains(lower) then
+    if !seen.contains(lower) then
       seen += lower
-      idx.symbolsByName.get(lower) match
-        case Some(syms) =>
-          syms.find(s => typeKinds.contains(s.kind)).foreach { s =>
-            result += s
-          }
-        case None => ()
+      if !isStdlibType(lower, idx.symbolsByName) then
+        idx.symbolsByName.get(lower) match
+          case Some(syms) =>
+            syms.find(s => typeKinds.contains(s.kind)).foreach { s =>
+              result += s
+            }
+          case None => ()
   }
   result.toList.sortBy(_.name).take(10)
 
