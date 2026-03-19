@@ -37,34 +37,16 @@ The `refs`, `imports`, and `grep` commands work differently — they do text sea
 
 ## Approach and limitations
 
-Scalex does **syntactic analysis only** — it parses source text into an AST using Scalameta (Scala) and JavaParser (Java), then extracts structural information from what's literally written in the code. It never compiles, never runs a build server, and never resolves types. This is what makes it fast (no compilation needed, works instantly on any git repo) but it also means there are things it fundamentally cannot see.
+Scalex parses source text into ASTs (Scalameta for Scala, JavaParser for Java) — no compiler, no build server. It sees what's literally written in source code. This makes it fast and dependency-free, but it cannot see compiler-derived information:
 
-**What scalex sees (and does correctly):**
-- Symbol definitions — where classes, traits, objects, defs, vals, types, enums, givens are declared
-- Explicit extends/implements — inheritance written in source (`class Foo extends Bar with Baz`)
-- Member signatures — as written in source, including explicit type annotations
-- Package structure and import statements
-- Annotations on declarations
-- Text occurrences of symbol names (refs, imports, grep)
-
-**What scalex cannot see (compiler-only information):**
-- **Inferred types** — if a val or def omits its return type, scalex shows the signature as-written, not the compiler-inferred type
-- **Implicit/given resolution** — cannot determine which given instance the compiler selects for a particular call site
-- **Type aliases resolution** — knows `type Foo = Bar` exists but cannot resolve `Foo` to `Bar` in other contexts
-- **Macro-generated code** — anything produced by macro expansion doesn't exist in source and is invisible
-- **Compile errors** — cannot tell you if code actually compiles
-- **Semantic reference resolution** — `refs` uses text matching, not type-aware resolution, so `refs Config` finds ALL things named "Config" regardless of which `Config` they actually refer to (may include false positives from unrelated packages)
-- **Linearization and mixin order** — `hierarchy` shows explicit extends clauses but not the full compiler-computed linearization
+- **Inferred types** — signatures shown as-written; if a return type is omitted, scalex doesn't know it
+- **Implicit/given resolution** — cannot determine which instance the compiler selects at a call site
+- **Type alias resolution** — knows `type Foo = Bar` exists but cannot resolve `Foo` to `Bar` elsewhere
+- **Macro-generated code** — invisible (not in source)
 - **Overload resolution** — cannot determine which overloaded method a call resolves to
+- **Semantic refs** — `refs` uses text matching, so `refs Config` finds all things named "Config" across all packages (may include false positives)
 
-**Rules of thumb for the AI agent:**
-- **"Where is X defined?"** → scalex (fast, correct)
-- **"Who extends X?"** → scalex (fast, correct for explicit extends)
-- **"What methods does X have?"** → scalex (correct for as-written signatures)
-- **"What type does this expression return?"** → NOT scalex — read the source and reason about it
-- **"Which implicit is being used here?"** → NOT scalex — read the source context and reason about it
-- **"Does this code compile?"** → NOT scalex
-- **"Find all usages of X"** → scalex `refs` is a good first pass, but be aware of false positives from identically-named symbols in different packages
+When scalex returns "not found", fall back to grep/glob — the symbol may be a local definition (not top-level), in a file with parse errors, in a generated file, or not yet git-tracked. Also use grep for non-Scala/Java files.
 
 ## Commands
 
@@ -438,31 +420,6 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"I need structured output"** → append `--json` to any command
 
-## When to use scalex vs. grep vs. read
+## Why scalex over grep
 
-**Use scalex when:**
-- Finding where a symbol is defined → `def`, `search`
-- Finding who extends/implements a trait → `impl`, `hierarchy`
-- Listing members of a type → `members`
-- Getting a method's source body → `body`
-- Understanding reference impact → `refs --count`, `refs --top`
-- Exploring package structure → `package`, `summary`, `api`
-- Searching within Scala/Java files → `grep` (has `--no-tests`, `--path`, `--in` built in)
-- Any question about Scala/Java code structure that scalex has a command for
-
-**Use grep/glob when:**
-- Searching non-Scala/Java files (config, YAML, Markdown, etc.)
-- Scalex returns "not found" — the symbol might be a local definition (not top-level), in a file with parse errors, in a generated file, or not yet git-tracked
-- Searching for string literals, log messages, or error text that aren't symbol names
-- Searching for patterns in build files, scripts, or documentation
-
-**Use read when:**
-- You need to see the full file context around a symbol (though `body -C N` and `refs -C N` often suffice)
-- You need to understand control flow or logic that requires reading sequential code
-- You need to see inferred types or reason about what the compiler would do — read the source and think about it
-
-**These are outside scalex's scope:**
-- Verifying code compiles
-- Type-checked error messages
-- Implicit/given resolution at call sites
-- Macro expansion output
+scalex understands Scala and Java syntax. It finds `given` definitions, `enum` declarations, `extension` groups, Java interfaces/records, and annotated symbols that grep patterns miss. It returns structured output with symbol kind, package name, and line numbers. `refs --categorize` provides refactoring-ready impact analysis that would require multiple grep passes. And `scalex grep` gives you regex content search with built-in `--no-tests` and `--path` filtering, eliminating the need for the Grep tool on `.scala`/`.java` files entirely. For any Scala/Java-specific navigation or search, prefer scalex — it's purpose-built for exactly this.
