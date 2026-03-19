@@ -129,7 +129,7 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 
 ### Step 3: Plugin version bump
 5. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
-6. Update `CHECKSUM_scalex_*` values in `scalex-cli` — get hashes from `checksums.txt` or individual `.sha256` release assets (`gh release download vX.Y.Z -p checksums.txt -O -`)
+6. Update `CHECKSUM_scalex_*` values in `scalex-cli` — get hashes from individual `.sha256` release assets (iterate: `gh release view vX.Y.Z --json assets --jq '.assets[] | select(.name | endswith(".sha256")) | .name'` then download each with `gh release download vX.Y.Z -p <name> -O -`)
 7. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
 8. Commit, push to main
 
@@ -139,7 +139,7 @@ Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`)
 
 When adding or changing commands/flags in `src/cli.scala`:
 - Update help text in the `main` function
-- Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
+- Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter) and `plugin/skills/scalex/references/commands.md` (command signature, description, examples, options table). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
 - Update `docs/ROADMAP.md`
 - Update `CHANGELOG.md`
 - Update `README.md` (commands block, AI-Friendly Features, "Use it" examples). README does NOT duplicate the options table — it links to SKILL.md
