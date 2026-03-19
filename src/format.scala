@@ -456,12 +456,14 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     println(s"Symbols: $kindLine\n")
 
     // Top packages — capped at conciseLimit
+    val shownPkgs = d.topPackages.take(conciseLimit)
     println(s"Top packages:")
-    d.topPackages.take(conciseLimit).foreach { (pkg, count) =>
+    shownPkgs.foreach { (pkg, count) =>
       println(s"  ${pkg.padTo(50, ' ')} $count")
     }
-    if d.packageCount > conciseLimit then
-      println(s"  ... and ${d.packageCount - conciseLimit} more (use overview --limit N to show more)")
+    val remainingPkgs = d.packageCount - shownPkgs.size
+    if remainingPkgs > 0 then
+      println(s"  ... and $remainingPkgs more (use overview --limit N to show more)")
 
     // Package dependency summary — stats + top connectors, NOT full graph
     if d.pkgDeps.nonEmpty then {
@@ -476,9 +478,10 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     }
 
     // Hub types — capped at conciseLimit
-    if d.hubTypes.nonEmpty then {
-      println(s"\nHub types (top $conciseLimit):")
-      d.hubTypes.take(conciseLimit).foreach { (name, count, sig) =>
+    val shownHubs = d.hubTypes.take(conciseLimit)
+    if shownHubs.nonEmpty then {
+      println(s"\nHub types (top ${shownHubs.size}):")
+      shownHubs.foreach { (name, count, sig) =>
         val sigHint = if sig.nonEmpty then s"  $sig" else ""
         println(s"  ${name.padTo(30, ' ')} $count references$sigHint")
       }
