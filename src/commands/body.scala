@@ -21,8 +21,12 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
             .map(_.file).distinct
       }
       // Collect (file, body) pairs
+      // For dotted --in owners like "Outer.Inner", use simple name for body extraction
+      val effectiveOwner = ctx.inOwner.map { o =>
+        if o.contains(".") then o.substring(o.lastIndexOf('.') + 1) else o
+      }
       val blocks = filesToSearch.flatMap { f =>
-        extractBody(f, symbol, ctx.inOwner).map(b => (file = f, body = b))
+        extractBody(f, symbol, effectiveOwner).map(b => (file = f, body = b))
       }
       // Fallback: if no results and symbol has a dot, split into Owner.member
       if blocks.isEmpty && symbol.contains(".") && ctx.inOwner.isEmpty then

@@ -392,6 +392,26 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    // #239: classes nested inside objects for Owner.Member dotted syntax tests
+    writeFile("src/main/scala/com/example/Outer.scala",
+      """package com.example
+        |
+        |object Outer {
+        |  class Inner {
+        |    def hello: String = "world"
+        |    def greet(name: String): String = s"Hello, $name"
+        |  }
+        |
+        |  class AnotherInner extends Inner {
+        |    override def hello: String = "overridden"
+        |  }
+        |}
+        |
+        |class Outer {
+        |  val inner = new Outer.Inner
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")

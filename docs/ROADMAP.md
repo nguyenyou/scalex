@@ -4,6 +4,16 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Bug fix: Owner.Member dotted syntax fails for nested classes (#239)
+
+- [ ] Centralize `resolveDottedMember()` to `command-helpers.scala` — currently duplicated in `definition.scala` and used ad-hoc by `def`/`explain`
+- [ ] `members Outer.Inner` — add owner-qualified fallback when `findDefinition` returns no type matches
+- [ ] `hierarchy Outer.Inner` — add owner-qualified fallback in `buildHierarchy`
+- [ ] `impl Outer.Inner` — add owner-qualified fallback in `findImplementations`
+- [ ] `def Outer.Inner` — fix duplicate results (package-qualified path and owner-qualified fallback both fire)
+- [ ] `explain Outer.Inner` — fix missing members section when resolved via dotted syntax
+- [ ] `body --in Outer.Inner` — resolve dotted `--in` owner to simple name for `extractBody`
+
 ### Bug fix: explain --related resolves stdlib names to unrelated project types (#228)
 
 - [x] Hybrid `isStdlibType` check: minimal predef set (`Option`, `List`, `Map`, etc.) + package-based filtering via index for non-predef names

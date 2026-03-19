@@ -2575,3 +2575,72 @@ class CliSuite extends ScalexTestBase:
     // Option is a stdlib type (scala.Option), NOT com.ui.Option — should NOT appear
     assert(!output.contains("com.ui"), s"Should NOT resolve Option to com.ui.Option: $output")
   }
+
+  // ── #239: Owner.Member dotted syntax for nested classes ──────────────
+
+  test("#239: members Outer.Inner resolves nested class") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("members", List("Outer.Inner"),
+        CommandContext(idx = idx, workspace = workspace, limit = 50, verbose = true))
+    }
+    assert(output.contains("hello"), s"Should find hello member via Outer.Inner: $output")
+    assert(output.contains("greet"), s"Should find greet member via Outer.Inner: $output")
+  }
+
+  test("#239: hierarchy Outer.Inner resolves nested class") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("hierarchy", List("Outer.Inner"),
+        CommandContext(idx = idx, workspace = workspace, maxDepth = 5, goUp = true, goDown = true))
+    }
+    assert(output.contains("Inner"), s"Should find Inner in hierarchy: $output")
+    assert(output.contains("AnotherInner"), s"Should find AnotherInner as child: $output")
+  }
+
+  test("#239: impl Outer.Inner resolves nested class") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("impl", List("Outer.Inner"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("AnotherInner"), s"Should find AnotherInner via Outer.Inner: $output")
+  }
+
+  test("#239: def Outer.Inner does not duplicate results") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("def", List("Outer.Inner"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    // Count occurrences of "Inner" as a definition (not substring of other words)
+    val innerLines = output.linesIterator.filter(l => l.contains("class") && l.contains("Inner")).toList
+    assert(innerLines.nonEmpty, s"Should find Inner definition: $output")
+    assert(innerLines.size == 1, s"Should find exactly one Inner definition, got ${innerLines.size}: $output")
+  }
+
+  test("#239: explain Outer.Inner includes members") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("explain", List("Outer.Inner"),
+        CommandContext(idx = idx, workspace = workspace, implLimit = 10))
+    }
+    assert(output.contains("Inner"), s"Should find Inner: $output")
+    assert(output.contains("hello"), s"Should show hello member: $output")
+    assert(output.contains("greet"), s"Should show greet member: $output")
+  }
+
+  test("#239: body --in Outer.Inner resolves nested class") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("body", List("hello"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("Outer.Inner")))
+    }
+    assert(output.contains("world"), s"Should find hello body via --in Outer.Inner: $output")
+  }

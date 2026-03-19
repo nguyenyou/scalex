@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- Owner.Member dotted syntax (`Outer.Inner`) now works across all commands: `members`, `hierarchy`, `impl`, `def`, `explain`, and `body --in` (#239)
+- `def Outer.Inner` no longer duplicates results (#239)
+- `explain Outer.Inner` now includes members section (#239)
+
 ## [1.33.0] — 2026-03-19
 
 ### Fixed
