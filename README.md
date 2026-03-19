@@ -10,6 +10,27 @@
 
 ---
 
+## Table of Contents
+
+- [Why Scalex?](#why-scalex)
+- [Try It Now](#try-it-now)
+- [The Problem](#the-problem)
+- [Design Principles](#design-principles)
+- [How It Works](#how-it-works)
+- [Quick Start](#quick-start)
+- [Usage Examples](#usage-examples)
+- [Commands](#commands)
+- [What Makes It AI-Friendly](#what-makes-it-ai-friendly)
+- [Scalex vs Grep — Honest Comparison](#scalex-vs-grep--honest-comparison)
+- [Run Without Installing](#run-without-installing)
+- [Build From Source](#build-from-source)
+- [Credits](#credits)
+- [Name](#name)
+- [Mascot](#mascot)
+- [License](#license)
+
+---
+
 ## Why Scalex?
 
 1. **No build server. Nothing to leak.** No daemon, no background process, no socket. No build server silently eating RAM, leaking threads, or grinding your CPU. The index is a single file in your repo — when scalex exits, nothing is left running. See [how it works](#how-it-works).
@@ -162,7 +183,7 @@ curl -fsSL https://raw.githubusercontent.com/nguyenyou/scalex/main/plugin/skills
 
 Place the `scalex/` folder wherever your agent reads skills from.
 
-### Use it
+## Usage Examples
 
 ```bash
 cd /path/to/your/scala/project
@@ -215,29 +236,6 @@ scalex deps Phase --depth 2                # Transitive dependencies
 
 All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N` (0 = unlimited).
 
-## Run Without Installing
-
-If you have [scala-cli](https://scala-cli.virtuslab.org/) installed:
-
-```bash
-git clone https://github.com/nguyenyou/scalex.git
-scala-cli run scalex/src/ -- search /path/to/project MyClass
-```
-
-No build step. Downloads dependencies on first run (~5s), then starts in ~1s.
-
-## Build From Source
-
-Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.graalvm.org/):
-
-```bash
-git clone https://github.com/nguyenyou/scalex.git
-cd scalex
-./build-native.sh
-# Output: ~30MB standalone binary, no JVM needed
-cp scalex ~/.local/bin/scalex
-```
-
 ## Commands
 
 ```
@@ -276,7 +274,7 @@ scalex graph --parse           Parse ASCII diagram from stdin into boxes+edges
 
 All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
 
-### What Makes It AI-Friendly
+## What Makes It AI-Friendly
 
 The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space. Scalex is designed to maximize information per call.
 
@@ -402,6 +400,29 @@ scalex imports Compiler
 | "What does this file/package export?" | **Scalex** | `overview` and `members` commands |
 
 **Best approach: use both.** Scalex for Scala-aware navigation, Grep for text search. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
+
+## Run Without Installing
+
+If you have [scala-cli](https://scala-cli.virtuslab.org/) installed:
+
+```bash
+git clone https://github.com/nguyenyou/scalex.git
+scala-cli run scalex/src/ -- search /path/to/project MyClass
+```
+
+No build step. Downloads dependencies on first run (~5s), then starts in ~1s.
+
+## Build From Source
+
+Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.graalvm.org/):
+
+```bash
+git clone https://github.com/nguyenyou/scalex.git
+cd scalex
+./build-native.sh
+# Output: ~30MB standalone binary, no JVM needed
+cp scalex ~/.local/bin/scalex
+```
 
 ## Credits
 
