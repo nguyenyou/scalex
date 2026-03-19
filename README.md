@@ -210,6 +210,7 @@ scalex api com.example                     # What does this package export?
 scalex api com.example --used-by com.web   # Coupling: what does web use from example?
 scalex summary com.example                 # Sub-packages with symbol counts
 scalex entrypoints                         # Find @main, def main, extends App, test suites
+scalex overview --concise                  # Fixed-size ~60-line summary for large codebases
 scalex graph --render "A->B, B->C, A->D"   # Render directed graph as ASCII/Unicode art
 scalex graph --parse < diagram.txt         # Parse ASCII diagram into boxes + edges
 
@@ -255,7 +256,7 @@ scalex refs <symbol>            Who uses this symbol?           (aka: find refer
 scalex imports <symbol>         Who imports this symbol?        (aka: import graph)
 scalex members <symbol>         What's inside this class/trait? (aka: list members)
 scalex doc <symbol>             Show scaladoc for a symbol      (aka: show docs)
-scalex overview                 Codebase summary                (aka: project overview)
+scalex overview                 Codebase summary (--concise for fixed-size ~60-line output)
 scalex symbols <file>           What's defined in this file?    (aka: file symbols)
 scalex file <query>             Search files by name            (aka: find file)
 scalex annotated <annotation>   Find symbols with annotation    (aka: find annotated)
@@ -295,6 +296,7 @@ The biggest cost for an AI agent isn't latency — it's the number of tool calls
 - `batch` amortizes the ~400ms index load across multiple queries — 5 queries in ~600ms instead of ~2.5s
 - `refs --count` gives category counts in one line — fast impact triage before committing to a full read
 - `refs --top N` ranks files by reference count — surfaces the heaviest users first
+- `overview --concise` constrains architectural output to ~60 lines — fixed-size summary even on 10k+ file codebases
 
 **Semantic, not textual.** Scalex parses Scala ASTs, so it understands things grep fundamentally cannot:
 

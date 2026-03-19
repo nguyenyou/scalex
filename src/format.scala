@@ -421,17 +421,69 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     val kindJson = d.symbolsByKind.map((k, c) => s""""${k.toString.toLowerCase}":$c""").mkString("{", ",", "}")
     val pkgJson = d.topPackages.map((p, c) => s"""{"package":"${jsonEscape(p)}","count":$c}""").mkString("[", ",", "]")
     if d.hasArchitecture then {
-      val depsJson = d.pkgDeps.map { (pkg, deps) =>
-        val dArr = deps.map(dep => s""""${jsonEscape(dep)}"""").mkString("[", ",", "]")
-        s""""${jsonEscape(pkg)}":$dArr"""
-      }.mkString("{", ",", "}")
+      val depsJson = if ctx.concise then {
+        // Concise JSON: top 10 most-connected packages only
+        val topConnected = d.pkgDeps.toList.sortBy(-_._2.size).take(10)
+        topConnected.map { (pkg, deps) =>
+          val dArr = deps.toList.sorted.take(10).map(dep => s""""${jsonEscape(dep)}"""").mkString("[", ",", "]")
+          s""""${jsonEscape(pkg)}":$dArr"""
+        }.mkString("{", ",", "}")
+      } else {
+        d.pkgDeps.map { (pkg, deps) =>
+          val dArr = deps.map(dep => s""""${jsonEscape(dep)}"""").mkString("[", ",", "]")
+          s""""${jsonEscape(pkg)}":$dArr"""
+        }.mkString("{", ",", "}")
+      }
       val hubJson = d.hubTypes.map((n, c, sig) => s"""{"name":"${jsonEscape(n)}","score":$c,"signature":"${jsonEscape(sig)}"}""").mkString("[", ",", "]")
       val focusPkgJson = d.focusPackage.map(p => s""","focusPackage":"${jsonEscape(p)}"""").getOrElse("")
-      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"packageDependencies":$depsJson,"hubTypes":$hubJson$focusPkgJson}""")
+      val conciseJson = if ctx.concise then {
+        val totalEdges = d.pkgDeps.values.map(_.size).sum
+        s""","concise":true,"totalPackagesWithDeps":${d.pkgDeps.size},"totalEdges":$totalEdges"""
+      } else ""
+      println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"packageDependencies":$depsJson,"hubTypes":$hubJson$focusPkgJson$conciseJson}""")
     } else {
       val extJson = d.mostExtended.map((n, c, sig) => s"""{"name":"${jsonEscape(n)}","implementations":$c,"signature":"${jsonEscape(sig)}"}""").mkString("[", ",", "]")
       println(s"""{"fileCount":${d.fileCount},"symbolCount":${d.symbolCount},"packageCount":${d.packageCount},"symbolsByKind":$kindJson,"topPackages":$pkgJson,"mostExtended":$extJson}""")
     }
+  } else if ctx.concise then {
+    // Fixed-size concise output: ~60 lines regardless of codebase size
+    val conciseLimit = 10
+    println(s"Project: ${d.fileCount} files, ${d.symbolCount} symbols, ${d.packageCount} packages\n")
+
+    // Symbols by kind — single compact line
+    val kindLine = d.symbolsByKind.map((k, c) => s"${c} ${k.toString.toLowerCase}").mkString(", ")
+    println(s"Symbols: $kindLine\n")
+
+    // Top packages — capped at conciseLimit
+    println(s"Top packages:")
+    d.topPackages.take(conciseLimit).foreach { (pkg, count) =>
+      println(s"  ${pkg.padTo(50, ' ')} $count")
+    }
+    if d.topPackages.size > conciseLimit then
+      println(s"  ... and ${d.topPackages.size - conciseLimit} more (use overview --architecture for full list)")
+
+    // Package dependency summary — stats + top connectors, NOT full graph
+    if d.pkgDeps.nonEmpty then {
+      val totalEdges = d.pkgDeps.values.map(_.size).sum
+      val pkgsWithDeps = d.pkgDeps.size
+      println(s"\nPackage dependencies: $pkgsWithDeps packages, $totalEdges cross-package edges")
+      val topConnectors = d.pkgDeps.toList.sortBy(-_._2.size).take(5)
+      println(s"  Most connected:")
+      topConnectors.foreach { (pkg, deps) =>
+        println(s"    ${pkg.padTo(45, ' ')} → ${deps.size} deps")
+      }
+    }
+
+    // Hub types — capped at conciseLimit
+    if d.hubTypes.nonEmpty then {
+      println(s"\nHub types (top $conciseLimit):")
+      d.hubTypes.take(conciseLimit).foreach { (name, count, sig) =>
+        val sigHint = if sig.nonEmpty then s"  $sig" else ""
+        println(s"  ${name.padTo(30, ' ')} $count references$sigHint")
+      }
+    }
+
+    println(s"\nDrill down: overview --architecture, overview --focus-package PKG, entrypoints")
   } else {
     println(s"Project overview (${d.fileCount} files, ${d.symbolCount} symbols):\n")
     println("Symbols by kind:")

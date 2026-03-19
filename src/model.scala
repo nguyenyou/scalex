@@ -155,6 +155,7 @@ case class CommandContext(
   offset: Int = 0,
   related: Boolean = false,
   explainMode: Boolean = false,
+  concise: Boolean = false,
 ):
   val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =

@@ -23,7 +23,7 @@ This file contains full documentation for commands not covered inline in SKILL.m
 
 ---
 
-### `scalex overview [--architecture] [--focus-package PKG] [--include-tests] [--path PREFIX] [--exclude-path PREFIX] [--limit N]` — codebase summary
+### `scalex overview [--architecture] [--concise] [--focus-package PKG] [--include-tests] [--path PREFIX] [--exclude-path PREFIX] [--limit N]` — codebase summary
 
 One-shot architectural summary. Shows symbols by kind, top packages by symbol count, and most-extended traits/classes with one-line signatures. Hub types are sorted by distinct-extending-package count (not just raw count) and single-character names are filtered out. All computed from existing in-memory index data — no extra I/O. Use `--limit N` to control "top N" lists (default: 20).
 
@@ -33,12 +33,15 @@ Use `--architecture` to also show package dependency graph (from imports) and hu
 
 Use `--focus-package PKG` to scope the dependency graph to a single package — shows direct dependencies and direct dependents only. Auto-enables `--architecture` when used.
 
+Use `--concise` to get a fixed-size summary (~60 lines) regardless of codebase size — compact header, inline symbols, top packages, dependency stats (not the full graph), hub types, and drill-down hints. Implies `--architecture`. Ideal for initial exploration of large codebases (10k+ files) where the full `--architecture` output can grow to ~1MB.
+
 Use `--path PREFIX` to scope the entire overview to a subtree — hub types, package deps, and all counts are restricted to files under the prefix. Useful in monorepos.
 
 ```bash
 scalex overview
 scalex overview --limit 5
 scalex overview --architecture               # + package deps + hub types
+scalex overview --concise                    # fixed-size ~60-line summary (implies --architecture)
 scalex overview --focus-package com.example   # scoped dependency view
 scalex overview --include-tests              # include test files
 scalex overview --path compiler/src/         # scope to subtree
@@ -332,6 +335,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--no-doc` | Explain: suppress Scaladoc section |
 | `--inherited` | Members/explain: include inherited members from parent types |
 | `--architecture` | Overview: show package dependency graph and hub types |
+| `--concise` | Overview: fixed-size summary (~60 lines) with top packages, hub types, dep stats (implies `--architecture`) |
 | `--focus-package PKG` | Overview: scope dependency graph to a single package |
 | `--has-method NAME` | AST pattern: match types that have a method with NAME |
 | `--extends TRAIT` | AST pattern: match types that extend TRAIT |

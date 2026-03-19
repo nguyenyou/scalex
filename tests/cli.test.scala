@@ -2497,6 +2497,42 @@ class CliSuite extends ScalexTestBase:
       s"Hub types should not include Serializable (stdlib): $output")
   }
 
+  // ── #248: overview --concise ──────────────────────────────────────────
+
+  test("overview --concise produces fixed-size output with summary header") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 20, concise = true))
+    }
+    assert(output.contains("Project:"), s"Should have compact Project: header: $output")
+    assert(output.contains("Symbols:"), s"Should have inline Symbols: line: $output")
+    assert(!output.contains("Project overview"), s"Should NOT use verbose header: $output")
+    assert(!output.contains("Symbols by kind"), s"Should NOT show multi-line kind table: $output")
+    assert(output.contains("Drill down:"), s"Should show drill-down hints: $output")
+  }
+
+  test("overview --concise implies architecture (shows hub types)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 20, concise = true))
+    }
+    assert(output.contains("Hub types"), s"Concise should include hub types: $output")
+    assert(!output.contains("Most extended"), s"Concise should NOT show Most extended: $output")
+  }
+
+  test("overview --concise JSON includes concise metadata") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 20, jsonOutput = true, concise = true))
+    }
+    assert(output.contains("\"concise\":true"), s"JSON should include concise flag: $output")
+    assert(output.contains("\"hubTypes\""), s"JSON should include hubTypes: $output")
+    assert(output.contains("\"packageDependencies\""), s"JSON should include packageDependencies: $output")
+  }
+
   // ── #221: explain --related ───────────────────────────────────────────
 
   test("explain --related shows project-defined types from member signatures") {
