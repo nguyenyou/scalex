@@ -8,7 +8,7 @@ class IndexSuite extends ScalexTestBase:
 
   test("gitLsFiles finds all .scala files") {
     val files = gitLsFiles(workspace)
-    assertEquals(files.size, 28)
+    assertEquals(files.size, 29)
     assert(files.exists(_.path.toString.contains("UserService.scala")))
     assert(files.exists(_.path.toString.contains("Model.scala")))
     assert(files.exists(_.path.toString.contains("Database.scala")))
@@ -36,7 +36,7 @@ class IndexSuite extends ScalexTestBase:
     val idx = WorkspaceIndex(workspace)
     idx.index()
 
-    assert(idx.fileCount == 28)
+    assert(idx.fileCount == 29)
     assert(idx.symbols.size > 10)
     assert(idx.packages.contains("com.example"))
     assert(idx.packages.contains("com.other"))
@@ -208,13 +208,13 @@ class IndexSuite extends ScalexTestBase:
     // First index — cold
     val idx1 = WorkspaceIndex(workspace)
     idx1.index()
-    assert(idx1.parsedCount == 28, s"Cold index should parse all 28 files, got ${idx1.parsedCount}")
+    assert(idx1.parsedCount == 29, s"Cold index should parse all 29 files, got ${idx1.parsedCount}")
 
     // Second index — warm (all cached)
     val idx2 = WorkspaceIndex(workspace)
     idx2.index()
     assert(idx2.cachedLoad, "Second index should load from cache")
-    assert(idx2.skippedCount == 28, s"Warm index should skip all 28 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 29, s"Warm index should skip all 29 files, got ${idx2.skippedCount}")
     assert(idx2.parsedCount == 0, s"Warm index should parse 0 files, got ${idx2.parsedCount}")
 
     // Symbols should be identical
@@ -238,7 +238,7 @@ class IndexSuite extends ScalexTestBase:
     idx2.index()
     assert(idx2.cachedLoad)
     assert(idx2.parsedCount == 1, s"Should re-parse 1 file, got ${idx2.parsedCount}")
-    assert(idx2.skippedCount == 27, s"Should skip 27 files, got ${idx2.skippedCount}")
+    assert(idx2.skippedCount == 28, s"Should skip 28 files, got ${idx2.skippedCount}")
   }
 
   // ── Binary format ─────────────────────────────────────────────────────

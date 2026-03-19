@@ -2644,3 +2644,24 @@ class CliSuite extends ScalexTestBase:
     }
     assert(output.contains("world"), s"Should find hello body via --in Outer.Inner: $output")
   }
+
+  test("#239: impl Outer.Inner finds cross-file implementors") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("impl", List("Outer.Inner"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("AnotherInner"), s"Should find same-file impl: $output")
+    assert(output.contains("CrossFileImpl"), s"Should find cross-file impl: $output")
+  }
+
+  test("#239: impl Unknown.Inner returns not-found instead of all Inner impls") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("impl", List("Unknown.Inner"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("No implementations"), s"Should report not-found for Unknown.Inner: $output")
+  }
