@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.35.0] — 2026-03-19
+
 ### Added
 - `overview --concise` — fixed-size summary (~60 lines) regardless of codebase size; compact header, inline symbols, top packages, dep stats (not full graph), hub types, and drill-down hints; implies `--architecture` (#248)
 
