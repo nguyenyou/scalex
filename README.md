@@ -328,7 +328,7 @@ scalex def Compiler --kind class
   class  Compiler (dotty.tools.pc) — .../CompletionValue.scala:127
 ```
 
-**Grep** — 1 call, **24 results**: `class Compiler|trait Compiler|object Compiler` matches `CompilerOptions`, `CompilerHang`, `CompilerTest`, `CompilerCommand` (substring noise). No package info, no kind filtering. Agent must write follow-up regex to exclude substrings.
+**Grep** — 1 call, **23 results**: `class Compiler|trait Compiler|object Compiler` matches `CompilerSearchVisitor`, `CompilerCachingSuite`, `CompilerTest`, `CompilerCommand` (substring noise). No package info, no kind filtering. Agent must write follow-up regex to exclude substrings.
 
 **Why scalex wins**: Exact name matching + `--kind` filter + package disambiguation. One call, done.
 
