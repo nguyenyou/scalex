@@ -1,716 +1,1627 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scalex — Scala Code Intelligence for AI Agents</title>
-  <meta name="description" content="Zero Build Server. Zero Compilation. Search symbols, find definitions, find implementations, find references — all from source.">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scalex — Scala Code Intelligence for AI Agents</title>
 
-  <!-- OpenGraph -->
-  <meta property="og:title" content="Scalex — Scala Code Intelligence for AI Agents">
-  <meta property="og:description" content="Zero Build Server. Zero Compilation. Just answers.">
-  <meta property="og:image" content="https://nguyenyou.github.io/scalex/og-banner.png">
-  <meta property="og:url" content="https://nguyenyou.github.io/scalex">
-  <meta property="og:type" content="website">
+    <meta
+      name="description"
+      content="Zero Build Server. Zero Compilation. Search symbols, find definitions, find implementations, find references — all from source."
+    />
 
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Scalex — Scala Code Intelligence for AI Agents">
-  <meta name="twitter:description" content="Zero Build Server. Zero Compilation. Just answers.">
-  <meta name="twitter:image" content="https://nguyenyou.github.io/scalex/og-banner.png">
+    <!-- OpenGraph -->
+    <meta
+      property="og:title"
+      content="Scalex — Scala Code Intelligence for AI Agents"
+    />
+    <meta
+      property="og:description"
+      content="Zero Build Server. Zero Compilation. Just answers."
+    />
+    <meta
+      property="og:image"
+      content="https://nguyenyou.github.io/scalex/og-banner.png"
+    />
+    <meta property="og:url" content="https://nguyenyou.github.io/scalex" />
+    <meta property="og:type" content="website" />
 
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Scalex — Scala Code Intelligence for AI Agents"
+    />
+    <meta
+      name="twitter:description"
+      content="Zero Build Server. Zero Compilation. Just answers."
+    />
+    <meta
+      name="twitter:image"
+      content="https://nguyenyou.github.io/scalex/og-banner.png"
+    />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
 
-  <style>
-    :root {
-      --bg: #0a0a0f;
-      --bg-card: #12121a;
-      --bg-code: #1a1a26;
-      --text: #e8e6e3;
-      --text-dim: #7a7884;
-      --red: #dc322f;
-      --red-glow: rgba(220, 50, 47, 0.15);
-      --red-dim: #a82825;
-      --green: #4ec9b0;
-      --yellow: #d4a843;
-      --blue: #569cd6;
-      --purple: #c586c0;
-      --border: #1e1e2a;
-      --font-display: 'Outfit', sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
-    }
+    <!-- Fonts: Outfit for display, JetBrains Mono for code -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;700;900&display=swap"
+      rel="stylesheet"
+    />
 
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    <style>
+      /* ===========================================
+           CSS CUSTOM PROPERTIES — SCALEX BRAND
+           Derived from the project's existing design:
+           dark bg, Solarized red accent, mono+display pairing
+           =========================================== */
+      :root {
+        /* Colors */
+        --bg-primary: #08080d;
+        --bg-secondary: #0e0e16;
+        --bg-card: #12121c;
+        --bg-code: #161622;
+        --text-primary: #e8e6e3;
+        --text-secondary: #7a7884;
+        --text-dim: #4a4856;
+        --red: #dc322f;
+        --red-glow: rgba(220, 50, 47, 0.15);
+        --red-bright: #ef4444;
+        --green: #4ec9b0;
+        --yellow: #d4a843;
+        --blue: #569cd6;
+        --purple: #c586c0;
+        --border: #1e1e2a;
 
-    html {
-      scroll-behavior: smooth;
-      background: var(--bg);
-      color: var(--text);
-      overflow-x: hidden;
-    }
+        /* Typography — MUST use clamp() */
+        --font-display: "Outfit", sans-serif;
+        --font-mono: "JetBrains Mono", monospace;
+        --title-size: clamp(2rem, 6vw, 5rem);
+        --h2-size: clamp(1.5rem, 4vw, 3rem);
+        --h3-size: clamp(1rem, 2.5vw, 1.75rem);
+        --body-size: clamp(0.75rem, 1.4vw, 1.1rem);
+        --small-size: clamp(0.65rem, 1vw, 0.85rem);
+        --code-size: clamp(0.6rem, 1vw, 0.8rem);
 
-    body {
-      font-family: var(--font-display);
-      font-weight: 300;
-      line-height: 1.7;
-      overflow-x: hidden;
-    }
+        /* Spacing — MUST use clamp() */
+        --slide-padding: clamp(1.5rem, 5vw, 5rem);
+        --content-gap: clamp(0.75rem, 2vw, 2rem);
+        --element-gap: clamp(0.25rem, 1vw, 1rem);
 
-    /* --- Noise texture overlay --- */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-      pointer-events: none;
-      z-index: 9999;
-    }
+        /* Animation */
+        --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+        --duration-normal: 0.6s;
+      }
 
-    /* --- Hero --- */
-    .hero {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 2rem;
-      position: relative;
-    }
+      /* ===========================================
+           BASE STYLES
+           =========================================== */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-    .hero::after {
-      content: '';
-      position: absolute;
-      top: 30%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: min(600px, 100vw);
-      height: min(600px, 100vw);
-      background: radial-gradient(circle, var(--red-glow) 0%, transparent 70%);
-      pointer-events: none;
-      z-index: 0;
-    }
+      /* === VIEWPORT FITTING: MANDATORY BASE STYLES === */
+      html,
+      body {
+        height: 100%;
+        overflow-x: hidden;
+      }
+      html {
+        scroll-snap-type: y mandatory;
+        scroll-behavior: smooth;
+      }
+      .slide {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        scroll-snap-align: start;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      .slide-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-height: 100%;
+        overflow: hidden;
+        padding: var(--slide-padding);
+      }
+      .card,
+      .container,
+      .content-box {
+        max-width: min(90vw, 1000px);
+        max-height: min(80vh, 700px);
+      }
+      .feature-list,
+      .bullet-list {
+        gap: clamp(0.4rem, 1vh, 1rem);
+      }
+      .feature-list li,
+      .bullet-list li {
+        font-size: var(--body-size);
+        line-height: 1.4;
+      }
+      img,
+      .image-container {
+        max-width: 100%;
+        max-height: min(50vh, 400px);
+        object-fit: contain;
+      }
+      /* Short viewports */
+      @media (max-height: 700px) {
+        :root {
+          --slide-padding: clamp(0.75rem, 3vw, 2rem);
+          --content-gap: clamp(0.4rem, 1.5vw, 1rem);
+          --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+          --h2-size: clamp(1rem, 3vw, 1.75rem);
+        }
+      }
+      @media (max-height: 600px) {
+        :root {
+          --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+          --content-gap: clamp(0.3rem, 1vw, 0.75rem);
+          --title-size: clamp(1.1rem, 4vw, 2rem);
+          --body-size: clamp(0.7rem, 1.2vw, 0.95rem);
+        }
+        .nav-dots,
+        .keyboard-hint,
+        .decorative {
+          display: none;
+        }
+      }
+      @media (max-height: 500px) {
+        :root {
+          --slide-padding: clamp(0.4rem, 2vw, 1rem);
+          --title-size: clamp(1rem, 3.5vw, 1.5rem);
+          --h2-size: clamp(0.9rem, 2.5vw, 1.25rem);
+          --body-size: clamp(0.65rem, 1vw, 0.85rem);
+        }
+      }
+      @media (max-width: 600px) {
+        :root {
+          --title-size: clamp(1.25rem, 7vw, 2.5rem);
+        }
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.2s !important;
+        }
+        html {
+          scroll-behavior: auto;
+        }
+      }
+      /* === END VIEWPORT FITTING === */
 
-    .hero > * { position: relative; z-index: 1; }
+      body {
+        font-family: var(--font-display);
+        font-weight: 300;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        line-height: 1.6;
+      }
 
-    .mascot {
-      width: 180px;
-      height: 255px;
-      filter: drop-shadow(0 0 60px rgba(220, 50, 47, 0.2));
-      animation: float 6s ease-in-out infinite;
-      margin-bottom: 2rem;
-    }
+      /* ===========================================
+           NOISE TEXTURE — subtle grain overlay
+           =========================================== */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 9999;
+      }
 
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-12px); }
-    }
+      /* ===========================================
+           PROGRESS BAR
+           =========================================== */
+      .progress-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 3px;
+        background: var(--red);
+        width: 0%;
+        z-index: 1000;
+        transition: width 0.3s ease;
+        box-shadow: 0 0 10px var(--red-glow);
+      }
 
-    h1 {
-      font-family: var(--font-display);
-      font-weight: 900;
-      font-size: clamp(3rem, 8vw, 6rem);
-      letter-spacing: -0.04em;
-      line-height: 1;
-      margin-bottom: 1rem;
-    }
+      /* ===========================================
+           NAVIGATION DOTS
+           =========================================== */
+      .nav-dots {
+        position: fixed;
+        right: clamp(0.75rem, 2vw, 1.5rem);
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 100;
+      }
+      .nav-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--text-dim);
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        padding: 0;
+      }
+      .nav-dot.active {
+        background: var(--red);
+        box-shadow: 0 0 8px var(--red-glow);
+        transform: scale(1.3);
+      }
+      .nav-dot:hover {
+        background: var(--text-secondary);
+      }
 
-    h1 .red { color: var(--red); }
+      /* ===========================================
+           SLIDE NUMBER
+           =========================================== */
+      .slide-number {
+        position: absolute;
+        top: clamp(1rem, 3vw, 2rem);
+        left: clamp(1.5rem, 4vw, 3rem);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        color: var(--text-dim);
+        letter-spacing: 0.1em;
+        z-index: 10;
+      }
 
-    .tagline {
-      font-size: clamp(1rem, 2.5vw, 1.35rem);
-      color: var(--text-dim);
-      max-width: 600px;
-      margin-bottom: 2.5rem;
-    }
+      /* ===========================================
+           ANIMATIONS
+           =========================================== */
+      .reveal {
+        opacity: 0;
+        transform: translateY(25px);
+        transition:
+          opacity var(--duration-normal) var(--ease-out-expo),
+          transform var(--duration-normal) var(--ease-out-expo);
+      }
+      .slide.visible .reveal {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .reveal:nth-child(1) {
+        transition-delay: 0.05s;
+      }
+      .reveal:nth-child(2) {
+        transition-delay: 0.15s;
+      }
+      .reveal:nth-child(3) {
+        transition-delay: 0.25s;
+      }
+      .reveal:nth-child(4) {
+        transition-delay: 0.35s;
+      }
+      .reveal:nth-child(5) {
+        transition-delay: 0.45s;
+      }
+      .reveal:nth-child(6) {
+        transition-delay: 0.55s;
+      }
 
-    .tagline strong { color: var(--text); font-weight: 500; }
+      .reveal-scale {
+        opacity: 0;
+        transform: scale(0.92);
+        transition:
+          opacity 0.7s var(--ease-out-expo),
+          transform 0.7s var(--ease-out-expo);
+      }
+      .slide.visible .reveal-scale {
+        opacity: 1;
+        transform: scale(1);
+      }
 
-    .stats {
-      display: flex;
-      gap: 2rem;
-      flex-wrap: wrap;
-      justify-content: center;
-      margin-bottom: 3rem;
-    }
+      /* ===========================================
+           TYPOGRAPHY
+           =========================================== */
+      h1 {
+        font-family: var(--font-display);
+        font-weight: 900;
+        font-size: var(--title-size);
+        letter-spacing: -0.04em;
+        line-height: 1.05;
+      }
+      h2 {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: var(--h2-size);
+        letter-spacing: -0.03em;
+        line-height: 1.15;
+      }
+      h3 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: var(--h3-size);
+        letter-spacing: -0.02em;
+      }
+      .red {
+        color: var(--red);
+      }
+      .dim {
+        color: var(--text-secondary);
+      }
+      .mono {
+        font-family: var(--font-mono);
+      }
 
-    .stat {
-      text-align: center;
-    }
+      /* ===========================================
+           SLIDE 1: TITLE
+           =========================================== */
+      .title-slide {
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .title-slide .slide-content {
+        align-items: center;
+        gap: var(--content-gap);
+      }
+      .title-slide::after {
+        content: "";
+        position: absolute;
+        top: 30%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(700px, 100vw);
+        height: min(700px, 100vw);
+        background: radial-gradient(
+          circle,
+          var(--red-glow) 0%,
+          transparent 65%
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+      .title-slide > * {
+        position: relative;
+        z-index: 1;
+      }
+      .title-slide .slide-content {
+        z-index: 1;
+      }
 
-    .stat-value {
-      font-family: var(--font-mono);
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--red);
-    }
+      .mascot-img {
+        max-height: min(22vh, 180px);
+        filter: drop-shadow(0 0 40px rgba(220, 50, 47, 0.25));
+      }
+      .title-tagline {
+        font-size: clamp(0.9rem, 2vw, 1.3rem);
+        color: var(--text-secondary);
+        max-width: 550px;
+        font-weight: 300;
+      }
+      .title-tagline strong {
+        color: var(--text-primary);
+        font-weight: 500;
+      }
 
-    .stat-label {
-      font-size: 0.75rem;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.15em;
-    }
+      .stat-row {
+        display: flex;
+        gap: clamp(1.5rem, 4vw, 3rem);
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .stat-item {
+        text-align: center;
+      }
+      .stat-value {
+        font-family: var(--font-mono);
+        font-size: clamp(1.3rem, 3vw, 2rem);
+        font-weight: 700;
+        color: var(--red);
+      }
+      .stat-label {
+        font-size: var(--small-size);
+        color: var(--text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+      }
 
-    .cta-group {
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
+      /* ===========================================
+           SLIDE 2–3: CONTENT SLIDES
+           =========================================== */
+      .content-slide .slide-content {
+        gap: var(--content-gap);
+        max-width: min(85vw, 900px);
+        margin: 0 auto;
+      }
+      .content-slide .subtitle {
+        font-size: var(--body-size);
+        color: var(--text-secondary);
+        max-width: 650px;
+      }
 
-    .cta {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.85rem 2rem;
-      border-radius: 8px;
-      font-family: var(--font-mono);
-      font-size: 0.85rem;
-      font-weight: 600;
-      text-decoration: none;
-      transition: all 0.2s;
-    }
+      /* Problem cards */
+      .problem-cards {
+        display: flex;
+        gap: clamp(0.75rem, 2vw, 1.5rem);
+        flex-wrap: wrap;
+      }
+      .problem-card {
+        flex: 1;
+        min-width: min(250px, 100%);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: clamp(1rem, 2.5vw, 1.75rem);
+        position: relative;
+        overflow: hidden;
+      }
+      .problem-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+      }
+      .problem-card.bad::before {
+        background: var(--red);
+      }
+      .problem-card.bad {
+        border-color: rgba(220, 50, 47, 0.15);
+      }
+      .problem-card.mid::before {
+        background: var(--yellow);
+      }
+      .problem-card.mid {
+        border-color: rgba(212, 168, 67, 0.15);
+      }
+      .problem-card .card-title {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: clamp(0.8rem, 1.3vw, 1rem);
+        margin-bottom: clamp(0.3rem, 0.8vw, 0.6rem);
+      }
+      .problem-card .card-body {
+        font-size: var(--small-size);
+        color: var(--text-secondary);
+        line-height: 1.5;
+      }
 
-    .cta-primary {
-      background: var(--red);
-      color: white;
-      border: 1px solid var(--red);
-    }
+      /* ===========================================
+           SOLUTION PILLS
+           =========================================== */
+      .solution-pills {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(0.5rem, 1.2vw, 0.9rem);
+      }
+      .pill {
+        display: flex;
+        align-items: flex-start;
+        gap: clamp(0.6rem, 1.5vw, 1rem);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: clamp(0.75rem, 2vw, 1.25rem);
+        transition: border-color 0.3s ease;
+      }
+      .pill:hover {
+        border-color: var(--red);
+      }
+      .pill-icon {
+        font-size: clamp(1rem, 2vw, 1.5rem);
+        flex-shrink: 0;
+        width: clamp(2rem, 4vw, 2.8rem);
+        height: clamp(2rem, 4vw, 2.8rem);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(220, 50, 47, 0.08);
+        border-radius: 8px;
+        color: var(--red);
+        font-family: var(--font-mono);
+        font-weight: 700;
+      }
+      .pill-text h3 {
+        font-size: clamp(0.85rem, 1.4vw, 1.05rem);
+        font-weight: 700;
+        margin-bottom: 2px;
+      }
+      .pill-text p {
+        font-size: var(--small-size);
+        color: var(--text-secondary);
+        line-height: 1.4;
+      }
 
-    .cta-primary:hover {
-      background: var(--red-dim);
-      box-shadow: 0 0 30px var(--red-glow);
-    }
+      /* ===========================================
+           TERMINAL BLOCK
+           =========================================== */
+      .terminal {
+        background: var(--bg-code);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
+        width: 100%;
+      }
+      .terminal-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: clamp(6px, 1.2vw, 10px) clamp(10px, 2vw, 14px);
+        background: rgba(255, 255, 255, 0.025);
+        border-bottom: 1px solid var(--border);
+      }
+      .terminal-dot {
+        width: clamp(8px, 1.2vw, 11px);
+        height: clamp(8px, 1.2vw, 11px);
+        border-radius: 50%;
+      }
+      .terminal-dot:nth-child(1) {
+        background: #ff5f57;
+      }
+      .terminal-dot:nth-child(2) {
+        background: #febc2e;
+      }
+      .terminal-dot:nth-child(3) {
+        background: #28c840;
+      }
+      .terminal-label {
+        flex: 1;
+        text-align: center;
+        font-family: var(--font-mono);
+        font-size: clamp(0.55rem, 0.9vw, 0.7rem);
+        color: var(--text-dim);
+      }
+      .terminal-body {
+        padding: clamp(0.8rem, 2vw, 1.4rem);
+        font-family: var(--font-mono);
+        font-size: var(--code-size);
+        line-height: 1.75;
+        overflow: hidden;
+      }
+      .t-prompt {
+        color: var(--green);
+      }
+      .t-cmd {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .t-flag {
+        color: var(--yellow);
+      }
+      .t-arg {
+        color: var(--blue);
+      }
+      .t-kind {
+        color: var(--purple);
+      }
+      .t-dim {
+        color: var(--text-dim);
+      }
+      .t-file {
+        color: var(--green);
+      }
+      .t-sym {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .t-red {
+        color: var(--red);
+      }
+      .t-cat {
+        color: var(--yellow);
+        font-weight: 600;
+      }
+      .t-comment {
+        color: var(--text-dim);
+        font-style: italic;
+      }
 
-    .cta-secondary {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
+      /* ===========================================
+           COMPARISON SLIDE
+           =========================================== */
+      .compare-cols {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: clamp(0.75rem, 2vw, 1.5rem);
+        width: 100%;
+      }
+      @media (max-width: 700px) {
+        .compare-cols {
+          grid-template-columns: 1fr;
+        }
+      }
+      .compare-col {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: clamp(0.8rem, 2vw, 1.2rem);
+        overflow: hidden;
+      }
+      .compare-col.winner {
+        border-color: rgba(78, 201, 176, 0.3);
+      }
+      .compare-col.loser {
+        border-color: rgba(220, 50, 47, 0.15);
+      }
+      .compare-header {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: clamp(0.7rem, 1.1vw, 0.85rem);
+        margin-bottom: clamp(0.4rem, 1vw, 0.7rem);
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+      }
+      .compare-body {
+        font-family: var(--font-mono);
+        font-size: clamp(0.55rem, 0.9vw, 0.72rem);
+        line-height: 1.6;
+        color: var(--text-secondary);
+      }
+      .compare-verdict {
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        color: var(--green);
+        font-weight: 600;
+        margin-top: clamp(0.3rem, 0.8vw, 0.5rem);
+      }
+      .compare-verdict.lose {
+        color: var(--red);
+      }
 
-    .cta-secondary:hover {
-      border-color: var(--red);
-      color: var(--red);
-    }
+      /* ===========================================
+           COMMAND GRID
+           =========================================== */
+      .cmd-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+        gap: clamp(0.5rem, 1.2vw, 0.9rem);
+      }
+      .cmd-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: clamp(0.75rem, 1.8vw, 1.2rem);
+        transition: all 0.25s ease;
+      }
+      .cmd-card:hover {
+        border-color: var(--red);
+        box-shadow: 0 0 20px var(--red-glow);
+        transform: translateY(-2px);
+      }
+      .cmd-name {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: clamp(0.7rem, 1.1vw, 0.85rem);
+        color: var(--red);
+        margin-bottom: clamp(0.15rem, 0.5vw, 0.3rem);
+      }
+      .cmd-desc {
+        font-size: var(--small-size);
+        color: var(--text-secondary);
+        line-height: 1.4;
+      }
 
-    /* --- Sections --- */
-    section {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 6rem 2rem;
-    }
+      /* ===========================================
+           BENCHMARK TABLE
+           =========================================== */
+      .bench-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+      }
+      .bench-table th {
+        text-align: left;
+        padding: clamp(0.4rem, 1vw, 0.7rem) clamp(0.5rem, 1.2vw, 0.9rem);
+        color: var(--text-dim);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: clamp(0.5rem, 0.8vw, 0.65rem);
+        border-bottom: 1px solid var(--border);
+      }
+      .bench-table td {
+        padding: clamp(0.4rem, 1vw, 0.7rem) clamp(0.5rem, 1.2vw, 0.9rem);
+        border-bottom: 1px solid var(--border);
+      }
+      .bench-table tr:hover td {
+        background: rgba(220, 50, 47, 0.03);
+      }
+      .fast {
+        color: var(--green);
+        font-weight: 600;
+      }
 
-    h2 {
-      font-family: var(--font-display);
-      font-weight: 700;
-      font-size: 2.2rem;
-      letter-spacing: -0.03em;
-      margin-bottom: 0.5rem;
-    }
+      /* ===========================================
+           PIPELINE DIAGRAM
+           =========================================== */
+      .pipeline {
+        display: flex;
+        align-items: center;
+        gap: clamp(0.3rem, 1vw, 0.8rem);
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .pipe-node {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: clamp(0.4rem, 1.2vw, 0.8rem) clamp(0.6rem, 1.5vw, 1.2rem);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        text-align: center;
+        white-space: nowrap;
+      }
+      .pipe-node.active {
+        border-color: var(--red);
+        background: rgba(220, 50, 47, 0.06);
+      }
+      .pipe-arrow {
+        color: var(--text-dim);
+        font-size: clamp(0.9rem, 1.5vw, 1.3rem);
+      }
 
-    h2 .red { color: var(--red); }
+      /* ===========================================
+           INSTALL CODE
+           =========================================== */
+      .install-block {
+        background: var(--bg-code);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: clamp(0.8rem, 2vw, 1.4rem);
+        font-family: var(--font-mono);
+        font-size: var(--code-size);
+        line-height: 1.8;
+        overflow: hidden;
+      }
+      .install-block .comment {
+        color: var(--text-dim);
+      }
 
-    .section-sub {
-      color: var(--text-dim);
-      font-size: 1.05rem;
-      margin-bottom: 3rem;
-      max-width: 600px;
-    }
+      /* ===========================================
+           CLOSING SLIDE
+           =========================================== */
+      .closing-slide {
+        text-align: center;
+      }
+      .closing-slide .slide-content {
+        align-items: center;
+        gap: var(--content-gap);
+      }
+      .closing-slide::after {
+        content: "";
+        position: absolute;
+        bottom: 20%;
+        left: 50%;
+        transform: translate(-50%, 50%);
+        width: min(600px, 100vw);
+        height: min(600px, 100vw);
+        background: radial-gradient(
+          circle,
+          var(--red-glow) 0%,
+          transparent 60%
+        );
+        pointer-events: none;
+        z-index: 0;
+      }
+      .closing-slide > * {
+        position: relative;
+        z-index: 1;
+      }
+      .closing-slide .slide-content {
+        z-index: 1;
+      }
 
-    /* --- Terminal --- */
-    .terminal {
-      background: var(--bg-code);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-      margin: 2rem 0;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-    }
+      .cta-row {
+        display: flex;
+        gap: clamp(0.5rem, 1.5vw, 1rem);
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
+        padding: clamp(0.5rem, 1.2vw, 0.8rem) clamp(1rem, 2.5vw, 2rem);
+        border-radius: 8px;
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s;
+      }
+      .cta-primary {
+        background: var(--red);
+        color: white;
+        border: 1px solid var(--red);
+      }
+      .cta-primary:hover {
+        background: #a82825;
+        box-shadow: 0 0 25px var(--red-glow);
+      }
+      .cta-secondary {
+        background: transparent;
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+      }
+      .cta-secondary:hover {
+        border-color: var(--red);
+        color: var(--red);
+      }
 
-    .terminal-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      background: rgba(255, 255, 255, 0.03);
-      border-bottom: 1px solid var(--border);
-    }
+      /* ===========================================
+           GRID BACKGROUND PATTERN (subtle)
+           =========================================== */
+      .grid-bg::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+          linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.015) 1px,
+            transparent 1px
+          );
+        background-size: 60px 60px;
+        pointer-events: none;
+      }
 
-    .terminal-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--border);
-    }
+      /* ===========================================
+           KEYBOARD HINT
+           =========================================== */
+      .keyboard-hint {
+        position: fixed;
+        bottom: clamp(0.75rem, 2vw, 1.5rem);
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: var(--font-mono);
+        font-size: clamp(0.5rem, 0.8vw, 0.65rem);
+        color: var(--text-dim);
+        z-index: 100;
+        opacity: 0.6;
+        transition: opacity 0.5s;
+        pointer-events: none;
+      }
+      .keyboard-hint.hidden {
+        opacity: 0;
+      }
 
-    .terminal-dot:nth-child(1) { background: #ff5f57; }
-    .terminal-dot:nth-child(2) { background: #febc2e; }
-    .terminal-dot:nth-child(3) { background: #28c840; }
+      /* ===========================================
+           FEATURE HIGHLIGHT — horizontal list
+           =========================================== */
+      .feature-row {
+        display: flex;
+        gap: clamp(0.5rem, 1.5vw, 1rem);
+        flex-wrap: wrap;
+      }
+      .feature-badge {
+        background: rgba(220, 50, 47, 0.07);
+        border: 1px solid rgba(220, 50, 47, 0.15);
+        border-radius: 6px;
+        padding: clamp(0.3rem, 0.8vw, 0.5rem) clamp(0.6rem, 1.2vw, 0.9rem);
+        font-family: var(--font-mono);
+        font-size: var(--small-size);
+        color: var(--red);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- === PROGRESS BAR === -->
+    <div class="progress-bar" id="progressBar"></div>
 
-    .terminal-title {
-      flex: 1;
-      text-align: center;
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      color: var(--text-dim);
-    }
+    <!-- === NAVIGATION DOTS === -->
+    <nav class="nav-dots" id="navDots"></nav>
 
-    .terminal-body {
-      padding: 1.5rem;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      line-height: 1.8;
-      overflow-x: auto;
-    }
-
-    .terminal-body .prompt { color: var(--green); }
-    .terminal-body .cmd { color: var(--text); font-weight: 600; }
-    .terminal-body .flag { color: var(--yellow); }
-    .terminal-body .arg { color: var(--blue); }
-    .terminal-body .kind { color: var(--purple); }
-    .terminal-body .dim { color: var(--text-dim); }
-    .terminal-body .result { color: var(--text-dim); }
-    .terminal-body .file { color: var(--green); }
-    .terminal-body .symbol { color: var(--text); font-weight: 600; }
-
-    /* --- Command Grid --- */
-    .cmd-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1rem;
-      margin: 2rem 0;
-    }
-
-    .cmd-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1.5rem;
-      transition: all 0.2s;
-    }
-
-    .cmd-card:hover {
-      border-color: var(--red);
-      box-shadow: 0 0 20px var(--red-glow);
-      transform: translateY(-2px);
-    }
-
-    .cmd-name {
-      font-family: var(--font-mono);
-      font-weight: 700;
-      font-size: 0.95rem;
-      color: var(--red);
-      margin-bottom: 0.5rem;
-    }
-
-    .cmd-desc {
-      font-size: 0.9rem;
-      color: var(--text-dim);
-      line-height: 1.5;
-    }
-
-    /* --- Benchmark table --- */
-    .bench-wrap {
-      overflow-x: auto;
-      margin: 2rem 0;
-    }
-
-    .bench-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-    }
-
-    .bench-table th {
-      text-align: left;
-      padding: 0.75rem 1rem;
-      color: var(--text-dim);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      font-size: 0.7rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .bench-table td {
-      padding: 0.75rem 1rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .bench-table tr:hover td {
-      background: rgba(220, 50, 47, 0.03);
-    }
-
-    .bench-table .fast { color: var(--green); font-weight: 600; }
-
-    /* --- Install section --- */
-    .install-code {
-      background: var(--bg-code);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1.25rem 1.5rem;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      color: var(--text);
-      margin: 1rem 0;
-      position: relative;
-      cursor: pointer;
-      transition: border-color 0.2s;
-      overflow-x: auto;
-      word-break: break-all;
-    }
-
-    .install-code:hover { border-color: var(--red); }
-
-    .install-code .comment { color: var(--text-dim); }
-
-    /* --- Footer --- */
-    footer {
-      text-align: center;
-      padding: 4rem 2rem;
-      color: var(--text-dim);
-      font-size: 0.85rem;
-      border-top: 1px solid var(--border);
-    }
-
-    footer a {
-      color: var(--red);
-      text-decoration: none;
-    }
-
-    footer a:hover { text-decoration: underline; }
-
-    .built-with {
-      margin-top: 1rem;
-      font-size: 0.75rem;
-      color: var(--text-dim);
-      opacity: 0.6;
-    }
-
-    /* --- Scroll reveal --- */
-    .reveal {
-      opacity: 0;
-      transform: translateY(30px);
-      transition: opacity 0.6s ease, transform 0.6s ease;
-    }
-
-    .reveal.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    /* --- Responsive --- */
-    @media (max-width: 640px) {
-      .stats { gap: 1.5rem; }
-      .cta-group { flex-direction: column; align-items: center; }
-      .cmd-grid { grid-template-columns: 1fr; }
-      section { padding: 4rem 1.5rem; }
-    }
-  </style>
-</head>
-<body>
-
-  <!-- Hero -->
-  <section class="hero">
-    <img src="Kestrel.png" alt="Scalex Kestrel" class="mascot">
-    <h1>Scal<span class="red">ex</span></h1>
-    <p class="tagline"><em>Scala code intelligence for AI coding agents.</em><br><strong>Zero Build Server. Zero Compilation. Just answers.</strong></p>
-
-    <div class="stats">
-      <div class="stat">
-        <div class="stat-value">144k</div>
-        <div class="stat-label">Symbols Indexed</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value"><800ms</div>
-        <div class="stat-label">Warm Query</div>
-      </div>
-      <div class="stat">
-        <div class="stat-value">0</div>
-        <div class="stat-label">Dependencies on Build Server</div>
-      </div>
+    <!-- === KEYBOARD HINT === -->
+    <div class="keyboard-hint" id="keyHint">
+      Arrow keys or scroll to navigate
     </div>
 
-    <div class="cta-group">
-      <a href="https://github.com/nguyenyou/scalex" class="cta cta-primary">View on GitHub</a>
-      <a href="#install" class="cta cta-secondary">Install →</a>
-    </div>
-  </section>
+    <!-- ===========================================
+         SLIDE 1: TITLE
+         =========================================== -->
+    <section class="slide title-slide" data-slide="0">
+      <div class="slide-content">
+        <img
+          src="Kestrel.png"
+          alt="Scalex Kestrel"
+          class="mascot-img reveal"
+        />
+        <h1 class="reveal">Scal<span class="red">ex</span></h1>
+        <p class="title-tagline reveal">
+          Scala code intelligence for AI coding agents.<br /><strong
+            >Zero build server. Zero compilation. Just answers.</strong
+          >
+        </p>
+        <div class="stat-row reveal">
+          <div class="stat-item">
+            <div class="stat-value">144k+</div>
+            <div class="stat-label">Symbols</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value">&lt;400ms</div>
+            <div class="stat-label">Warm Query</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value">30</div>
+            <div class="stat-label">Commands</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <!-- Demo -->
-  <section class="reveal">
-    <h2>One command. <span class="red">One answer.</span></h2>
-    <p class="section-sub">AI agents don't need regex. They need structured, Scala-aware responses in a single tool call.</p>
+    <!-- ===========================================
+         SLIDE 2: THE PROBLEM
+         =========================================== -->
+    <section class="slide content-slide grid-bg" data-slide="1">
+      <span class="slide-number">01</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          AI agents are <span class="red">blind</span> in Scala.
+        </h2>
+        <p class="subtitle reveal">
+          When Claude or Cursor needs to find where
+          <span class="mono">PaymentService</span> is defined, it has two bad
+          options.
+        </p>
+        <div class="problem-cards reveal">
+          <div class="problem-card bad">
+            <div class="card-title">
+              <span class="red">grep</span> — Fast but dumb
+            </div>
+            <div class="card-body">
+              Returns raw text. Can't filter by symbol kind.
+              <span class="mono">class Compiler</span> matches
+              <span class="mono">CompilerTest</span>,
+              <span class="mono">CompilerCommand</span>. Agent must write
+              follow-up regex.
+            </div>
+          </div>
+          <div class="problem-card mid">
+            <div class="card-title">
+              <span style="color: var(--yellow)">Metals LSP</span> — Smart but
+              heavy
+            </div>
+            <div class="card-body">
+              Requires build server, full compilation, minutes of startup.
+              Designed for humans in IDEs, not agents making quick tool calls.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <div class="terminal">
-      <div class="terminal-bar">
-        <div class="terminal-dot"></div>
-        <div class="terminal-dot"></div>
-        <div class="terminal-dot"></div>
-        <div class="terminal-title">scalex — scala3-compiler (18.5k files)</div>
+    <!-- ===========================================
+         SLIDE 3: THE SOLUTION
+         =========================================== -->
+    <section class="slide content-slide" data-slide="2">
+      <span class="slide-number">02</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          Source-level intelligence.<br /><span class="red"
+            >No compiler needed.</span
+          >
+        </h2>
+        <div class="solution-pills">
+          <div class="pill reveal">
+            <div class="pill-icon">0</div>
+            <div class="pill-text">
+              <h3>Zero setup</h3>
+              <p>
+                Point at any git repo. No build files, no config, no "connecting
+                to build server". Clone and explore in seconds.
+              </p>
+            </div>
+          </div>
+          <div class="pill reveal">
+            <div class="pill-icon">1</div>
+            <div class="pill-text">
+              <h3>One call, not five</h3>
+              <p>
+                <span class="mono" style="color: var(--red)">explain</span>
+                returns definition + scaladoc + members + implementations +
+                import count in one response.
+              </p>
+            </div>
+          </div>
+          <div class="pill reveal">
+            <div class="pill-icon">&gt;</div>
+            <div class="pill-text">
+              <h3>Smarter than grep</h3>
+              <p>
+                Categorized references. Wildcard import resolution. Transitive
+                inheritance trees. Structural AST search.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="terminal-body">
-        <span class="prompt">$</span> <span class="cmd">scalex</span> <span class="cmd">def</span> <span class="arg">Compiler</span> <span class="flag">--verbose</span><br>
-        <br>
-        <span class="kind">&nbsp;&nbsp;class</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="symbol">Compiler</span> <span class="dim">(dotty.tools)</span> — <span class="file">compiler/src/.../Compiler.scala:16</span><br>
-        <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;class Compiler</span><br>
-        <span class="kind">&nbsp;&nbsp;trait</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="symbol">Compiler</span> <span class="dim">(scala.quoted)</span> — <span class="file">staging/src/.../Compiler.scala:8</span><br>
-        <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;trait Compiler</span><br>
-        <span class="kind">&nbsp;&nbsp;object</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="symbol">Compiler</span> <span class="dim">(scala.quoted)</span> — <span class="file">staging/src/.../Compiler.scala:12</span><br>
-        <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;object Compiler</span><br>
-        <br>
-        <span class="prompt">$</span> <span class="cmd">scalex</span> <span class="cmd">impl</span> <span class="arg">Compiler</span> <span class="flag">--verbose</span><br>
-        <br>
-        <span class="kind">&nbsp;&nbsp;class</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="symbol">ExpressionCompiler</span> — <span class="file">.../ExpressionCompiler.scala:18</span><br>
-        <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;class ExpressionCompiler extends Compiler</span><br>
-        <span class="kind">&nbsp;&nbsp;class</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="symbol">TASTYCompiler</span> — <span class="file">.../TASTYCompiler.scala:9</span><br>
-        <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;class TASTYCompiler extends Compiler</span><br>
-        <span class="kind">&nbsp;&nbsp;class</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="symbol">InteractiveCompiler</span> — <span class="file">.../InteractiveCompiler.scala:10</span><br>
-        <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;class InteractiveCompiler extends Compiler</span><br>
-        <span class="kind">&nbsp;&nbsp;class</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="symbol">ReplCompiler</span> — <span class="file">.../ReplCompiler.scala:34</span><br>
-        <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;class ReplCompiler extends Compiler</span><br>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Commands -->
-  <section class="reveal">
-    <h2>30 commands. <span class="red">Zero config.</span></h2>
-    <p class="section-sub">Point it at any git repo with Scala files. Works on Scala 2 and 3, auto-detects dialect per file. Java-aware — tracks .java files for cross-language references.</p>
+    <!-- ===========================================
+         SLIDE 4: HOW IT WORKS — PIPELINE
+         =========================================== -->
+    <section class="slide content-slide grid-bg" data-slide="3">
+      <span class="slide-number">03</span>
+      <div class="slide-content">
+        <h2 class="reveal">How it <span class="red">works.</span></h2>
+        <p class="subtitle reveal">
+          Git OIDs for caching. Scalameta for parsing. No compilation step.
+        </p>
+        <div class="pipeline reveal">
+          <div class="pipe-node">
+            git ls-files<br /><span class="t-dim">~40ms / 18k files</span>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            Compare OIDs<br /><span class="t-dim">skip unchanged</span>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node active">
+            Scalameta parse<br /><span class="t-dim">parallel streams</span>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node">
+            .scalex/index.bin<br /><span class="t-dim">binary + blooms</span>
+          </div>
+          <div class="pipe-arrow">→</div>
+          <div class="pipe-node active">
+            Answer query<br /><span class="t-dim">lazy maps</span>
+          </div>
+        </div>
+        <div class="feature-row reveal" style="margin-top: var(--content-gap)">
+          <div class="feature-badge">Scala 2 + 3</div>
+          <div class="feature-badge">Java files</div>
+          <div class="feature-badge">OID caching</div>
+          <div class="feature-badge">Bloom filters</div>
+          <div class="feature-badge">GraalVM native</div>
+        </div>
+      </div>
+    </section>
 
-    <div class="cmd-grid">
-      <div class="cmd-card">
-        <div class="cmd-name">scalex search</div>
-        <div class="cmd-desc">Search symbols by name. Fuzzy match, ranked by relevance. Filter by kind, --exact, or --prefix.</div>
+    <!-- ===========================================
+         SLIDE 5: LIVE DEMO — TERMINAL
+         =========================================== -->
+    <section class="slide content-slide" data-slide="4">
+      <span class="slide-number">04</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          One command. <span class="red">Structured answers.</span>
+        </h2>
+        <div class="terminal reveal-scale">
+          <div class="terminal-bar">
+            <div class="terminal-dot"></div>
+            <div class="terminal-dot"></div>
+            <div class="terminal-dot"></div>
+            <div class="terminal-label">
+              scalex — scala3-compiler (18.5k files)
+            </div>
+          </div>
+          <div class="terminal-body">
+            <span class="t-prompt">$</span> <span class="t-cmd">scalex</span>
+            <span class="t-cmd">hierarchy</span>
+            <span class="t-arg">Compiler</span><br />
+            <br />
+            <span class="t-dim">&nbsp;&nbsp;Children:</span><br />
+            <span class="t-dim">&nbsp;&nbsp;&nbsp;&nbsp;├──</span>
+            <span class="t-sym">ExpressionCompiler</span>
+            <span class="t-dim">—</span>
+            <span class="t-file">.../ExpressionCompiler.scala:18</span><br />
+            <span class="t-dim">&nbsp;&nbsp;&nbsp;&nbsp;├──</span>
+            <span class="t-sym">TASTYCompiler</span>
+            <span class="t-dim">—</span>
+            <span class="t-file">.../TASTYCompiler.scala:9</span><br />
+            <span class="t-dim"
+              >&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└──</span
+            >
+            <span class="t-sym">TASTYDecompiler</span>
+            <span class="t-dim">—</span>
+            <span class="t-file">.../TASTYDecompiler.scala:11</span><br />
+            <span class="t-dim"
+              >&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──</span
+            >
+            <span class="t-sym">PartialTASTYDecompiler</span>
+            <span class="t-dim">—</span>
+            <span class="t-file">.../PartialTASTYDecompiler.scala:9</span><br />
+            <span class="t-dim">&nbsp;&nbsp;&nbsp;&nbsp;├──</span>
+            <span class="t-sym">InteractiveCompiler</span>
+            <span class="t-dim">—</span>
+            <span class="t-file">.../InteractiveCompiler.scala:10</span><br />
+            <span class="t-dim">&nbsp;&nbsp;&nbsp;&nbsp;├──</span>
+            <span class="t-sym">ReplCompiler</span> <span class="t-dim">—</span>
+            <span class="t-file">.../ReplCompiler.scala:34</span><br />
+            <span class="t-dim">&nbsp;&nbsp;&nbsp;&nbsp;└──</span>
+            <span class="t-sym">QuoteCompiler</span>
+            <span class="t-dim">—</span>
+            <span class="t-file">.../QuoteCompiler.scala:35</span><br />
+            <br />
+            <span class="t-comment"
+              >&nbsp;&nbsp;# grep can only find direct `extends Compiler` —
+              misses the transitive tree</span
+            >
+          </div>
+        </div>
       </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex def</div>
-        <div class="cmd-desc">Where is this defined? Finds traits, classes, objects, givens — things grep misses.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex impl</div>
-        <div class="cmd-desc">Who extends this trait? Exact parent matching from the AST, no substring noise.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex refs</div>
-        <div class="cmd-desc">Who uses this symbol? Categorized by default: grouped by definition, extends, import, type, comment. Use --flat for plain list, --top N for impact ranking, --strict for stricter matching.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex imports</div>
-        <div class="cmd-desc">Who imports this symbol? Clean dependency view — which files depend on what.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex members</div>
-        <div class="cmd-desc">What's inside this class/trait? Shows signatures by default. Use --brief for names-only, --offset N and --limit 0 for pagination.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex doc</div>
-        <div class="cmd-desc">Show scaladoc for a symbol. Extracts /** ... */ comments — eliminates Read calls.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex overview</div>
-        <div class="cmd-desc">Codebase summary: symbols by kind, top packages, most-extended traits. One command.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex symbols</div>
-        <div class="cmd-desc">What's in this file? All classes, traits, defs, vals with signatures.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex file</div>
-        <div class="cmd-desc">Find files by name. Fuzzy camelCase matching — "hms" finds HttpMessageService.scala.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex annotated</div>
-        <div class="cmd-desc">Find symbols by annotation — @deprecated, @main, @tailrec. Filter by kind and path.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex grep</div>
-        <div class="cmd-desc">Regex search in .scala file contents. Like grep, but with --path and --no-tests built in.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex packages</div>
-        <div class="cmd-desc">What packages exist in this project?</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex package</div>
-        <div class="cmd-desc">Explore a package: all symbols grouped by kind. --explain for brief explain per type with members and impl counts. Fuzzy match on package name.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex batch</div>
-        <div class="cmd-desc">Multiple queries, one index load. 5 queries in <800ms instead of ~5s.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex index</div>
-        <div class="cmd-desc">Force reindex. Normally automatic — every command auto-indexes.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex body</div>
-        <div class="cmd-desc">Extract method/val/class body from source. Eliminates ~50% of follow-up Read calls.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex hierarchy</div>
-        <div class="cmd-desc">Full inheritance tree — parents up, children down. Tree-formatted with --up/--down flags.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex overrides</div>
-        <div class="cmd-desc">Find all override implementations of a method. Combines impl + member filtering.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex explain</div>
-        <div class="cmd-desc">One-shot summary: definition + scaladoc + members + companion + implementations + import count. Supports --brief, --related for next-step types, --expand N for recursive expansion, --inherited for parent members, --no-doc to suppress scaladoc. Disambiguation prints copy-paste commands.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex deps</div>
-        <div class="cmd-desc">What does this symbol depend on? File imports + body references. Use --depth N for transitive dependencies.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex context</div>
-        <div class="cmd-desc">Enclosing scopes at a file:line — package, class, method chain.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex diff</div>
-        <div class="cmd-desc">Symbol-level diff vs git ref. Shows added/removed/modified symbols.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex ast-pattern</div>
-        <div class="cmd-desc">Structural AST search — find types by extends, methods, or body content.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex tests</div>
-        <div class="cmd-desc">List test cases structurally — MUnit, ScalaTest, specs2. Suite name + test name + line.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex coverage</div>
-        <div class="cmd-desc">Is this symbol tested? Refs filtered to test files only, with count and file list.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex api</div>
-        <div class="cmd-desc">Public API surface of a package — which symbols are imported externally, sorted by importer count.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex summary</div>
-        <div class="cmd-desc">Sub-packages with symbol counts — middle ground between overview and package for top-down drill-down.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex entrypoints</div>
-        <div class="cmd-desc">Find @main, def main(...), extends App, and test suites — all entry points in one call.</div>
-      </div>
-      <div class="cmd-card">
-        <div class="cmd-name">scalex graph</div>
-        <div class="cmd-desc">Render directed graphs as ASCII/Unicode art (--render) or parse diagrams back into boxes+edges (--parse). Supports --unicode, --horizontal, --rounded, --double, --json.</div>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Performance -->
-  <section class="reveal">
-    <h2>Benchmarks on <span class="red">real codebases.</span></h2>
-    <p class="section-sub">Tested on the Scala 3 compiler itself. Native binary, GraalVM.</p>
+    <!-- ===========================================
+         SLIDE 6: SCALEX vs GREP
+         =========================================== -->
+    <section class="slide content-slide grid-bg" data-slide="5">
+      <span class="slide-number">05</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          Scalex vs grep — <span class="red">imports.</span>
+        </h2>
+        <p class="subtitle reveal">
+          "Who imports <span class="mono">Compiler</span>?" on the Scala 3
+          compiler (18.5k files).
+        </p>
+        <div class="compare-cols reveal">
+          <div class="compare-col winner">
+            <div class="compare-header">
+              <span class="red">scalex</span> imports Compiler
+            </div>
+            <div class="compare-body">
+              <span class="t-file">.../ExpressionCompiler.scala:3</span><br />
+              <span class="t-dim"
+                >&nbsp;&nbsp;import dotty.tools.dotc.Compiler</span
+              >
+              <span style="color: var(--green)">(explicit)</span><br />
+              <span class="t-file">.../Run.scala:5</span><br />
+              <span class="t-dim"
+                >&nbsp;&nbsp;import dotty.tools.dotc.{Driver, Run,
+                Compiler}</span
+              ><br />
+              <span class="t-file">.../WeakHashSet.scala:9</span><br />
+              <span class="t-dim">&nbsp;&nbsp;import dotty.tools.*</span>
+              <span style="color: var(--yellow)">(wildcard)</span><br />
+            </div>
+            <div class="compare-verdict">1,205 importers found</div>
+          </div>
+          <div class="compare-col loser">
+            <div class="compare-header">
+              <span class="t-dim">grep</span> import.*\bCompiler\b
+            </div>
+            <div class="compare-body">
+              Only finds files with <em>explicit</em> imports of "Compiler".<br /><br />
+              Completely misses all files using<br /><span class="t-dim"
+                >import dotty.tools.dotc.*</span
+              ><br /><span class="t-dim">import scala.quoted.staging.*</span
+              ><br /><br />
+              <span style="color: var(--red); font-weight: 600"
+                >98.6% of importers missed.</span
+              >
+            </div>
+            <div class="compare-verdict lose">17 importers found</div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <div class="bench-wrap">
-    <table class="bench-table">
-      <thead>
-        <tr>
-          <th>Project</th>
-          <th>Files</th>
-          <th>Symbols</th>
-          <th>Cold Index</th>
-          <th>Warm Index</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Production monorepo</td>
-          <td>13,979</td>
-          <td>214,301</td>
-          <td>4.1s</td>
-          <td class="fast">465ms</td>
-        </tr>
-        <tr>
-          <td>Scala 3 compiler</td>
-          <td>18,485</td>
-          <td>144,211</td>
-          <td>2.7s</td>
-          <td class="fast">349ms</td>
-        </tr>
-      </tbody>
-    </table>
-    </div>
-  </section>
+    <!-- ===========================================
+         SLIDE 7: 30 COMMANDS
+         =========================================== -->
+    <section class="slide content-slide" data-slide="6">
+      <span class="slide-number">06</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          30 commands. <span class="red">Zero config.</span>
+        </h2>
+        <div class="cmd-grid">
+          <div class="cmd-card reveal">
+            <div class="cmd-name">explain</div>
+            <div class="cmd-desc">
+              One-shot: def + doc + members + impls + imports. Saves 4-5 round
+              trips.
+            </div>
+          </div>
+          <div class="cmd-card reveal">
+            <div class="cmd-name">refs --count</div>
+            <div class="cmd-desc">
+              Categorized impact: "12 importers, 4 extensions, 30 usages" in one
+              line.
+            </div>
+          </div>
+          <div class="cmd-card reveal">
+            <div class="cmd-name">hierarchy</div>
+            <div class="cmd-desc">
+              Full inheritance tree — parents up, children down. Transitive.
+            </div>
+          </div>
+          <div class="cmd-card reveal">
+            <div class="cmd-name">body --in</div>
+            <div class="cmd-desc">
+              Extract method source inline. Eliminates ~50% of follow-up Read
+              calls.
+            </div>
+          </div>
+          <div class="cmd-card reveal">
+            <div class="cmd-name">imports</div>
+            <div class="cmd-desc">
+              Wildcard import resolution — finds importers grep can't see.
+            </div>
+          </div>
+          <div class="cmd-card reveal">
+            <div class="cmd-name">batch</div>
+            <div class="cmd-desc">
+              5 queries, one index load. ~600ms instead of ~2.5s.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  <!-- Install -->
-  <section class="reveal" id="install">
-    <h2>Get started in <span class="red">10 seconds.</span></h2>
+    <!-- ===========================================
+         SLIDE 8: PERFORMANCE
+         =========================================== -->
+    <section class="slide content-slide grid-bg" data-slide="7">
+      <span class="slide-number">07</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          Benchmarks on <span class="red">real codebases.</span>
+        </h2>
+        <p class="subtitle reveal">
+          GraalVM native image. Tested on production code and the Scala 3
+          compiler.
+        </p>
+        <div class="reveal" style="overflow-x: auto">
+          <table class="bench-table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Files</th>
+                <th>Symbols</th>
+                <th>Cold Index</th>
+                <th>Warm Index</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Production monorepo</td>
+                <td>13,979</td>
+                <td>214,301</td>
+                <td>4.6s</td>
+                <td class="fast">540ms</td>
+              </tr>
+              <tr>
+                <td>Scala 3 compiler</td>
+                <td>18,485</td>
+                <td>144,211</td>
+                <td>2.7s</td>
+                <td class="fast">349ms</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div
+          class="solution-pills reveal"
+          style="margin-top: var(--content-gap)"
+        >
+          <div class="pill">
+            <div class="pill-icon" style="font-size: var(--small-size)">~</div>
+            <div class="pill-text">
+              <h3>Lazy map building — 2x faster</h3>
+              <p>
+                Derived indexes computed on first access. Commands that need 1-2
+                maps skip the rest.
+                <span class="mono" style="color: var(--green)">file</span>
+                command: 2.16x faster.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <h3 style="color: var(--red); margin-bottom: 0.5rem; margin-top: 2rem;">Claude Code users</h3>
-    <p class="section-sub" style="margin-bottom: 1.5rem;">The fastest way — installs the binary + skill in one step.</p>
+    <!-- ===========================================
+         SLIDE 9: AI-FRIENDLY DESIGN
+         =========================================== -->
+    <section class="slide content-slide" data-slide="8">
+      <span class="slide-number">08</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          Built for agents, <span class="red">not humans.</span>
+        </h2>
+        <p class="subtitle reveal">
+          The biggest cost for AI agents isn't latency — it's the number of tool
+          calls.
+        </p>
+        <div class="solution-pills">
+          <div class="pill reveal">
+            <div
+              class="pill-icon"
+              style="font-size: clamp(0.7rem, 1.2vw, 1rem)"
+            >
+              ref
+            </div>
+            <div class="pill-text">
+              <h3>Categorized references with confidence</h3>
+              <p>
+                High (explicit import), Medium (wildcard), Low (no import).
+                Grouped by Definition / ExtendedBy / ImportedBy / UsedAsType /
+                Usage / Comment.
+              </p>
+            </div>
+          </div>
+          <div class="pill reveal">
+            <div class="pill-icon">?</div>
+            <div class="pill-text">
+              <h3>Self-correcting output</h3>
+              <p>
+                Disambiguation prints ready-to-run commands. Fuzzy "Did you
+                mean?" on not-found. Package-qualified and Owner.member lookup.
+              </p>
+            </div>
+          </div>
+          <div class="pill reveal">
+            <div
+              class="pill-icon"
+              style="font-size: clamp(0.7rem, 1.2vw, 1rem)"
+            >
+              --
+            </div>
+            <div class="pill-text">
+              <h3>Composable precision filters</h3>
+              <p>
+                <span class="mono" style="color: var(--yellow)"
+                  >--kind --path --no-tests --exact --strict --category</span
+                >
+                on every command. Cut noise at the source.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <div class="install-code">
-      <span class="comment"># In Claude Code, run:</span><br>
-      /plugin marketplace add nguyenyou/scalex<br>
-      /plugin install scalex@scalex-marketplace
-    </div>
+    <!-- ===========================================
+         SLIDE 10: GET STARTED
+         =========================================== -->
+    <section class="slide content-slide grid-bg" data-slide="9">
+      <span class="slide-number">09</span>
+      <div class="slide-content">
+        <h2 class="reveal">
+          Get started in <span class="red">10 seconds.</span>
+        </h2>
+        <div
+          class="install-block reveal"
+          style="margin-bottom: var(--content-gap)"
+        >
+          <span class="comment"
+            ># Claude Code — install the skill in one step</span
+          ><br />
+          <span class="t-cmd">/plugin marketplace add nguyenyou/scalex</span
+          ><br />
+          <span class="t-cmd">/plugin install scalex@scalex-marketplace</span
+          ><br />
+          <br />
+          <span class="comment"># Then try this in any Scala project:</span
+          ><br />
+          <span class="t-dim"
+            >"use scalex to explore how this project works"</span
+          >
+        </div>
+        <div class="install-block reveal">
+          <span class="comment"
+            ># Manual install — native binary, no JVM needed</span
+          ><br />
+          <span class="t-cmd"
+            >curl -fsSL
+            https://github.com/nguyenyou/scalex/releases/latest/download/scalex-macos-arm64
+            \</span
+          ><br />
+          <span class="t-cmd"
+            >&nbsp;&nbsp;-o ~/.local/bin/scalex && chmod +x
+            ~/.local/bin/scalex</span
+          >
+        </div>
+      </div>
+    </section>
 
-    <p style="color: var(--text-dim); font-size: 0.9rem; margin-top: 1.5rem;">Then try this prompt in any Scala project:</p>
-    <div class="install-code" style="font-size: 0.9rem;">
-      use scalex to explore how this project works
-    </div>
+    <!-- ===========================================
+         SLIDE 11: CLOSING
+         =========================================== -->
+    <section class="slide closing-slide" data-slide="10">
+      <div class="slide-content">
+        <img
+          src="Kestrel.png"
+          alt="Scalex Kestrel"
+          class="mascot-img reveal"
+          style="max-height: min(16vh, 140px)"
+        />
+        <h1 class="reveal" style="font-size: var(--h2-size)">
+          Grep knows text.<br /><span class="red">Scalex knows Scala.</span>
+        </h1>
+        <p
+          class="dim reveal"
+          style="font-size: var(--body-size); max-width: 500px"
+        >
+          Open source. MIT licensed. Built with Claude Code + Opus 4.6.
+        </p>
+        <div class="cta-row reveal">
+          <a href="https://github.com/nguyenyou/scalex" class="cta cta-primary"
+            >GitHub</a
+          >
+          <a
+            href="https://github.com/nguyenyou/scalex/releases"
+            class="cta cta-secondary"
+            >Releases</a
+          >
+        </div>
+      </div>
+    </section>
 
-    <h3 style="color: var(--red); margin-bottom: 0.5rem; margin-top: 3rem;">Other AI agents / manual install</h3>
-    <p class="section-sub" style="margin-bottom: 1.5rem;">Download the binary to <code style="color: var(--green); font-family: var(--font-mono); font-size: 0.85rem;">~/.local/bin</code>, then grab the skill.</p>
+    <!-- ===========================================
+       SLIDE PRESENTATION CONTROLLER
+       Handles: keyboard nav, touch, scroll, progress,
+       intersection observer for animations, nav dots
+       =========================================== -->
+    <script>
+      class SlidePresentation {
+        constructor() {
+          this.slides = document.querySelectorAll(".slide");
+          this.currentSlide = 0;
+          this.isScrolling = false;
+          this.setupIntersectionObserver();
+          this.setupKeyboardNav();
+          this.setupTouchNav();
+          this.setupProgressBar();
+          this.setupNavDots();
+          this.hideKeyHint();
+        }
 
-    <div class="install-code">
-      <span class="comment"># 1. Install the binary (pick your platform)</span><br>
-      <br>
-      <span class="comment"># macOS Apple Silicon</span><br>
-      mkdir -p ~/.local/bin<br>
-      curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-macos-arm64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex<br>
-      <br>
-      <span class="comment"># macOS Intel</span><br>
-      mkdir -p ~/.local/bin<br>
-      curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-macos-x64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex<br>
-      <br>
-      <span class="comment"># Linux x64</span><br>
-      mkdir -p ~/.local/bin<br>
-      curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-linux-x64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex
-    </div>
+        /* --- Intersection Observer: triggers .visible class --- */
+        setupIntersectionObserver() {
+          const observer = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add("visible");
+                  /* Update current slide index */
+                  const idx = Array.from(this.slides).indexOf(entry.target);
+                  if (idx !== -1) {
+                    this.currentSlide = idx;
+                    this.updateNavDots();
+                    this.updateProgressBar();
+                  }
+                }
+              });
+            },
+            { threshold: 0.35 },
+          );
+          this.slides.forEach((slide) => observer.observe(slide));
+          /* Mark first slide visible immediately */
+          if (this.slides[0]) this.slides[0].classList.add("visible");
+        }
 
-    <div class="install-code">
-      <span class="comment"># 2. Download the skill (teaches your AI agent how to use scalex)</span><br>
-      <br>
-      <span class="comment"># The skill lives at plugin/skills/scalex/SKILL.md in this repo.</span><br>
-      <span class="comment"># Download it and place it wherever your agent reads skills from.</span><br>
-      mkdir -p scalex<br>
-      curl -fsSL https://raw.githubusercontent.com/nguyenyou/scalex/main/plugin/skills/scalex/SKILL.md -o scalex/SKILL.md
-    </div>
-  </section>
+        /* --- Keyboard: arrows, space, page up/down --- */
+        setupKeyboardNav() {
+          document.addEventListener("keydown", (e) => {
+            switch (e.key) {
+              case "ArrowDown":
+              case "ArrowRight":
+              case " ":
+              case "PageDown":
+                e.preventDefault();
+                this.goTo(this.currentSlide + 1);
+                break;
+              case "ArrowUp":
+              case "ArrowLeft":
+              case "PageUp":
+                e.preventDefault();
+                this.goTo(this.currentSlide - 1);
+                break;
+              case "Home":
+                e.preventDefault();
+                this.goTo(0);
+                break;
+              case "End":
+                e.preventDefault();
+                this.goTo(this.slides.length - 1);
+                break;
+            }
+          });
+        }
 
-  <!-- Footer -->
-  <footer>
-    <p>
-      <a href="https://github.com/nguyenyou/scalex">GitHub</a> ·
-      <a href="https://github.com/nguyenyou/scalex/releases">Releases</a> ·
-      MIT License
-    </p>
-    <p class="built-with">
-      Built in a single session with Claude Code + Opus 4.6 (1M context).<br>
-      Inspired by <a href="https://scalameta.org/metals/">Metals</a> and <a href="https://scalameta.org/">Scalameta</a>.
-    </p>
-  </footer>
+        /* --- Touch: swipe up/down --- */
+        setupTouchNav() {
+          let touchStartY = 0;
+          document.addEventListener(
+            "touchstart",
+            (e) => {
+              touchStartY = e.touches[0].clientY;
+            },
+            { passive: true },
+          );
+          document.addEventListener(
+            "touchend",
+            (e) => {
+              const diff = touchStartY - e.changedTouches[0].clientY;
+              if (Math.abs(diff) > 50) {
+                this.goTo(this.currentSlide + (diff > 0 ? 1 : -1));
+              }
+            },
+            { passive: true },
+          );
+        }
 
-  <script>
-    // Scroll reveal
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
-    }, { threshold: 0.1 });
-    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
-  </script>
-</body>
+        /* --- Progress bar --- */
+        setupProgressBar() {
+          this.progressBar = document.getElementById("progressBar");
+          this.updateProgressBar();
+        }
+        updateProgressBar() {
+          if (!this.progressBar) return;
+          const pct = (this.currentSlide / (this.slides.length - 1)) * 100;
+          this.progressBar.style.width = pct + "%";
+        }
+
+        /* --- Navigation dots --- */
+        setupNavDots() {
+          const container = document.getElementById("navDots");
+          if (!container) return;
+          this.slides.forEach((_, i) => {
+            const dot = document.createElement("button");
+            dot.className = "nav-dot" + (i === 0 ? " active" : "");
+            dot.setAttribute("aria-label", `Go to slide ${i + 1}`);
+            dot.addEventListener("click", () => this.goTo(i));
+            container.appendChild(dot);
+          });
+          this.dots = container.querySelectorAll(".nav-dot");
+        }
+        updateNavDots() {
+          if (!this.dots) return;
+          this.dots.forEach((dot, i) => {
+            dot.classList.toggle("active", i === this.currentSlide);
+          });
+        }
+
+        /* --- Navigate to slide --- */
+        goTo(idx) {
+          if (idx < 0 || idx >= this.slides.length) return;
+          this.currentSlide = idx;
+          this.slides[idx].scrollIntoView({ behavior: "smooth" });
+          this.updateNavDots();
+          this.updateProgressBar();
+        }
+
+        /* --- Hide keyboard hint after first interaction --- */
+        hideKeyHint() {
+          const hint = document.getElementById("keyHint");
+          if (!hint) return;
+          const hide = () => {
+            hint.classList.add("hidden");
+            document.removeEventListener("keydown", hide);
+            document.removeEventListener("scroll", hide);
+            document.removeEventListener("touchstart", hide);
+          };
+          document.addEventListener("keydown", hide, { once: true });
+          document.addEventListener("scroll", hide, { once: true });
+          document.addEventListener("touchstart", hide, { once: true });
+        }
+      }
+
+      /* Initialize */
+      new SlidePresentation();
+    </script>
+  </body>
 </html>
