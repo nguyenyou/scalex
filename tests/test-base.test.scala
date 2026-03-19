@@ -412,6 +412,15 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    // #239: cross-file implementor of nested class
+    writeFile("src/main/scala/com/example/CrossFileImpl.scala",
+      """package com.example
+        |
+        |class CrossFileImpl extends Outer.Inner {
+        |  override def hello: String = "cross-file"
+        |}
+        |""".stripMargin)
+
     // Initialize git repo
     run("git", "init")
     run("git", "add", ".")

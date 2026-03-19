@@ -383,11 +383,11 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         }
       Timings.phase("cache-save") { IndexPersistence.save(workspace, indexedFiles) }
 
-  def findDefinition(name: String): List[SymbolInfo] =
-    if name.contains(".") then
+  def findDefinition(name: String): List[SymbolInfo] = {
+    if name.contains(".") then {
       val qResult = symbolsByQName.getOrElse(name.toLowerCase, Nil)
       if qResult.nonEmpty then qResult
-      else
+      else {
         // Partial qualification: "cache.Cache" matches "coursier.cache.Cache"
         val lastDot = name.lastIndexOf('.')
         val simpleName = name.substring(lastDot + 1)
@@ -395,34 +395,41 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         val pkgResult = symbolsByName.getOrElse(simpleName.toLowerCase, Nil)
           .filter(_.packageName.toLowerCase.endsWith(pkgSuffix))
         if pkgResult.nonEmpty then pkgResult
-        else
+        else {
           // Owner-qualified: "Outer.Inner" — find owner type, then filter by same file
           val ownerName = name.substring(0, lastDot)
           val ownerDefs = findDefinition(ownerName).filter(s =>
             s.kind == SymbolKind.Class || s.kind == SymbolKind.Trait ||
             s.kind == SymbolKind.Object || s.kind == SymbolKind.Enum)
           if ownerDefs.isEmpty then Nil
-          else
+          else {
             val ownerFiles = ownerDefs.map(_.file).toSet
             symbolsByName.getOrElse(simpleName.toLowerCase, Nil)
               .filter(s => ownerFiles.contains(s.file))
-    else
-      symbolsByName.getOrElse(name.toLowerCase, Nil)
+          }
+        }
+      }
+    }
+    else symbolsByName.getOrElse(name.toLowerCase, Nil)
+  }
 
-  def findImplementations(name: String): List[SymbolInfo] =
-    // Owner-qualified: "Outer.Inner" → use simple name for parent index lookup
-    val simpleName = if name.contains(".") then name.substring(name.lastIndexOf('.') + 1) else name
-    val direct = parentIndex.getOrElse(simpleName.toLowerCase, Nil)
-    val viaTp = typeParamParentIndex.getOrElse(simpleName.toLowerCase, Nil)
-    val all = (direct ++ viaTp).distinctBy(s => (name = s.name, file = s.file, line = s.line))
-    // When owner-qualified, filter to implementations whose parent is in the same file as the owner
-    if name.contains(".") then
-      val ownerDefs = findDefinition(name)
-      if ownerDefs.isEmpty then all
-      else
-        val targetFiles = ownerDefs.map(_.file).toSet
-        all.filter(s => targetFiles.contains(s.file))
-    else all
+  def findImplementations(name: String): List[SymbolInfo] = {
+    if name.contains(".") then {
+      val resolved = findDefinition(name)
+      if resolved.isEmpty then Nil
+      else {
+        val simpleName = name.substring(name.lastIndexOf('.') + 1)
+        val direct = parentIndex.getOrElse(simpleName.toLowerCase, Nil)
+        val viaTp = typeParamParentIndex.getOrElse(simpleName.toLowerCase, Nil)
+        (direct ++ viaTp).distinctBy(s => (name = s.name, file = s.file, line = s.line))
+      }
+    }
+    else {
+      val direct = parentIndex.getOrElse(name.toLowerCase, Nil)
+      val viaTp = typeParamParentIndex.getOrElse(name.toLowerCase, Nil)
+      (direct ++ viaTp).distinctBy(s => (name = s.name, file = s.file, line = s.line))
+    }
+  }
 
   def findAnnotated(annotation: String): List[SymbolInfo] =
     annotationIndex.getOrElse(annotation.toLowerCase, Nil)
