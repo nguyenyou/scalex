@@ -12,7 +12,7 @@
 
 ## Why Scalex?
 
-1. **No build server. Nothing to leak.** No daemon, no background process, no socket. No sbt/Metals silently eating RAM, leaking threads, or grinding your CPU. The index is a single file in your repo — when scalex exits, nothing is left running.
+1. **No build server. Nothing to leak.** No daemon, no background process, no socket. No build server silently eating RAM, leaking threads, or grinding your CPU. The index is a single file in your repo — when scalex exits, nothing is left running.
 
 2. **Zero setup. Just works.** Install the skill, point it at any git repo, start navigating. No build files, no config, no "import build" dialog, no "connecting to build server". Clone a repo you've never seen and explore it in seconds.
 
