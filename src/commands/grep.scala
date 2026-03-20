@@ -93,7 +93,7 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
   val regex = try java.util.regex.Pattern.compile(pattern)
   catch
     case e: java.util.regex.PatternSyntaxException =>
-      Console.err.println(s"Invalid regex: ${e.getMessage}")
+      System.err.println(s"Invalid regex: ${e.getMessage}")
       break(CmdResult.GrepByMethod(pattern, owner, Nil, hint, stderrHint))
 
   // Find the owner type
@@ -132,7 +132,6 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
   }
   if ctx.countOnly then
     val total = matches.map(_.matchCount).sum
-    val suffix = if timedOut then " (timed out — partial results)" else ""
     CmdResult.GrepCount(total, matches.map(_.file).distinct.size, timedOut, hint, stderrHint)
   else
     CmdResult.GrepByMethod(pattern, owner, matches.toList, hint, stderrHint, timedOut)
