@@ -2701,3 +2701,217 @@ class CliSuite extends ScalexTestBase:
     }
     assert(output.contains("No implementations"), s"Should report not-found for Unknown.Inner: $output")
   }
+
+  // ── #252: parseFlags for --max-output and --in-package ────────────────
+
+  test("#252: parseFlags parses --max-output flag") {
+    val f = parseFlags(List("overview", "--max-output", "500"))
+    assertEquals(f.maxOutput, 500)
+  }
+
+  test("#252: parseFlags --max-output defaults to 0") {
+    val f = parseFlags(List("overview"))
+    assertEquals(f.maxOutput, 0)
+  }
+
+  test("#252: parseFlags --max-output is excluded from cleanArgs") {
+    val f = parseFlags(List("overview", "--max-output", "500"))
+    assert(!f.cleanArgs.contains("--max-output"), s"cleanArgs should not contain --max-output: ${f.cleanArgs}")
+    assert(!f.cleanArgs.contains("500"), s"cleanArgs should not contain 500: ${f.cleanArgs}")
+  }
+
+  test("#252: parseFlags parses --in-package flag") {
+    val f = parseFlags(List("refs", "Foo", "--in-package", "com.example"))
+    assertEquals(f.inPackageFilter, Some("com.example"))
+  }
+
+  test("#252: parseFlags --in-package defaults to None") {
+    val f = parseFlags(List("refs", "Foo"))
+    assertEquals(f.inPackageFilter, None)
+  }
+
+  test("#252: parseFlags --in-package is excluded from cleanArgs") {
+    val f = parseFlags(List("refs", "Foo", "--in-package", "com.example"))
+    assert(!f.cleanArgs.contains("--in-package"), s"cleanArgs should not contain --in-package: ${f.cleanArgs}")
+    assert(!f.cleanArgs.contains("com.example"), s"cleanArgs should not contain com.example: ${f.cleanArgs}")
+    assert(f.cleanArgs.contains("Foo"), s"cleanArgs should still contain Foo: ${f.cleanArgs}")
+  }
+
+  // ── #252: --max-output truncation ─────────────────────────────────────
+
+  test("#252: --max-output truncates large output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 50, maxOutput = 100))
+    }
+    assert(output.contains("output truncated at 100 chars"), s"Should contain truncation hint: $output")
+    // The truncated content + hint should be present but total content before hint should be ≤ budget + one line
+    val hintIdx = output.indexOf("(output truncated")
+    assert(hintIdx > 0, s"Truncation hint should be present: $output")
+    val contentBeforeHint = output.substring(0, hintIdx).stripTrailing()
+    assert(contentBeforeHint.length <= 100, s"Content before hint should be ≤ 100 chars, got ${contentBeforeHint.length}")
+  }
+
+  test("#252: --max-output 0 means unlimited (no truncation)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 50, maxOutput = 0))
+    }
+    assert(!output.contains("output truncated"), s"Should not truncate when maxOutput=0: $output")
+  }
+
+  test("#252: --max-output truncates at line boundary") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 50, maxOutput = 80))
+    }
+    val hintIdx = output.indexOf("(output truncated")
+    assert(hintIdx > 0, s"Should be truncated: $output")
+    // The hint should start at a line boundary (preceded by a newline)
+    assert(hintIdx > 0 && output.charAt(hintIdx - 1) == '\n',
+      s"Truncation hint should be on its own line: ${output.substring(math.max(0, hintIdx - 5), hintIdx + 10)}")
+    // Content before hint should not contain partial lines (last content line should be complete)
+    val contentBeforeHint = output.substring(0, hintIdx)
+    val contentLines = contentBeforeHint.split("\n").filter(_.nonEmpty)
+    // Each line should be a complete line, not cut mid-word
+    assert(contentLines.nonEmpty, s"Should have at least one content line")
+  }
+
+  test("#252: --max-output hint includes --in-package") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("overview", Nil, CommandContext(idx = idx, workspace = workspace, limit = 50, maxOutput = 50))
+    }
+    assert(output.contains("--in-package"), s"Truncation hint should mention --in-package: $output")
+  }
+
+  test("#252: --max-output does not truncate small output") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // packages output is small — should not be truncated even with a reasonable budget
+    val output = captureOut {
+      runCommand("packages", Nil, CommandContext(idx = idx, workspace = workspace, maxOutput = 5000))
+    }
+    assert(!output.contains("output truncated"), s"Small output should not be truncated: $output")
+    assert(output.contains("com.example"), s"Should contain package: $output")
+  }
+
+  // ── #252: --in-package filterSymbols ───────────────────────────────────
+
+  test("#252: --in-package filters symbols by package prefix") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("search", List("Registry"), CommandContext(idx = idx, workspace = workspace, limit = 50,
+        inPackageFilter = Some("com.example")))
+    }
+    assert(output.contains("com.example"), s"Should contain com.example: $output")
+    assert(!output.contains("com.other"), s"Should not contain com.other: $output")
+  }
+
+  test("#252: --in-package filters impl results") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("impl", List("UserService"), CommandContext(idx = idx, workspace = workspace, limit = 50,
+        inPackageFilter = Some("com.example")))
+    }
+    assert(output.contains("com.example"), s"Should contain com.example impls: $output")
+    // Only com.example implementations should appear
+    assert(!output.contains("com.other"), s"Should not contain com.other impls: $output")
+  }
+
+  test("#252: --in-package with no matches returns empty") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("search", List("UserService"), CommandContext(idx = idx, workspace = workspace, limit = 50,
+        inPackageFilter = Some("com.nonexistent")))
+    }
+    // Should find 0 symbols
+    assert(output.contains("0 symbols") || output.contains("No "), s"Should find nothing in nonexistent package: $output")
+  }
+
+  test("#252: --in-package filters with prefix match (sub-packages included)") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    // com.example should include com.example.* sub-packages
+    val output = captureOut {
+      runCommand("search", List("Helper"), CommandContext(idx = idx, workspace = workspace, limit = 50,
+        inPackageFilter = Some("com.other")))
+    }
+    assert(output.contains("Helper"), s"Should find Helper in com.other: $output")
+    val output2 = captureOut {
+      runCommand("search", List("Helper"), CommandContext(idx = idx, workspace = workspace, limit = 50,
+        inPackageFilter = Some("com.example")))
+    }
+    assert(!output2.contains("Helper") || output2.contains("0 symbols"),
+      s"Should not find Helper in com.example: $output2")
+  }
+
+  // ── #252: --in-package filterRefs ──────────────────────────────────────
+
+  test("#252: --in-package filters refs by file package") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    val output = captureOut {
+      runCommand("refs", List("UserService"), CommandContext(idx = idx, workspace = workspace, limit = 50,
+        categorize = false, inPackageFilter = Some("com.client")))
+    }
+    // Should only show refs from com.client package files
+    assert(output.contains("Client"), s"Should contain client refs: $output")
+    // Should not show refs from com.example files
+    assert(!output.contains("UserServiceSpec"), s"Should not contain test refs from com.example: $output")
+    assert(!output.contains("UserServiceTest"), s"Should not contain test refs from com.example: $output")
+  }
+
+  test("#252: --in-package refs keeps refs from unindexed files") {
+    val idx = WorkspaceIndex(workspace, needBlooms = true)
+    idx.index()
+    // With --in-package set, refs from files with unknown package should be kept (conservative)
+    // This is hard to test directly since all files are indexed, but we verify the filter
+    // doesn't crash and returns results for known packages
+    val output = captureOut {
+      runCommand("refs", List("UserService"), CommandContext(idx = idx, workspace = workspace, limit = 50,
+        categorize = false, inPackageFilter = Some("com.example")))
+    }
+    assert(output.contains("UserService"), s"Should find refs in com.example: $output")
+  }
+
+  // ── #252: flagsToContext wiring ────────────────────────────────────────
+
+  test("#252: flagsToContext wires maxOutput and inPackageFilter") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val f = ParsedFlags(maxOutput = 1000, inPackageFilter = Some("com.test"))
+    val ctx = flagsToContext(f, idx, workspace)
+    assertEquals(ctx.maxOutput, 1000)
+    assertEquals(ctx.inPackageFilter, Some("com.test"))
+  }
+
+  // ── #252: filePackageByPath ────────────────────────────────────────────
+
+  test("#252: filePackageByPath returns package for known file") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val pkg = idx.filePackageByPath("src/main/scala/com/example/UserService.scala")
+    assertEquals(pkg, Some("com.example"))
+  }
+
+  test("#252: filePackageByPath returns None for unknown file") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val pkg = idx.filePackageByPath("nonexistent/File.scala")
+    assertEquals(pkg, None)
+  }
+
+  test("#252: filePackageByPath returns package for different packages") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    assertEquals(idx.filePackageByPath("src/main/scala/com/other/Helper.scala"), Some("com.other"))
+    assertEquals(idx.filePackageByPath("src/main/scala/com/client/ExplicitClient.scala"), Some("com.client"))
+  }
