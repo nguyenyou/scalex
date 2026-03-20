@@ -93,7 +93,7 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
   val regex = try java.util.regex.Pattern.compile(pattern)
   catch
     case e: java.util.regex.PatternSyntaxException =>
-      System.err.println(s"Invalid regex: ${e.getMessage}")
+      Console.err.println(s"Invalid regex: ${e.getMessage}")
       break(CmdResult.GrepByMethod(pattern, owner, Nil, hint, stderrHint))
 
   // Find the owner type
@@ -113,7 +113,7 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
       val membersWithSpans = extractMembersWithSpans(sym.file, sym.name, Some(sym.kind))
       val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch
         case _: java.io.IOException =>
-          System.err.println(s"scalex: unreadable file: ${sym.file}")
+          Console.err.println(s"scalex: unreadable file: ${sym.file}")
           Seq.empty
 
       if lines.nonEmpty then
