@@ -4,14 +4,14 @@
     "name": "Tu Nguyen"
   },
   "metadata": {
-    "description": "Scala code intelligence tools for AI coding agents",
+    "description": "Scala code intelligence tools for coding agents",
     "pluginRoot": "."
   },
   "plugins": [
     {
       "name": "scalex",
       "source": "./plugin",
-      "description": "Scala code intelligence for AI agents — search symbols, find definitions, find implementations, find references, explore imports. Works on Scala 2 and 3 codebases without a compiler or build server.",
+      "description": "Scala code intelligence for coding agents — search symbols, find definitions, find implementations, find references, explore imports. Works on Scala 2 and 3 codebases without a compiler or build server.",
       "version": "1.36.0",
       "author": {
         "name": "Tu Nguyen"
@@ -19,7 +19,7 @@
       "homepage": "https://github.com/nguyenyou/scalex",
       "repository": "https://github.com/nguyenyou/scalex",
       "license": "MIT",
-      "keywords": ["scala", "code-intelligence", "search", "navigation", "ai-agent"],
+      "keywords": ["scala", "code-intelligence", "search", "navigation", "coding-agent"],
       "category": "code-intelligence",
       "tags": ["scala", "scala3", "navigation", "find-definition", "find-references"]
     }

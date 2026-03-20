@@ -1,6 +1,6 @@
 {
   "name": "scalex",
-  "description": "Scala code intelligence for AI agents — fast symbol search, find definitions, and find references",
+  "description": "Scala code intelligence for coding agents — fast symbol search, find definitions, and find references",
   "author": {
     "name": "Tu Nguyen"
   },

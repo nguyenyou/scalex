@@ -1,6 +1,6 @@
 # Scalex Mascot Brief
 
-A design brief for creating a mascot that represents Scalex — a Scala code intelligence tool built for AI agents.
+A design brief for creating a mascot that represents Scalex — a Scala code intelligence tool built for coding agents.
 
 ## What Scalex Is
 
@@ -14,7 +14,7 @@ A small, fast, sharp tool that scans an entire Scala codebase in seconds and tel
 | **Sharp vision** | Finds symbols, definitions, references with precision | Keen eyes, focused gaze |
 | **Lightweight** | Single 26MB binary, no dependencies | Small body, minimal form |
 | **Scala-native** | Understands Scala 3 syntax (enums, givens, extensions) | Scales, red Scala color palette |
-| **AI companion** | Built for coding agents, not humans in IDEs | Friendly, approachable, sits on a shoulder |
+| **Coding agent companion** | Built for coding agents, not humans in IDEs | Friendly, approachable, sits on a shoulder |
 | **Source-level** | Reads raw source, no compilation needed | Sees through surfaces, x-ray vision |
 | **Git-native** | Uses git for file discovery and cache invalidation | Connected to the ground/roots |
 
@@ -28,7 +28,7 @@ A **small kestrel** (the smallest falcon) — fast, sharp-eyed, lightweight, hov
 - **Incredible eyesight** — spots symbols from across 18k files, like a kestrel spots prey from 50 meters
 - **Hovers in place** — systematically scans an area before diving, like indexing before querying
 - **Fast dive** — instant results once it finds the target
-- **Works near humans** — kestrels live alongside people, like Scalex works alongside AI agents
+- **Works near humans** — kestrels live alongside people, like Scalex works alongside coding agents
 - **Not a predator to fear** — helpful, companion-like
 
 ### Visual Details
@@ -46,13 +46,13 @@ A **small kestrel** (the smallest falcon) — fast, sharp-eyed, lightweight, hov
 1. **Primary**: Perched on a code bracket `{`, head turned, one eye focused forward — "I see everything"
 2. **Scanning**: Hovering with wings spread, eyes glowing — "indexing in progress"
 3. **Found it**: Diving downward toward a target — "definition found"
-4. **Companion**: Sitting on a robot/AI shoulder — "built for AI agents"
+4. **Companion**: Sitting on a robot shoulder — "built for coding agents"
 
 ## Alternative Directions
 
 ### Direction B: The Lens Fox
 
-A small **geometric fox** with crystalline/lens-like eyes. Foxes are clever (AI-native), quick (fast queries), and navigate complex terrain (large codebases). The crystal eyes represent seeing through code structure.
+A small **geometric fox** with crystalline/lens-like eyes. Foxes are clever (code-native), quick (fast queries), and navigate complex terrain (large codebases). The crystal eyes represent seeing through code structure.
 
 ### Direction C: The Scale Pangolin
 

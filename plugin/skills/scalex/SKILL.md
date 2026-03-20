@@ -13,7 +13,7 @@ Scalex only works on **git-tracked files** in **Scala/Java projects**. Do not us
 
 A bootstrap script at `scripts/scalex-cli` (next to this SKILL.md) handles everything automatically — platform detection, downloading the correct native binary from GitHub releases, and caching at `~/.cache/scalex/`. It auto-upgrades when the skill version changes.
 
-**Invocation pattern** — use the absolute path to `scalex-cli` directly in every command. Do NOT use shell variables (`$SCALEX`) — AI agent shells are non-persistent, so variables are lost between commands.
+**Invocation pattern** — use the absolute path to `scalex-cli` directly in every command. Do NOT use shell variables (`$SCALEX`) — coding agent shells are non-persistent, so variables are lost between commands.
 
 ```bash
 # Pattern: bash "<path-to-scripts>/scalex-cli" <command> [args] -w <workspace>

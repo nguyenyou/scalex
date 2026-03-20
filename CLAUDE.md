@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Scalex
 
-Scalex is a Scala code intelligence CLI for AI agents. It provides fast symbol search, find definitions, and find references — without requiring an IDE, build server, or compilation. Designed as a Claude Code plugin.
+Scalex is a Scala code intelligence CLI for coding agents. It provides fast symbol search, find definitions, and find references — without requiring an IDE, build server, or compilation. Designed as a Claude Code plugin.
 
 ## IMPORTANT: No company references
 
@@ -93,7 +93,7 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 
 - **Scalameta, not presentation compiler**: Scala 3's PC requires compiled `.class`/`.tasty` on classpath, which reintroduces build server dependency. Scalameta parses source directly.
 - **Git OIDs for caching**: Available free from `git ls-files --stage`, no disk reads needed to detect changes.
-- **No build server**: AI agents can run `./mill __.compile` directly for error checking.
+- **No build server**: Coding agents can run `./mill __.compile` directly for error checking.
 - **No backwards compatibility**: This is a tool, not a library. Do the right thing and do it consistently. If the current way of printing data, formatting JSON, or structuring output is inconsistent, fix it to match the up-to-date pattern — don't preserve old behavior for backwards compatibility. Consistency across commands matters more than not breaking hypothetical consumers.
 - **Feature gate question**: "Is this better than grep, or does it introduce a worst case that grep never has?" If a feature risks being slower or less reliable than grep in any scenario, don't add it. The agent can always fall back to grep — scalex must never be the worse option.
 - **Performance budget**: Every new feature must be benchmarked before/after on a large codebase (e.g. scala3 compiler, 17.7k files). Measure: index size (`.scalex/index.bin`), cold index time, warm index time, and query latency. Accept <5% regression on index times, 0% index size growth for non-index features, <10% if index schema changes. Prefer on-the-fly source reads over index bloat for infrequent queries (e.g. `members`, `doc`).
@@ -142,7 +142,7 @@ When adding or changing commands/flags in `src/cli.scala`:
 - Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter) and `plugin/skills/scalex/references/commands.md` (command signature, description, examples, options table). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
 - Update `docs/ROADMAP.md`
 - Update `CHANGELOG.md`
-- Update `README.md` (commands block, AI-Friendly Features, "Use it" examples). README does NOT duplicate the options table — it links to SKILL.md
+- Update `README.md` (commands block, Coding-Agent-Friendly Features, "Use it" examples). README does NOT duplicate the options table — it links to SKILL.md
 - Update `site/index.html` (command grid, command count heading)
 
 ## Gotchas
