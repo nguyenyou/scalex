@@ -646,7 +646,7 @@ private def renderTestCount(r: CmdResult.TestCount, ctx: CommandContext): Unit =
     val qualifier = if r.dynamicSites > 0 then " (literal names only)" else ""
     println(s"${r.tests} tests${qualifier} across ${r.suites} suites")
     if r.dynamicSites > 0 then
-      println(s"  ${r.dynamicSites} dynamic test sites detected — actual count requires runtime")
+      System.err.println(s"  ${r.dynamicSites} dynamic test sites detected — actual count requires runtime")
   }
 }
 

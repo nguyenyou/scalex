@@ -281,7 +281,7 @@
 
 #### Test awareness (#56)
 - `tests` (MUnit, ScalaTest, specs2), `body` for test cases, `coverage`
-- `tests --count` dynamic test site detection — reports non-literal test names separately (#259)
+- [x] `tests --count` dynamic test site detection — reports non-literal test names separately (#259)
 
 #### Overview hub type filtering (#64)
 - Exclude stdlib/framework types from hub rankings; surface project-own types
