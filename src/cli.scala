@@ -38,12 +38,15 @@ case class ParsedFlags(
   related: Boolean = false,
   explainMode: Boolean = false,
   concise: Boolean = false,
+  maxOutput: Int = 0,
+  inPackageFilter: Option[String] = None,
   cleanArgs: List[String] = Nil,
 )
 
 private val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
                          "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
-                         "--members-limit", "--used-by", "--returns", "--takes", "--top", "--max-lines", "--offset")
+                         "--members-limit", "--used-by", "--returns", "--takes", "--top", "--max-lines", "--offset",
+                         "--max-output", "--in-package")
 
 def parseFlags(argList: List[String]): ParsedFlags =
   val limit = argList.indexOf("--limit") match
@@ -148,6 +151,12 @@ def parseFlags(argList: List[String]): ParsedFlags =
   val related = argList.contains("--related")
   val explainMode = argList.contains("--explain")
   val concise = argList.contains("--concise")
+  val maxOutput: Int = argList.indexOf("--max-output") match
+    case -1 => 0
+    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
+  val inPackageFilter: Option[String] = argList.indexOf("--in-package") match
+    case -1 => None
+    case i => argList.lift(i + 1)
 
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
@@ -160,7 +169,7 @@ def parseFlags(argList: List[String]): ParsedFlags =
     hasMethodFilter, extendsFilter, bodyContainsFilter, focusPackage, expandDepth, membersLimit,
     brief, strict, usedByFilter, returnsFilter, takesFilter, shallow, noDoc, excludePath, topN,
     summaryMode, timingsEnabled, withBody, maxBodyLines, showImports, offset, related, explainMode,
-    concise, cleanArgs)
+    concise, maxOutput, inPackageFilter, cleanArgs)
 
 private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
                            batchMode: Boolean = false, effectiveNoTests: Option[Boolean] = None): CommandContext =
@@ -179,7 +188,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
     usedByFilter = f.usedByFilter, returnsFilter = f.returnsFilter, takesFilter = f.takesFilter,
     shallow = f.shallow, noDoc = f.noDoc, excludePath = f.excludePath, summaryMode = f.summaryMode,
     withBody = f.withBody, maxBodyLines = f.maxBodyLines, showImports = f.showImports,
-    offset = f.offset, related = f.related, explainMode = f.explainMode, concise = f.concise)
+    offset = f.offset, related = f.related, explainMode = f.explainMode, concise = f.concise,
+    maxOutput = f.maxOutput, inPackageFilter = f.inPackageFilter)
 
 @main def main(args: String*): Unit =
   val f = parseFlags(args.toList)
@@ -277,6 +287,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |  --used-by PKG         API: filter importers to only those from PKG
         |  --returns TYPE        Search: filter to symbols whose signature returns TYPE
         |  --takes TYPE          Search: filter to symbols whose signature takes TYPE
+        |  --max-output N        Truncate output at N characters (0 = unlimited); works on all commands
+        |  --in-package PKG      Filter results to files whose package matches PKG prefix
         |  --timings             Print per-phase timing breakdown to stderr
         |
         |All commands accept an optional [workspace] positional arg or -w flag (default: current directory).

@@ -344,5 +344,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--returns TYPE` | Search: filter to symbols whose signature returns TYPE |
 | `--takes TYPE` | Search: filter to symbols whose signature takes TYPE |
 | `--json` | Output results as JSON — structured output for programmatic parsing |
+| `--max-output N` | Truncate output at N characters (0 = unlimited); works on all commands |
+| `--in-package PKG` | Filter results to files whose package matches PKG prefix |
 | `--timings` | Print per-phase timing breakdown to stderr |
 | `--version` | Print version and exit |

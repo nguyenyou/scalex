@@ -4,6 +4,14 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Community feedback: output budgets & package-scoped refs (#252)
+
+- [x] `--max-output N` global output budget — truncate any command's output at N characters with pagination hint; wraps `render()` centrally via `BudgetPrintStream` in `runCommand`; also serves as per-query budget in `batch` mode
+- [x] `--in-package PKG` — filter symbols and references to files whose package declaration matches prefix; applied in `filterSymbols` and `filterRefs`; cheaper than `--path` for cross-compiled projects where package != directory
+- Deferred: `--format agent` compact output — maintenance burden of dual formatters across 25+ renderers; `--max-output` + existing `--brief`/`--shallow`/`--no-doc` flags cover the same need
+- Discarded: stale symbol hints in `explain` — false positives (cross-repo impls, macros) waste more agent tokens than they save; agent can run `impl` + `refs` directly
+- Deferred: `members --diff <ref>` — medium effort, niche; `diff` + `git diff` already cover this well
+
 ### Concise overview mode (#248)
 
 - [x] `overview --concise` — fixed-size summary (~60 lines) regardless of codebase size; compact header, inline symbols, top packages, dep stats (not full graph), hub types, drill-down hints; implies `--architecture`

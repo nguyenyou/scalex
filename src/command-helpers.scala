@@ -76,6 +76,10 @@ def filterSymbols(symbols: List[SymbolInfo], ctx: CommandContext): List[SymbolIn
   if ctx.noTests then r = r.filter(s => !isTestFile(s.file, ctx.workspace))
   ctx.pathFilter.foreach { p => r = r.filter(s => matchesPath(s.file, p, ctx.workspace)) }
   ctx.excludePath.foreach { p => r = r.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
+  ctx.inPackageFilter.foreach { pkg =>
+    val prefix = pkg + "."
+    r = r.filter(s => s.packageName == pkg || s.packageName.startsWith(prefix))
+  }
   r
 
 def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
@@ -83,6 +87,15 @@ def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
   if ctx.noTests then r = r.filter(ref => !isTestFile(ref.file, ctx.workspace))
   ctx.pathFilter.foreach { p => r = r.filter(ref => matchesPath(ref.file, p, ctx.workspace)) }
   ctx.excludePath.foreach { p => r = r.filter(ref => !matchesPath(ref.file, p, ctx.workspace)) }
+  ctx.inPackageFilter.foreach { pkg =>
+    val prefix = pkg + "."
+    r = r.filter { ref =>
+      val relPath = ctx.workspace.relativize(ref.file).toString
+      ctx.idx.filePackageByPath(relPath) match
+        case Some(filePkg) => filePkg == pkg || filePkg.startsWith(prefix)
+        case None => false
+    }
+  }
   r
 
 // ── Shared constants ─────────────────────────────────────────────────────────
