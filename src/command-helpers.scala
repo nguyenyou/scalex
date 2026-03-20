@@ -7,8 +7,19 @@ def hasRegexHint(pattern: String): Boolean =
   pattern.contains("\\|") || pattern.contains("\\(") || pattern.contains("\\)")
 
 def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
-  val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
-  (fixed, fixed != pattern)
+  // Only auto-correct if the original pattern is invalid Java regex
+  try
+    java.util.regex.Pattern.compile(pattern)
+    (pattern, false)
+  catch
+    case _: java.util.regex.PatternSyntaxException =>
+      val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
+      try
+        java.util.regex.Pattern.compile(fixed)
+        (fixed, true)
+      catch
+        case _: java.util.regex.PatternSyntaxException =>
+          (pattern, false) // auto-correction didn't help, return original
 
 // ── Suggestions for not-found ────────────────────────────────────────────────
 

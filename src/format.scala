@@ -94,6 +94,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: Overview         => renderOverview(r, ctx)
     case r: SourceBlocks     => renderSourceBlocks(r, ctx)
     case r: TestSuites       => renderTestSuites(r, ctx)
+    case r: TestCount        => renderTestCount(r, ctx)
     case r: CoverageReport   => renderCoverageReport(r, ctx)
     case r: HierarchyResult  => renderHierarchyResult(r, ctx)
     case r: OverrideList     => renderOverrideList(r, ctx)
@@ -638,6 +639,15 @@ private def renderTestSuites(r: CmdResult.TestSuites, ctx: CommandContext): Unit
   }
 }
 
+private def renderTestCount(r: CmdResult.TestCount, ctx: CommandContext): Unit = {
+  if ctx.jsonOutput then
+    println(s"""{"suites":${r.suites},"tests":${r.tests}}""")
+  else {
+    println(s"${r.suites} suites, ${r.tests} tests")
+    System.err.println("  Hint: only counts tests with literal string names; dynamic names (string concatenation) are not detected")
+  }
+}
+
 private def renderCoverageReport(r: CmdResult.CoverageReport, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
     val refsJson = r.testRefs.take(ctx.limit).map(ctx.jRef).mkString("[", ",", "]")
@@ -1035,7 +1045,8 @@ private def renderGrepByMethod(r: CmdResult.GrepByMethod, ctx: CommandContext): 
     val shown = r.methods.take(ctx.limit)
     val items = shown.map { m =>
       val file = jsonEscape(ctx.workspace.relativize(m.file).toString)
-      s"""{"name":"${jsonEscape(m.member.name)}","kind":"${m.member.kind.toString.toLowerCase}","signature":"${jsonEscape(m.member.signature)}","file":"$file","line":${m.member.line},"matches":${m.matchCount}}"""
+      val linesJson = m.matchLines.map(ml => s"""{"line":${ml.lineNum},"text":"${jsonEscape(ml.text)}"}""").mkString("[", ",", "]")
+      s"""{"name":"${jsonEscape(m.member.name)}","kind":"${m.member.kind.toString.toLowerCase}","signature":"${jsonEscape(m.member.signature)}","file":"$file","line":${m.member.line},"matches":${m.matchCount},"matchLines":$linesJson}"""
     }.mkString("[", ",", "]")
     val total = r.methods.map(_.matchCount).sum
     val truncated = if r.methods.size > ctx.limit then s""","truncated":true,"totalMethods":${r.methods.size}""" else ""
@@ -1056,6 +1067,9 @@ private def renderGrepByMethod(r: CmdResult.GrepByMethod, ctx: CommandContext): 
         val pad = " " * (maxSig - m.member.signature.length)
         val plural = if m.matchCount == 1 then "match" else "matches"
         println(s"  ${m.member.signature}$pad — $loc  (${m.matchCount} $plural)")
+        m.matchLines.foreach { ml =>
+          println(s"      ${ml.lineNum} | ${ml.text}")
+        }
       }
       val remaining = r.methods.size - shown.size
       if remaining > 0 then println(s"  ... and $remaining more (use --limit 0 to show all)")

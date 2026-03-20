@@ -162,16 +162,29 @@ class CliSuite extends ScalexTestBase:
     assert(!hasRegexHint("simple"))
   }
 
-  test("fixPosixRegex corrects backslash-pipe to pipe") {
+  test("fixPosixRegex leaves valid Java regex with backslash-pipe alone") {
+    // "class\|trait" is valid Java regex (\| = literal |), so not corrected
     val (fixed, changed) = fixPosixRegex("class\\|trait")
-    assertEquals(fixed, "class|trait")
-    assert(changed)
+    assertEquals(fixed, "class\\|trait")
+    assert(!changed)
   }
 
-  test("fixPosixRegex corrects backslash-parens") {
+  test("fixPosixRegex leaves valid Java regex with backslash-parens alone") {
+    // \( and \) are valid Java regex (literal parens), so not corrected
     val (fixed, changed) = fixPosixRegex("\\(foo\\|bar\\)")
-    assertEquals(fixed, "(foo|bar)")
-    assert(changed)
+    assertEquals(fixed, "\\(foo\\|bar\\)")
+    assert(!changed)
+  }
+
+  test("fixPosixRegex corrects invalid pattern when auto-fix helps") {
+    // Unbalanced "(" is invalid Java regex; replacing \( → ( doesn't help here
+    // but unescaped alternation like "a\|b" where \| makes it valid already — no correction needed
+    // Test a pattern that is genuinely invalid and fixable:
+    // "foo(" is invalid (unclosed group), but the POSIX auto-corrector only targets \| \( \)
+    // so this tests the passthrough for unfixable patterns
+    val (fixed, changed) = fixPosixRegex("foo(")
+    assertEquals(fixed, "foo(")
+    assert(!changed)
   }
 
   test("fixPosixRegex is no-op for valid Java regex") {

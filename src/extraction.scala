@@ -439,11 +439,15 @@ private def extractTestName(t: Tree): Option[(name: String, line: Int)] =
   t match
     case app: Term.Apply =>
       app.fun match
+        // test("name")(body) — double apply
         case innerApp: Term.Apply =>
           innerApp.fun match
             case fn: Term.Name if testFnNames.contains(fn.value) =>
               innerApp.argClause.values.collectFirst { case lit: Lit.String => (lit.value, app.pos.startLine + 1) }
             case _ => None
+        // test("name") { body } — single apply with name + block in same arglist
+        case fn: Term.Name if testFnNames.contains(fn.value) =>
+          app.argClause.values.collectFirst { case lit: Lit.String => (lit.value, app.pos.startLine + 1) }
         case _ => None
     case infix: Term.ApplyInfix =>
       if infix.op.value == "in" || infix.op.value == ">>" then
@@ -466,8 +470,10 @@ def extractTests(file: Path): List[TestSuiteInfo] = {
           extractTestName(t) match
             case Some((name, line)) =>
               tests += TestCaseInfo(name, line, suiteName, file)
+              // Don't recurse into matched test node — avoids double-counting
+              // when inner Term.Apply also matches (e.g. test("name")(body))
             case None =>
-          t.children.foreach(visit)
+              t.children.foreach(visit)
         }
         stats.foreach(visit)
         tests.toList

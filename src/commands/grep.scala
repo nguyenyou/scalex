@@ -119,14 +119,15 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
       if lines.nonEmpty then
         membersWithSpans.foreach { ms =>
           if System.nanoTime() < deadline then
-            var count = 0
+            val matchedLines = scala.collection.mutable.ListBuffer.empty[(lineNum: Int, text: String)]
             var lineIdx = ms.startLine - 1
             val endIdx = math.min(ms.endLine, lines.size)
             while lineIdx < endIdx do
-              if regex.matcher(lines(lineIdx)).find() then count += 1
+              if regex.matcher(lines(lineIdx)).find() then
+                matchedLines += ((lineNum = lineIdx + 1, text = lines(lineIdx).trim))
               lineIdx += 1
-            if count > 0 then
-              matches += MethodGrepMatch(ms.member, sym.file, count)
+            if matchedLines.nonEmpty then
+              matches += MethodGrepMatch(ms.member, sym.file, matchedLines.size, matchedLines.toList)
           else timedOut = true
         }
   }

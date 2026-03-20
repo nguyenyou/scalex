@@ -11,6 +11,9 @@ def cmdTests(args: List[String], ctx: CommandContext): CmdResult =
         suite.copy(tests = filtered)
       case None => suite
   }.filter(_.tests.nonEmpty)
+  if ctx.countOnly then
+    val totalTests = allSuites.map(_.tests.size).sum
+    return CmdResult.TestCount(allSuites.size, totalTests)
   val showBody = nameFilter.isDefined
   val suiteResults = allSuites.map { suite =>
     val tests = suite.tests.map { tc =>

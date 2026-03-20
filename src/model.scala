@@ -114,7 +114,7 @@ case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[
 
 case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int, packageName: String, signature: String)
 
-case class MethodGrepMatch(member: MemberInfo, file: Path, matchCount: Int)
+case class MethodGrepMatch(member: MemberInfo, file: Path, matchCount: Int, matchLines: List[(lineNum: Int, text: String)] = Nil)
 
 case class ExplainedImpl(sym: SymbolInfo, members: List[MemberInfo], subImpls: List[ExplainedImpl] = Nil)
 
@@ -209,6 +209,7 @@ enum CmdResult:
   case Overview(data: OverviewData)
   case SourceBlocks(symbol: String, blocks: List[(file: Path, body: BodyInfo)], contextLines: Int = 0, showImports: Boolean = false)
   case TestSuites(suites: List[TestSuiteResult], showBody: Boolean, emptyMessage: String = "No test suites found")
+  case TestCount(suites: Int, tests: Int)
   case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String])
   case HierarchyResult(symbol: String, tree: HierarchyTree)
   case OverrideList(header: String, results: List[OverrideInfo])
