@@ -3,18 +3,20 @@ def cmdTests(args: List[String], ctx: CommandContext): CmdResult =
   var filesToScan = ctx.idx.gitFiles.map(_.path).filter(f => isTestFile(f, ctx.workspace))
   ctx.pathFilter.foreach { p => filesToScan = filesToScan.filter(f => matchesPath(f, p, ctx.workspace)) }
   ctx.excludePath.foreach { p => filesToScan = filesToScan.filter(f => !matchesPath(f, p, ctx.workspace)) }
-  val allSuites = filesToScan.flatMap(extractTests).map { suite =>
+  val extractedSuites = filesToScan.flatMap(extractTests).map { suite =>
     nameFilter match
       case Some(pattern) =>
         val lower = pattern.toLowerCase
         val filtered = suite.tests.filter(_.name.toLowerCase.contains(lower))
         suite.copy(tests = filtered)
       case None => suite
-  }.filter(_.tests.nonEmpty)
+  }
   if ctx.countOnly then
-    val totalTests = allSuites.map(_.tests.size).sum
-    val totalDynamic = allSuites.map(_.dynamicSites).sum
-    return CmdResult.TestCount(allSuites.size, totalTests, totalDynamic)
+    val suitesWithContent = extractedSuites.filter(s => s.tests.nonEmpty || s.dynamicSites > 0)
+    val totalTests = suitesWithContent.map(_.tests.size).sum
+    val totalDynamic = suitesWithContent.map(_.dynamicSites).sum
+    return CmdResult.TestCount(suitesWithContent.size, totalTests, totalDynamic)
+  val allSuites = extractedSuites.filter(_.tests.nonEmpty)
   val showBody = nameFilter.isDefined
   val suiteResults = allSuites.map { suite =>
     val tests = suite.tests.map { tc =>

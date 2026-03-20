@@ -313,7 +313,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--exclude-path PREFIX` | Exclude files under PREFIX (e.g. `--exclude-path sbt-test/`) |
 | `-C N` | Show N context lines around each reference (refs, grep, body) |
 | `-e PATTERN` | Grep: additional pattern (repeatable); combined with `|` |
-| `--count` | Grep/refs: show counts only, no full results |
+| `--count` | Grep/refs/tests: show counts only, no full results. Tests also reports dynamic test sites |
 | `--top N` | Refs: rank top N files by reference count (impact analysis) |
 | `--exact` | Search: only exact name matches (case-insensitive) |
 | `--prefix` | Search: only exact + prefix matches |

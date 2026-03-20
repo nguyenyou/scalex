@@ -191,6 +191,17 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/test/scala/com/example/DynamicOnlyTest.scala",
+      """package com.example
+        |
+        |class DynamicOnlyTest extends munit.FunSuite {
+        |  for (i <- 1 to 3)
+        |    test(s"generated test $i") {
+        |      assert(i > 0)
+        |    }
+        |}
+        |""".stripMargin)
+
     writeFile("src/main/scala/com/example/MainApp.scala",
       """package com.example
         |
