@@ -170,6 +170,27 @@ abstract class ScalexTestBase extends FunSuite:
         |}
         |""".stripMargin)
 
+    writeFile("src/test/scala/com/example/DynamicTest.scala",
+      """package com.example
+        |
+        |class DynamicTest extends munit.FunSuite {
+        |  test("static test works") {
+        |    assert(true)
+        |  }
+        |
+        |  for (i <- 1 to 5)
+        |    test(s"dynamic test $i") {
+        |      assert(i > 0)
+        |    }
+        |
+        |  List("a", "b").foreach { x =>
+        |    test("prefix " + x) {
+        |      assert(x.nonEmpty)
+        |    }
+        |  }
+        |}
+        |""".stripMargin)
+
     writeFile("src/main/scala/com/example/MainApp.scala",
       """package com.example
         |

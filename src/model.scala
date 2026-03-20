@@ -104,7 +104,7 @@ case class ScopeInfo(name: String, kind: String, line: Int)
 case class DiffSymbol(name: String, kind: SymbolKind, file: String, line: Int, packageName: String, signature: String)
 
 case class TestCaseInfo(name: String, line: Int, suiteName: String, suiteFile: Path)
-case class TestSuiteInfo(name: String, file: Path, line: Int, tests: List[TestCaseInfo])
+case class TestSuiteInfo(name: String, file: Path, line: Int, tests: List[TestCaseInfo], dynamicSites: Int = 0)
 
 // ── Dependency extraction types ─────────────────────────────────────────────
 
@@ -209,7 +209,7 @@ enum CmdResult:
   case Overview(data: OverviewData)
   case SourceBlocks(symbol: String, blocks: List[(file: Path, body: BodyInfo)], contextLines: Int = 0, showImports: Boolean = false)
   case TestSuites(suites: List[TestSuiteResult], showBody: Boolean, emptyMessage: String = "No test suites found")
-  case TestCount(suites: Int, tests: Int)
+  case TestCount(suites: Int, tests: Int, dynamicSites: Int)
   case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String])
   case HierarchyResult(symbol: String, tree: HierarchyTree)
   case OverrideList(header: String, results: List[OverrideInfo])
