@@ -639,6 +639,9 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   private def filePackage(idxFile: IndexedFile): String =
     idxFile.symbols.headOption.map(_.packageName).getOrElse("")
 
+  def filePackageByPath(relPath: String): Option[String] =
+    indexedByPath.get(relPath).map(filePackage)
+
   def resolveConfidence(ref: Reference, targetName: String, targetPackages: Set[String]): Confidence =
     val relPath = workspace.relativize(ref.file).toString
     indexedByPath.get(relPath) match

@@ -282,7 +282,7 @@ scalex graph --render "A->B"   Render directed graph as ASCII/Unicode art
 scalex graph --parse           Parse ASCII diagram from stdin into boxes+edges
 ```
 
-All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
+All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--in-package PKG`, `--max-output N`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
 
 ## What Makes It AI-Friendly
 
@@ -296,6 +296,7 @@ The biggest cost for an AI agent isn't latency — it's the number of tool calls
 - `batch` amortizes the ~400ms index load across multiple queries — 5 queries in ~600ms instead of ~2.5s
 - `refs --count` gives category counts in one line — fast impact triage before committing to a full read
 - `refs --top N` ranks files by reference count — surfaces the heaviest users first
+- `--max-output N` hard-caps output at N characters on any command — prevents context window blowup on large codebases
 - `overview --concise` constrains architectural output to ~60 lines — fixed-size summary even on 10k+ file codebases
 
 **Semantic, not textual.** Scalex parses Scala ASTs, so it understands things grep fundamentally cannot:
@@ -310,6 +311,7 @@ The biggest cost for an AI agent isn't latency — it's the number of tool calls
 **Precision filters.** Large codebases produce hundreds of results. Every command supports filtering at the source:
 
 - `--kind class`, `--path compiler/src/`, `--exclude-path sbt-test/`, `--no-tests` — composable filters on all commands
+- `--in-package PKG` on refs/search/impl — scope results by package prefix; cheaper than `--path` when package ≠ directory
 - `--exact` / `--prefix` on search — `search Auth --prefix` returns ~20 results instead of 1300+
 - `--definitions-only` — only class/trait/object/enum, no val/def name collisions
 - `--category ExtendedBy` on refs — targeted impact analysis for a single relationship type

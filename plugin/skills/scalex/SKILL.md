@@ -84,11 +84,11 @@ scalex impl PaymentService --no-tests --path core/src/
              class PaymentServiceLive extends PaymentService
 ```
 
-### `scalex refs <symbol> [--flat] [--count] [--top N] [--strict] [--category CAT] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
+### `scalex refs <symbol> [--flat] [--count] [--top N] [--strict] [--category CAT] [--in-package PKG] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — find references
 
 Finds all usages of a symbol using word-boundary text matching. Uses bloom filters to skip files that definitely don't contain the symbol, then reads candidate files. Has a 20-second timeout — on very large codebases with a common symbol, output may say "(timed out — partial results)".
 
-Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `--category CAT` to filter to a single category (e.g. `--category ExtendedBy`). Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead. Use `--count` to get category counts without full file lists — fast impact triage. Use `--top N` to rank files by reference count descending — shows the N heaviest users first for impact analysis.
+Output is **categorized by default** — groups results into Definition, ExtendedBy, ImportedBy, UsedAsType, Usage, and Comment so you can understand impact at a glance. Use `--category CAT` to filter to a single category (e.g. `--category ExtendedBy`). Use `--in-package PKG` to filter results to files whose package matches PKG prefix — cheaper than `--path` when package structure diverges from directory layout. Use `-C N` to show N lines of context around each reference (like `grep -C`) — reduces follow-up Read calls. Use `--flat` to get a flat list instead. Use `--count` to get category counts without full file lists — fast impact triage. Use `--top N` to rank files by reference count descending — shows the N heaviest users first for impact analysis.
 
 ```bash
 scalex refs PaymentService                        # categorized by default
@@ -97,6 +97,7 @@ scalex refs PaymentService --category ExtendedBy  # only show ExtendedBy
 scalex refs PaymentService --no-tests --path core/src/
 scalex refs PaymentService -C 3                   # show 3 lines of context
 scalex refs PaymentService --flat                 # flat list (old default)
+scalex refs PaymentService --in-package com.example  # only refs from com.example package files
 scalex refs PaymentService --top 10              # top 10 files by reference count
 ```
 ```
@@ -376,7 +377,7 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"What does this package export?"** → `scalex api com.example` — shows symbols imported by other packages, sorted by importer count
 
-**"Too many results / noisy output"** → combine `--no-tests`, `--path compiler/src/`, `--kind class`, or `search --prefix`/`--exact`
+**"Too many results / noisy output"** → combine `--no-tests`, `--path compiler/src/`, `--kind class`, `--in-package PKG`, or `search --prefix`/`--exact`. Use `--max-output N` to hard-cap output at N characters on any command
 
 **"I need to look up 3+ symbols"** → use `batch` to load the index once: `echo -e "def Foo\nimpl Foo\nrefs Foo" | scalex batch -w /project`
 
@@ -419,6 +420,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"Find methods that return/take a type"** → `scalex search process --returns Boolean` or `scalex search convert --takes String`
 
 **"Where are the entry points?"** → `scalex entrypoints` — finds `@main`, `def main(...)`, `extends App`, and test suites in one call
+
+**"Output is too large for context window"** → `scalex refs X --max-output 2000` — truncates at 2000 chars with a hint to narrow; works on any command
 
 **"I need structured output"** → append `--json` to any command
 
