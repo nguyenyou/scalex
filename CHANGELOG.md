@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Improved
+- `tests --count` now reports dynamic test sites (string interpolation, concatenation) alongside literal test count; output format changed from `N suites, M tests` to `M tests (literal names only) across N suites` with dynamic site count when detected (#259)
+
 ## [1.36.0] — 2026-03-20
 
 ### Added

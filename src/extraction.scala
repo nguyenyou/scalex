@@ -435,7 +435,12 @@ def extractDoc(file: Path, targetLine: Int): Option[String] =
 
 private val testFnNames = Set("test", "it", "describe")
 
-private def extractTestName(t: Tree): Option[(name: String, line: Int)] =
+private enum TestCallMatch:
+  case Literal(name: String, line: Int)
+  case Dynamic(line: Int)
+  case NotATest
+
+private def classifyTestCall(t: Tree): TestCallMatch =
   t match
     case app: Term.Apply =>
       app.fun match
@@ -443,19 +448,23 @@ private def extractTestName(t: Tree): Option[(name: String, line: Int)] =
         case innerApp: Term.Apply =>
           innerApp.fun match
             case fn: Term.Name if testFnNames.contains(fn.value) =>
-              innerApp.argClause.values.collectFirst { case lit: Lit.String => (lit.value, app.pos.startLine + 1) }
-            case _ => None
+              innerApp.argClause.values.collectFirst { case lit: Lit.String => lit } match
+                case Some(lit) => TestCallMatch.Literal(lit.value, app.pos.startLine + 1)
+                case None      => TestCallMatch.Dynamic(app.pos.startLine + 1)
+            case _ => TestCallMatch.NotATest
         // test("name") { body } — single apply with name + block in same arglist
         case fn: Term.Name if testFnNames.contains(fn.value) =>
-          app.argClause.values.collectFirst { case lit: Lit.String => (lit.value, app.pos.startLine + 1) }
-        case _ => None
+          app.argClause.values.collectFirst { case lit: Lit.String => lit } match
+            case Some(lit) => TestCallMatch.Literal(lit.value, app.pos.startLine + 1)
+            case None      => TestCallMatch.Dynamic(app.pos.startLine + 1)
+        case _ => TestCallMatch.NotATest
     case infix: Term.ApplyInfix =>
       if infix.op.value == "in" || infix.op.value == ">>" then
         infix.lhs match
-          case lit: Lit.String => Some((lit.value, infix.pos.startLine + 1))
-          case _ => None
-      else None
-    case _ => None
+          case lit: Lit.String => TestCallMatch.Literal(lit.value, infix.pos.startLine + 1)
+          case _               => TestCallMatch.Dynamic(infix.pos.startLine + 1)
+      else TestCallMatch.NotATest
+    case _ => TestCallMatch.NotATest
 
 def extractTests(file: Path): List[TestSuiteInfo] = {
   if isJavaFile(file) then return Nil
@@ -464,31 +473,35 @@ def extractTests(file: Path): List[TestSuiteInfo] = {
     case Some(tree) =>
       val suites = mutable.ListBuffer.empty[TestSuiteInfo]
 
-      def collectTests(stats: List[Tree], suiteName: String): List[TestCaseInfo] = {
+      def collectTests(stats: List[Tree], suiteName: String): (tests: List[TestCaseInfo], dynamicSites: Int) = {
         val tests = mutable.ListBuffer.empty[TestCaseInfo]
+        var dynamicCount = 0
         def visit(t: Tree): Unit = {
-          extractTestName(t) match
-            case Some((name, line)) =>
+          classifyTestCall(t) match
+            case TestCallMatch.Literal(name, line) =>
               tests += TestCaseInfo(name, line, suiteName, file)
               // Don't recurse into matched test node — avoids double-counting
               // when inner Term.Apply also matches (e.g. test("name")(body))
-            case None =>
+            case TestCallMatch.Dynamic(_) =>
+              dynamicCount += 1
+              // Don't recurse — the dynamic call is one test site
+            case TestCallMatch.NotATest =>
               t.children.foreach(visit)
         }
         stats.foreach(visit)
-        tests.toList
+        (tests = tests.toList, dynamicSites = dynamicCount)
       }
 
       def findSuites(t: Tree): Unit = {
         t match
           case d: Defn.Class =>
-            val tests = collectTests(d.templ.body.stats, d.name.value)
-            if tests.nonEmpty then
-              suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests)
+            val (tests, dynSites) = collectTests(d.templ.body.stats, d.name.value)
+            if tests.nonEmpty || dynSites > 0 then
+              suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests, dynSites)
           case d: Defn.Object =>
-            val tests = collectTests(d.templ.body.stats, d.name.value)
-            if tests.nonEmpty then
-              suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests)
+            val (tests, dynSites) = collectTests(d.templ.body.stats, d.name.value)
+            if tests.nonEmpty || dynSites > 0 then
+              suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests, dynSites)
           case _ =>
         t.children.foreach(findSuites)
       }
@@ -610,8 +623,8 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
               buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
             d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
           case app: Term.Apply =>
-            extractTestName(app) match
-              case Some((name, _)) if name == symbolName =>
+            classifyTestCall(app) match
+              case TestCallMatch.Literal(name, _) if name == symbolName =>
                 if ownerName.isEmpty || ownerName.contains(currentOwner) then
                   val sl = app.pos.startLine
                   val el = app.pos.endLine
@@ -620,8 +633,8 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
               case _ =>
             app.children.foreach(c => extractFromTree(c, currentOwner))
           case infix: Term.ApplyInfix =>
-            extractTestName(infix) match
-              case Some((name, _)) if name == symbolName =>
+            classifyTestCall(infix) match
+              case TestCallMatch.Literal(name, _) if name == symbolName =>
                 if ownerName.isEmpty || ownerName.contains(currentOwner) then
                   val sl = infix.pos.startLine
                   val el = infix.pos.endLine

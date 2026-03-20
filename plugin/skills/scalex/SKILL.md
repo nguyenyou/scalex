@@ -330,7 +330,7 @@ Pass a `<pattern>` to filter tests by name (case-insensitive substring match). *
 
 ```bash
 scalex tests                                    # List all test cases (names + lines)
-scalex tests --count                            # Summary: "N suites, M tests"
+scalex tests --count                            # Summary: "M tests across N suites" + dynamic site count
 scalex tests extractBody                        # Filter + show bodies inline
 scalex tests "bloom filter"                     # Multi-word filter works too
 scalex tests --path src/test/scala/com/auth/    # Tests under a specific path

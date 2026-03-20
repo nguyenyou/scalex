@@ -13,7 +13,8 @@ def cmdTests(args: List[String], ctx: CommandContext): CmdResult =
   }.filter(_.tests.nonEmpty)
   if ctx.countOnly then
     val totalTests = allSuites.map(_.tests.size).sum
-    return CmdResult.TestCount(allSuites.size, totalTests)
+    val totalDynamic = allSuites.map(_.dynamicSites).sum
+    return CmdResult.TestCount(allSuites.size, totalTests, totalDynamic)
   val showBody = nameFilter.isDefined
   val suiteResults = allSuites.map { suite =>
     val tests = suite.tests.map { tc =>

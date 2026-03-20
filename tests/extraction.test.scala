@@ -574,6 +574,16 @@ class ExtractionSuite extends ScalexTestBase:
     assert(suites.isEmpty, s"Non-test file should have no suites: ${suites.map(_.name)}")
   }
 
+  test("extractTests detects dynamic test sites") {
+    val file = workspace.resolve("src/test/scala/com/example/DynamicTest.scala")
+    val suites = extractTests(file)
+    assert(suites.nonEmpty, "Should find the DynamicTest suite")
+    val suite = suites.find(_.name == "DynamicTest").get
+    assertEquals(suite.tests.size, 1, s"Should find 1 literal test, got: ${suite.tests.map(_.name)}")
+    assertEquals(suite.tests.head.name, "static test works")
+    assertEquals(suite.dynamicSites, 2, s"Should detect 2 dynamic test sites")
+  }
+
   // ── Test awareness: body for test cases ──────────────────────────────────
 
   test("extractBody finds test case body by exact name") {

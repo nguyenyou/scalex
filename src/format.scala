@@ -641,10 +641,12 @@ private def renderTestSuites(r: CmdResult.TestSuites, ctx: CommandContext): Unit
 
 private def renderTestCount(r: CmdResult.TestCount, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then
-    println(s"""{"suites":${r.suites},"tests":${r.tests}}""")
+    println(s"""{"suites":${r.suites},"tests":${r.tests},"dynamicSites":${r.dynamicSites}}""")
   else {
-    println(s"${r.suites} suites, ${r.tests} tests")
-    System.err.println("  Hint: only counts tests with literal string names; dynamic names (string concatenation) are not detected")
+    val qualifier = if r.dynamicSites > 0 then " (literal names only)" else ""
+    println(s"${r.tests} tests${qualifier} across ${r.suites} suites")
+    if r.dynamicSites > 0 then
+      println(s"  ${r.dynamicSites} dynamic test sites detected — actual count requires runtime")
   }
 }
 
