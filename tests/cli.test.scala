@@ -928,6 +928,28 @@ class CliSuite extends ScalexTestBase:
     assert(output.contains("\"name\":\"findUser returns None for unknown id\""), s"Should contain test name: $output")
   }
 
+  test("tests --count reports dynamic sites") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (stdout, stderr) = captureOutErr {
+      runCommand("tests", Nil, CommandContext(idx = idx, workspace = workspace, countOnly = true))
+    }
+    assert(stdout.contains("(literal names only)"), s"Should show literal qualifier: $stdout")
+    assert(stdout.contains("across"), s"Should use 'across' format: $stdout")
+    assert(stderr.contains("dynamic test sites detected"), s"Dynamic sites notice should go to stderr: $stderr")
+  }
+
+  test("tests --count --json includes dynamicSites") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val output = captureOut {
+      runCommand("tests", Nil, CommandContext(idx = idx, workspace = workspace, countOnly = true, jsonOutput = true))
+    }
+    assert(output.contains("\"dynamicSites\":"), s"JSON should include dynamicSites: $output")
+    assert(output.contains("\"suites\":"), s"JSON should include suites: $output")
+    assert(output.contains("\"tests\":"), s"JSON should include tests: $output")
+  }
+
   // ── explain companion merging ────────────────────────────────────────
 
   test("explain shows companion object") {
