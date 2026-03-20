@@ -13,13 +13,16 @@ val commands: Map[String, (List[String], CommandContext) => CmdResult] = Map(
   "api" -> cmdApi,
   "summary" -> cmdSummary,
   "entrypoints" -> cmdEntrypoints,
-  "graph" -> cmdGraph,
 )
 
 def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =
   val result = commands.get(cmd) match
     case Some(handler) => handler(args, ctx)
     case None => CmdResult.UsageError(s"Unknown command: $cmd")
+  renderWithBudget(result, ctx)
+
+/** Render a CmdResult, applying --max-output truncation if set. */
+def renderWithBudget(result: CmdResult, ctx: CommandContext): Unit =
   if ctx.maxOutput > 0 then {
     val budget = ctx.maxOutput
     val baos = ByteArrayOutputStream()
@@ -44,8 +47,8 @@ def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =
     render(result, ctx)
   }
 
-// Buffers slightly past the budget so post-hoc line-boundary truncation works.
-// Once past the budget, sets `exceeded` and stops writing.
+// Buffers up to 4KB past the budget so post-hoc line-boundary truncation works.
+// Once past hardCap, stops writing entirely.
 private class BudgetPrintStream(baos: ByteArrayOutputStream, budget: Int) extends PrintStream(baos, true, "UTF-8"):
   // Buffer up to one extra line (4KB) past the budget to find a clean line break
   private val hardCap = budget + 4096

@@ -324,14 +324,15 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         line = reader.readLine()
 
     case "graph" :: _ =>
-      // graph command doesn't need workspace index — extract raw args after "graph", strip workspace flags
+      // graph command doesn't need workspace index — extract raw args after "graph", strip global flags
       val afterGraph = args.toList.dropWhile(_ != "graph").drop(1)
       val graphArgs = {
         val buf = scala.collection.mutable.ListBuffer[String]()
         var i = 0
         while i < afterGraph.size do
           afterGraph(i) match
-            case "-w" | "--workspace" => i += 1 // skip flag + value
+            case "-w" | "--workspace" | "--max-output" | "--in-package" => i += 1 // skip flag + value
+            case "--timings" | "--json" => () // skip standalone flags already parsed
             case other => buf += other
           i += 1
         buf.toList
@@ -339,8 +340,9 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
       val workspace = resolveWorkspace(f.explicitWorkspace.getOrElse("."))
       val dummyIdx = WorkspaceIndex(workspace, needBlooms = false)
       val ctx = flagsToContext(f, dummyIdx, workspace)
-      // Route through runCommand so --max-output is applied
-      runCommand("graph", graphArgs, ctx)
+      val result = cmdGraph(graphArgs, ctx)
+      // graph bypasses runCommand (cleanArgs strips --render/--parse), use renderWithBudget directly
+      renderWithBudget(result, ctx)
       Timings.report()
 
     case cmd :: rest =>
