@@ -205,7 +205,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
 
   f.cleanArgs match
     case Nil | List("help") =>
-      println("""Scalex — Scala code intelligence for AI agents
+      println("""Scalex — Scala code intelligence for coding agents
         |
         |Commands:
         |  scalex search <query>           Search symbols by name          (aka: find symbol)

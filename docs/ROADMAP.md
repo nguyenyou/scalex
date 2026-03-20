@@ -58,7 +58,7 @@
 ### Community feedback: overview dedup & onboarding flow (#192)
 
 - [x] `overview --architecture` dedup — skip "Most extended" section when `--architecture` is active; "Hub types" already covers the same `parentIndex` data with identical sorting; applies to both text and JSON output
-- ~~`tour` composite command~~ — nice idea but hard to get right; auto-selecting which types to explain risks wrong choices and bloated output; AI agents already do selective sequential calls (`overview` → pick interesting types → `explain`), which adapts better than a fixed composite
+- ~~`tour` composite command~~ — nice idea but hard to get right; auto-selecting which types to explain risks wrong choices and bloated output; coding agents already do selective sequential calls (`overview` → pick interesting types → `explain`), which adapts better than a fixed composite
 
 ### Community feedback: composite output modes to reduce round trips (#180)
 
@@ -215,7 +215,7 @@
 - GitHub Actions: native images on tag push (macOS arm64/x64, Linux x64)
 - GitHub Releases, `install.sh` in plugin
 
-### Phase 7: AI-Agent Innovations
+### Phase 7: Coding Agent Innovations
 
 - `batch`, `def --verbose`, `impl`, `refs --categorize`, `imports`
 - Fallback hints, Scala 2 dialect fallback
@@ -253,7 +253,7 @@
 #### zsh compat + UX (#22)
 - Bash re-exec guard, `-w`/`--workspace` flag, path-as-symbol hint
 
-#### AI-agent ergonomics (#29)
+#### Coding agent ergonomics (#29)
 - `--kind` filter on `def`, `--no-tests` global flag, `--path` filter
 - `refs -C N` context lines, smarter `def` ranking
 
@@ -267,7 +267,7 @@
 - `scalex grep <pattern>` — regex search with `--path`, `--no-tests`, `-C N`, 20s timeout, `--count`
 - Multi-pattern `-e` flag, POSIX regex auto-correction (`\|` → `|`)
 
-#### AI agent UX (#43, #46)
+#### Coding agent UX (#43, #46)
 - `--prefix`/`--exact` for search, `-c` alias for `--categorize`, condensed batch not-found
 - `--categorize` default on refs, `--flat` opt-in
 
@@ -338,10 +338,10 @@ Hyperfine v6 vs v7 (7 runs, warmup 2): `file` 361→371ms, `def` 591→580ms, `i
 
 - ~~Reverse alias lookup~~ — agent can do 2-step lookup; risks worse-than-grep perf
 - ~~Multi-workspace / cross-project awareness (#64)~~ — unnecessary; use `-w` flag on target workspace
-- ~~`scalex pattern <name>` (#53)~~ — marginal for AI agents who infer patterns from `explain`
+- ~~`scalex pattern <name>` (#53)~~ — marginal for coding agents who infer patterns from `explain`
 - ~~Static call graph (#101, #102)~~ — name-matched call targets produce false positives (`apply`, `map`, `get`); fails "better than grep" gate; AST traversal risks blowing perf budget
 - ~~`scalex path <A> <B>` (#102)~~ — BFS without type resolution is fragile via name collisions; niche use case vs `deps`/`refs`
 - ~~Module/subproject awareness (#103)~~ — detecting build files couples to external conventions that change; directory heuristics unreliable across project layouts
 - ~~Call-site vs override distinction in refs (#103)~~ — `refs --categorize` already provides ExtendedBy/UsedAsType/Usage categories; marginal improvement for significant complexity
-- ~~Structural pattern detection (#103)~~ — marginal for AI agents who infer patterns from `explain` output
+- ~~Structural pattern detection (#103)~~ — marginal for coding agents who infer patterns from `explain` output
 - ~~`scalex imports <file>`~~ — `deps` already shows symbol-level dependencies; agent can read file top for imports

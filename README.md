@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="site/readme-banner-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="site/readme-banner-light.png">
-    <img src="site/readme-banner-dark.png" alt="Scalex — Scala code intelligence for AI coding agents" width="839" height="440">
+    <img src="site/readme-banner-dark.png" alt="Scalex — Scala code intelligence for coding agents" width="839" height="440">
   </picture>
   <br>
   <em>Grep knows text. Scalex knows Scala.</em>
@@ -19,7 +19,7 @@
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
 - [Commands](#commands)
-- [What Makes It AI-Friendly](#what-makes-it-ai-friendly)
+- [What Makes It Coding-Agent-Friendly](#what-makes-it-coding-agent-friendly)
 - [Scalex vs Grep — Honest Comparison](#scalex-vs-grep--honest-comparison)
 - [Credits](#credits)
 - [Name](#name)
@@ -36,7 +36,7 @@
 
 3. **Smarter than grep.** Categorized references with confidence ranking. Wildcard import resolution (finds 1,205 importers where grep finds 17). Transitive inheritance trees. Structural AST search. Things grep fundamentally cannot do. See the [honest comparison](#scalex-vs-grep--honest-comparison) for real examples.
 
-4. **Composite commands.** `explain` returns definition + scaladoc + members + implementations + import count in one shot. `refs --count` triages impact in one line. Designed to minimize tool calls — the biggest cost for AI agents isn't latency, it's the number of round trips. See [what makes it AI-friendly](#what-makes-it-ai-friendly) for the full picture.
+4. **Composite commands.** `explain` returns definition + scaladoc + members + implementations + import count in one shot. `refs --count` triages impact in one line. Designed to minimize tool calls — the biggest cost for coding agents isn't latency, it's the number of round trips. See [what makes it coding-agent-friendly](#what-makes-it-coding-agent-friendly) for the full picture.
 
 ---
 
@@ -55,7 +55,7 @@ https://github.com/user-attachments/assets/09391648-1e3a-409c-ad52-19afa99ea81f
 
 ## The Problem
 
-AI coding agents (Claude Code, Cursor, Codex) are powerful, but they're blind in large Scala codebases. When an agent needs to find where `PaymentService` is defined, it has two options:
+Coding agents (Claude Code, Cursor, Codex) are powerful, but they're blind in large Scala codebases. When an agent needs to find where `PaymentService` is defined, it has two options:
 
 1. **Grep** — fast, but dumb. Returns raw text. Can't filter by symbol kind, doesn't know a trait from a usage. The agent has to construct regex patterns and parse raw output.
 
@@ -145,7 +145,7 @@ Then try:
 
 > *"use scalex to explore how authentication works in this codebase"*
 
-### Other AI agents / manual install
+### Other coding agents / manual install
 
 **1. Install the binary** to `~/.local/bin`:
 
@@ -162,7 +162,7 @@ curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-m
 curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-linux-x64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex
 ```
 
-**2. Download the skill** (teaches your AI agent how to use scalex):
+**2. Download the skill** (teaches your coding agent how to use scalex):
 
 ```bash
 mkdir -p scalex
@@ -285,9 +285,9 @@ scalex graph --parse           Parse ASCII diagram from stdin into boxes+edges
 
 All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--in-package PKG`, `--max-output N`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
 
-## What Makes It AI-Friendly
+## What Makes It Coding-Agent-Friendly
 
-The biggest cost for an AI agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space. Scalex is designed to maximize information per call.
+The biggest cost for a coding agent isn't latency — it's the number of tool calls. Each call costs tokens, reasoning, and context window space. Scalex is designed to maximize information per call.
 
 **One call, not five.** Most agent tasks require chaining grep → read → grep → read. Scalex collapses these chains:
 
