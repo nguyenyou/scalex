@@ -127,7 +127,7 @@ Here's the architecture (generated with `scalex graph --render`):
 
 | Project | Files | Symbols | Cold Index | Warm Index |
 |---|---|---|---|---|
-| Production monorepo | 13,979 | 214,301 | 4.6s | 540ms |
+| Production monorepo | 14,219 | 170,094 | 5.3s | 445ms |
 | Scala 3 compiler | 18,485 | 144,211 | 2.7s | 349ms |
 
 ## Quick Start
