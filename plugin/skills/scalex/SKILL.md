@@ -186,7 +186,7 @@ scalex search process --takes String     # methods named "process" taking String
 
 Regex search inside `.scala` and `.java` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala/Java files. Has a 20-second timeout for large codebases.
 
-The pattern is a **Java regex** (not POSIX) — use `|` for alternation (not `\|`), `( )` for grouping (not `\( \)`). If you get zero results, check for POSIX-style escapes. Scalex will print a hint if it detects this.
+The pattern is a **Java regex** — `\(` matches a literal paren, `|` is alternation. If a pattern is invalid Java regex but looks like POSIX (e.g. `\|` for alternation), scalex auto-corrects it and prints a hint.
 
 Use `-e` to search multiple patterns in one call — they're combined with `|`. Use `--count` to get match/file counts without full output (great for triaging before reading all results). Use `-C N` to show context lines around each match. Use `--in <symbol>` to scope the grep to a specific class or method body — supports `Owner.member` dot syntax. Use `--each-method` with `--in` to grep each method body independently and report which methods matched — answers "which methods in this class contain X?" in one call.
 
@@ -322,7 +322,7 @@ Explanation of trait UserService (com.example):
     src/.../TestHelper.scala:1
 ```
 
-### `scalex tests [<pattern>] [--verbose] [--path PREFIX] [--json]` — list test cases structurally
+### `scalex tests [<pattern>] [--verbose] [--count] [--path PREFIX] [--json]` — list test cases structurally
 
 Extract test names from common Scala test frameworks: MUnit `test("...")`, ScalaTest `it("...")` / `describe("...")` / `"name" in { }`, specs2 `"name" >> { }`. Scans test files only (including `*.test.scala`). On-the-fly parse, no bloom filters needed.
 
@@ -330,6 +330,7 @@ Pass a `<pattern>` to filter tests by name (case-insensitive substring match). *
 
 ```bash
 scalex tests                                    # List all test cases (names + lines)
+scalex tests --count                            # Summary: "N suites, M tests"
 scalex tests extractBody                        # Filter + show bodies inline
 scalex tests "bloom filter"                     # Multi-word filter works too
 scalex tests --path src/test/scala/com/auth/    # Tests under a specific path
