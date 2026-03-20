@@ -71,7 +71,7 @@ scalex def Driver --no-tests --path compiler/src/  # exclude tests, restrict to 
              given paymentService: PaymentService
 ```
 
-### `scalex impl <trait> [--verbose] [--kind K] [--no-tests] [--path PREFIX] [--limit N]` — find implementations
+### `scalex impl <trait> [--verbose] [--kind K] [--in-package PKG] [--no-tests] [--path PREFIX] [--limit N]` — find implementations
 
 Finds all classes/objects/enums that extend or mix in a trait. Also finds types that use the symbol as a type argument in extends clauses (e.g. `impl Foo` finds `class Bar extends Mixin[Foo]`). Uses the index directly — much faster and more targeted than `refs` when you specifically need concrete implementations.
 
@@ -164,7 +164,7 @@ trait PaymentService (com.example) — src/.../PaymentService.scala:7:
  */
 ```
 
-### `scalex search <query> [--kind K] [--verbose] [--limit N] [--exact] [--prefix] [--definitions-only] [--returns TYPE] [--takes TYPE]` — search symbols
+### `scalex search <query> [--kind K] [--verbose] [--limit N] [--exact] [--prefix] [--definitions-only] [--returns TYPE] [--takes TYPE] [--in-package PKG]` — search symbols
 
 Fuzzy search by name, ranked: exact > prefix > substring > camelCase fuzzy. Supports camelCase abbreviation matching — e.g. `search "hms"` matches `HttpMessageService`, `search "usl"` matches `UserServiceLive`. Use `--kind` to filter by symbol type. Results are ranked by import popularity — symbols from heavily-imported types surface first.
 

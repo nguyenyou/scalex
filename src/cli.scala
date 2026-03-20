@@ -310,7 +310,12 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
           val batchCmd = parts.head
           // Parse per-line flags so each batch line can override --path, --no-tests, etc.
           val lineFlags = parseFlags(parts.tail)
-          val lineCtx = flagsToContext(lineFlags, idx, workspace, batchMode = true)
+          // Inherit global --max-output / --in-package when per-line doesn't override
+          val mergedFlags = lineFlags.copy(
+            maxOutput = if lineFlags.maxOutput > 0 then lineFlags.maxOutput else f.maxOutput,
+            inPackageFilter = lineFlags.inPackageFilter.orElse(f.inPackageFilter),
+          )
+          val lineCtx = flagsToContext(mergedFlags, idx, workspace, batchMode = true)
           println(s">>> $line")
           Timings.reset()
           runCommand(batchCmd, lineFlags.cleanArgs, lineCtx)
@@ -334,8 +339,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
       val workspace = resolveWorkspace(f.explicitWorkspace.getOrElse("."))
       val dummyIdx = WorkspaceIndex(workspace, needBlooms = false)
       val ctx = flagsToContext(f, dummyIdx, workspace)
-      val result = cmdGraph(graphArgs, ctx)
-      render(result, ctx)
+      // Route through runCommand so --max-output is applied
+      runCommand("graph", graphArgs, ctx)
       Timings.report()
 
     case cmd :: rest =>

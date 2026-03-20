@@ -1,4 +1,4 @@
-import java.io.{ByteArrayOutputStream, OutputStream, PrintStream}
+import java.io.{ByteArrayOutputStream, PrintStream}
 
 // ── Command dispatch ────────────────────────────────────────────────────────
 
@@ -13,6 +13,7 @@ val commands: Map[String, (List[String], CommandContext) => CmdResult] = Map(
   "api" -> cmdApi,
   "summary" -> cmdSummary,
   "entrypoints" -> cmdEntrypoints,
+  "graph" -> cmdGraph,
 )
 
 def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =
@@ -22,21 +23,20 @@ def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =
   if ctx.maxOutput > 0 then {
     val budget = ctx.maxOutput
     val baos = ByteArrayOutputStream()
-    val countingStream = BudgetPrintStream(baos, budget)
+    val budgetStream = BudgetPrintStream(baos, budget)
+    // Use Console.withOut to redirect Scala's println, and System.setOut for Java's System.out
     val savedOut = System.out
-    System.setOut(countingStream)
-    try render(result, ctx)
+    System.setOut(budgetStream)
+    try Console.withOut(budgetStream) { render(result, ctx) }
     finally System.setOut(savedOut)
     val output = baos.toString("UTF-8")
-    if countingStream.exceeded then {
-      // Truncate to budget at a line boundary
-      val truncated = if output.length > budget then {
-        val cut = output.lastIndexOf('\n', budget)
-        if cut > 0 then output.substring(0, cut) else output.substring(0, budget)
-      } else output
+    if budgetStream.exceeded then {
+      // Truncate at a line boundary at or before the budget
+      val cut = output.lastIndexOf('\n', budget)
+      val truncated = if cut > 0 then output.substring(0, cut) else output.substring(0, math.min(output.length, budget))
       savedOut.print(truncated)
       if !truncated.endsWith("\n") then savedOut.println()
-      savedOut.println(s"(output truncated at $budget chars — use --limit, --offset, or --path to narrow)")
+      savedOut.println(s"(output truncated at $budget chars — use --limit, --offset, --path, or --in-package to narrow)")
     } else {
       savedOut.print(output)
     }
@@ -44,18 +44,20 @@ def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =
     render(result, ctx)
   }
 
+// Buffers slightly past the budget so post-hoc line-boundary truncation works.
+// Once past the budget, sets `exceeded` and stops writing.
 private class BudgetPrintStream(baos: ByteArrayOutputStream, budget: Int) extends PrintStream(baos, true, "UTF-8"):
+  // Buffer up to one extra line (4KB) past the budget to find a clean line break
+  private val hardCap = budget + 4096
   @volatile var exceeded: Boolean = false
 
   override def write(b: Int): Unit =
-    if baos.size() < budget then super.write(b)
-    else exceeded = true
+    if baos.size() < hardCap then super.write(b)
+    if baos.size() >= budget then exceeded = true
 
   override def write(buf: Array[Byte], off: Int, len: Int): Unit =
-    val remaining = budget - baos.size()
-    if remaining <= 0 then exceeded = true
-    else if len <= remaining then super.write(buf, off, len)
-    else {
-      super.write(buf, off, remaining)
-      exceeded = true
-    }
+    val remaining = hardCap - baos.size()
+    if remaining <= 0 then { exceeded = true; return }
+    if len <= remaining then super.write(buf, off, len)
+    else super.write(buf, off, remaining)
+    if baos.size() >= budget then exceeded = true

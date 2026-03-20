@@ -93,7 +93,7 @@ def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
       val relPath = ctx.workspace.relativize(ref.file).toString
       ctx.idx.filePackageByPath(relPath) match
         case Some(filePkg) => filePkg == pkg || filePkg.startsWith(prefix)
-        case None => false
+        case None => true // keep refs from files with unknown package (e.g. parse failures)
     }
   }
   r
