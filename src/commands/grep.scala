@@ -13,7 +13,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
       ctx.inOwner match
         case Some(owner) if ctx.eachMethod =>
           // Per-method grep: iterate members, grep each body, report which methods matched
-          grepEachMethod(pattern, owner, ctx, stderrHint)
+          grepEachMethod(pattern, owner, ctx, hint, stderrHint)
         case Some(owner) =>
           // Scoped grep: restrict to a specific symbol's body span
           val (scopedResults, scopedTimedOut) = grepInSymbol(pattern, owner, ctx)
@@ -87,12 +87,12 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
   (results.toList, false)
 }
 
-private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, stderrHint: Option[String]): CmdResult = boundary {
+private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, hint: Option[String], stderrHint: Option[String]): CmdResult = boundary {
   val regex = try java.util.regex.Pattern.compile(pattern)
   catch
     case e: java.util.regex.PatternSyntaxException =>
       Console.err.println(s"Invalid regex: ${e.getMessage}")
-      break(CmdResult.GrepByMethod(pattern, owner, Nil, stderrHint))
+      break(CmdResult.GrepByMethod(pattern, owner, Nil, hint, stderrHint))
 
   // Find the owner type
   var ownerDefs = filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
@@ -106,21 +106,24 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
   ownerDefs.foreach { sym =>
     val members = extractMembers(sym.file, sym.name, Some(sym.kind))
     val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch
-      case _: java.io.IOException => break(CmdResult.GrepByMethod(pattern, owner, Nil, stderrHint))
+      case _: java.io.IOException =>
+        System.err.println(s"scalex: unreadable file: ${sym.file}")
+        Seq.empty
 
-    members.foreach { m =>
-      val bodies = extractBody(sym.file, m.name, Some(sym.name))
-      bodies.foreach { b =>
-        var count = 0
-        var lineIdx = b.startLine - 1
-        val endIdx = math.min(b.endLine, lines.size)
-        while lineIdx < endIdx do
-          if regex.matcher(lines(lineIdx)).find() then count += 1
-          lineIdx += 1
-        if count > 0 then
-          matches += MethodGrepMatch(m, sym.file, count)
+    if lines.nonEmpty then
+      members.foreach { m =>
+        val bodies = extractBody(sym.file, m.name, Some(sym.name))
+        bodies.foreach { b =>
+          var count = 0
+          var lineIdx = b.startLine - 1
+          val endIdx = math.min(b.endLine, lines.size)
+          while lineIdx < endIdx do
+            if regex.matcher(lines(lineIdx)).find() then count += 1
+            lineIdx += 1
+          if count > 0 then
+            matches += MethodGrepMatch(m, sym.file, count)
+        }
       }
-    }
   }
-  CmdResult.GrepByMethod(pattern, owner, matches.toList, stderrHint)
+  CmdResult.GrepByMethod(pattern, owner, matches.toList, hint, stderrHint)
 }

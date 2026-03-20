@@ -1031,27 +1031,32 @@ private def renderGrepCount(r: CmdResult.GrepCount, ctx: CommandContext): Unit =
 private def renderGrepByMethod(r: CmdResult.GrepByMethod, ctx: CommandContext): Unit = {
   r.stderrHint.foreach(System.err.println)
   if ctx.jsonOutput then {
-    val items = r.methods.map { m =>
+    val shown = r.methods.take(ctx.limit)
+    val items = shown.map { m =>
       val file = jsonEscape(ctx.workspace.relativize(m.file).toString)
       s"""{"name":"${jsonEscape(m.member.name)}","kind":"${m.member.kind.toString.toLowerCase}","signature":"${jsonEscape(m.member.signature)}","file":"$file","line":${m.member.line},"matches":${m.matchCount}}"""
     }.mkString("[", ",", "]")
     val total = r.methods.map(_.matchCount).sum
-    println(s"""{"pattern":"${jsonEscape(r.pattern)}","owner":"${jsonEscape(r.owner)}","methods":$items,"totalMatches":$total}""")
+    val truncated = if r.methods.size > ctx.limit then s""","truncated":true,"totalMethods":${r.methods.size}""" else ""
+    val hintStr = r.hint.getOrElse("")
+    println(s"""{"pattern":"${jsonEscape(r.pattern)}","owner":"${jsonEscape(r.owner)}","methods":$items,"totalMatches":$total$truncated$hintStr}""")
   } else {
     if r.methods.isEmpty then
       println(s"""No methods in ${r.owner} whose body contains "${r.pattern}"""")
     else {
       val total = r.methods.map(_.matchCount).sum
       println(s"""Methods in ${r.owner} whose body contains "${r.pattern}" — ${r.methods.size} methods, $total matches:""")
-      // Compute column widths for alignment
-      val maxSig = r.methods.map(_.member.signature.length).maxOption.getOrElse(0)
-      r.methods.foreach { m =>
+      val shown = r.methods.take(ctx.limit)
+      val maxSig = shown.map(_.member.signature.length).maxOption.getOrElse(0)
+      shown.foreach { m =>
         val relFile = ctx.workspace.relativize(m.file).toString
         val loc = s"$relFile:${m.member.line}"
         val pad = " " * (maxSig - m.member.signature.length)
         val plural = if m.matchCount == 1 then "match" else "matches"
         println(s"  ${m.member.signature}$pad — $loc  (${m.matchCount} $plural)")
       }
+      val remaining = r.methods.size - shown.size
+      if remaining > 0 then println(s"  ... and $remaining more (use --limit 0 to show all)")
     }
   }
 }

@@ -223,7 +223,7 @@ enum CmdResult:
   case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])
   case AstMatches(filters: String, results: List[AstPatternMatch])
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
-  case GrepByMethod(pattern: String, owner: String, methods: List[MethodGrepMatch], stderrHint: Option[String] = None)
+  case GrepByMethod(pattern: String, owner: String, methods: List[MethodGrepMatch], hint: Option[String] = None, stderrHint: Option[String] = None)
   case Packages(packages: List[String])
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
   case PackageExplained(pkg: String, entries: List[PackageExplainedEntry], totalSymbols: Int, totalTypes: Int)

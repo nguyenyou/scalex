@@ -14,7 +14,7 @@
 
 ### Scoped body grep per method (#253)
 
-- [ ] `grep --in <Type> --each-method` — iterate members of a type, grep each method body for the pattern, report which methods matched with counts; combines `extractMembers` + `extractBody` + regex match in a single command
+- [x] `grep --in <Type> --each-method` — iterate members of a type, grep each method body for the pattern, report which methods matched with counts; combines `extractMembers` + `extractBody` + regex match in a single command
 
 ### Concise overview mode (#248)
 

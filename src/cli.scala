@@ -336,7 +336,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         while i < afterGraph.size do
           afterGraph(i) match
             case "-w" | "--workspace" | "--max-output" | "--in-package" => i += 1 // skip flag + value
-            case "--timings" | "--json" => () // skip standalone flags already parsed
+            case "--timings" | "--json" | "--each-method" => () // skip standalone flags already parsed
             case other => buf += other
           i += 1
         buf.toList
