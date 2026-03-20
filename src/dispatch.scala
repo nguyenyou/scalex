@@ -27,7 +27,9 @@ def renderWithBudget(result: CmdResult, ctx: CommandContext): Unit =
     val budget = ctx.maxOutput
     val baos = ByteArrayOutputStream()
     val budgetStream = BudgetPrintStream(baos, budget)
-    // Use Console.withOut to redirect Scala's println, and System.setOut for Java's System.out
+    // Capture the caller's output stream before redirecting — in CLI it's System.out,
+    // in tests it's the captureOut stream (via Console.withOut)
+    val callerOut = Console.out
     val savedOut = System.out
     System.setOut(budgetStream)
     try Console.withOut(budgetStream) { render(result, ctx) }
@@ -37,11 +39,11 @@ def renderWithBudget(result: CmdResult, ctx: CommandContext): Unit =
       // Truncate at a line boundary at or before the budget
       val cut = output.lastIndexOf('\n', budget)
       val truncated = if cut > 0 then output.substring(0, cut) else output.substring(0, math.min(output.length, budget))
-      savedOut.print(truncated)
-      if !truncated.endsWith("\n") then savedOut.println()
-      savedOut.println(s"(output truncated at $budget chars — use --limit, --offset, --path, or --in-package to narrow)")
+      callerOut.print(truncated)
+      if !truncated.endsWith("\n") then callerOut.println()
+      callerOut.println(s"(output truncated at $budget chars — use --limit, --offset, --path, or --in-package to narrow)")
     } else {
-      savedOut.print(output)
+      callerOut.print(output)
     }
   } else {
     render(result, ctx)
