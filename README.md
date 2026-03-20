@@ -329,7 +329,7 @@ The biggest cost for a coding agent isn't latency — it's the number of tool ca
 
 ## Scalex vs Grep — Honest Comparison
 
-Tested on the **Scala 3 compiler** (18.5k files, 144k symbols).
+Tested on the **Scala 3 compiler** (18.5k files, 39k symbols).
 
 ### "Where is `Compiler` defined?"
 
@@ -340,7 +340,7 @@ scalex def Compiler --kind class
   class  Compiler (dotty.tools.pc) — .../CompletionValue.scala:127
 ```
 
-**Grep** — 1 call, **23 results**: `class Compiler|trait Compiler|object Compiler` matches `CompilerSearchVisitor`, `CompilerCachingSuite`, `CompilerTest`, `CompilerCommand` (substring noise). No package info, no kind filtering. Agent must write follow-up regex to exclude substrings.
+**Grep** — 1 call, **24 results**: `class Compiler|trait Compiler|object Compiler` matches `CompilerSearchVisitor`, `CompilerCachingSuite`, `CompilerTest`, `CompilerCommand` (substring noise). No package info, no kind filtering. Agent must write follow-up regex to exclude substrings.
 
 **Why scalex wins**: Exact name matching + `--kind` filter + package disambiguation. One call, done.
 
@@ -380,13 +380,13 @@ scalex refs Compiler --limit 5
   Low confidence (no matching import):  ...
 ```
 
-**Grep** — 1 call, **1,143 lines**, flat and unsorted. Agent sees definitions, imports, type annotations, instantiations, and comments all mixed together. Needs multiple follow-up calls to classify.
+**Grep** — 1 call, **1,135 lines**, flat and unsorted. Agent sees definitions, imports, type annotations, instantiations, and comments all mixed together. Needs multiple follow-up calls to classify.
 
 **Why scalex wins**: Categories tell the agent *how* a symbol is used (extended? imported? instantiated?), and confidence tiers surface the most relevant references first. An agent using grep needs 3-5 follow-up calls to achieve the same understanding.
 
 ### "Who imports `Compiler`?"
 
-**Scalex** — 1 call, **1,205 files**:
+**Scalex** — 1 call, **1,206 files**:
 ```
 scalex imports Compiler
   .../ExpressionCompiler.scala:3 — import dotty.tools.dotc.Compiler       (explicit)
