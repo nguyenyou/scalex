@@ -103,6 +103,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: SymbolDiff       => renderSymbolDiff(r, ctx)
     case r: AstMatches       => renderAstMatches(r, ctx)
     case r: GrepCount        => renderGrepCount(r, ctx)
+    case r: GrepByMethod     => renderGrepByMethod(r, ctx)
     case r: Packages         => renderPackages(r, ctx)
     case r: PackageSymbols   => renderPackageSymbols(r, ctx)
     case r: PackageExplained => renderPackageExplained(r, ctx)
@@ -1024,6 +1025,34 @@ private def renderGrepCount(r: CmdResult.GrepCount, ctx: CommandContext): Unit =
   } else {
     val suffix = if r.timedOut then " (timed out — partial results)" else ""
     println(s"${r.matches} matches across ${r.files} files$suffix")
+  }
+}
+
+private def renderGrepByMethod(r: CmdResult.GrepByMethod, ctx: CommandContext): Unit = {
+  r.stderrHint.foreach(System.err.println)
+  if ctx.jsonOutput then {
+    val items = r.methods.map { m =>
+      val file = jsonEscape(ctx.workspace.relativize(m.file).toString)
+      s"""{"name":"${jsonEscape(m.member.name)}","kind":"${m.member.kind.toString.toLowerCase}","signature":"${jsonEscape(m.member.signature)}","file":"$file","line":${m.member.line},"matches":${m.matchCount}}"""
+    }.mkString("[", ",", "]")
+    val total = r.methods.map(_.matchCount).sum
+    println(s"""{"pattern":"${jsonEscape(r.pattern)}","owner":"${jsonEscape(r.owner)}","methods":$items,"totalMatches":$total}""")
+  } else {
+    if r.methods.isEmpty then
+      println(s"""No methods in ${r.owner} whose body contains "${r.pattern}"""")
+    else {
+      val total = r.methods.map(_.matchCount).sum
+      println(s"""Methods in ${r.owner} whose body contains "${r.pattern}" — ${r.methods.size} methods, $total matches:""")
+      // Compute column widths for alignment
+      val maxSig = r.methods.map(_.member.signature.length).maxOption.getOrElse(0)
+      r.methods.foreach { m =>
+        val relFile = ctx.workspace.relativize(m.file).toString
+        val loc = s"$relFile:${m.member.line}"
+        val pad = " " * (maxSig - m.member.signature.length)
+        val plural = if m.matchCount == 1 then "match" else "matches"
+        println(s"  ${m.member.signature}$pad — $loc  (${m.matchCount} $plural)")
+      }
+    }
   }
 }
 

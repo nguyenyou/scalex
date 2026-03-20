@@ -318,6 +318,7 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--exact` | Search: only exact name matches (case-insensitive) |
 | `--prefix` | Search: only exact + prefix matches |
 | `--in OWNER` | Body/grep: restrict to members of the given enclosing type |
+| `--each-method` | Grep: with `--in`, report which methods match (per-method grep) |
 | `--of TRAIT` | Overrides: restrict to implementations of the given trait |
 | `--body` | Members/overrides/explain: inline method bodies into output |
 | `--max-lines N` | Members/overrides/explain: only inline bodies ≤ N lines (0 = unlimited) |

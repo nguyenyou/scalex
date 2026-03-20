@@ -237,6 +237,7 @@ scalex body findUser --in UserServiceLive  # Extract method body without Read
 scalex body findUser --in UserServiceLive -C 3  # Body with 3 context lines
 scalex body findUser --in UserServiceLive --imports  # Body with file imports
 scalex grep "ctx.settings" --in Run        # Grep within a class body
+scalex grep "test(" --in Suite --each-method  # Which methods call test()?
 
 # Refine
 scalex members Signal                      # Signatures by default + companion hint

@@ -182,13 +182,13 @@ scalex search find --returns Boolean     # methods named "find" returning Boolea
 scalex search process --takes String     # methods named "process" taking String
 ```
 
-### `scalex grep <pattern> [--in <symbol>] [-e PAT]... [--count] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
+### `scalex grep <pattern> [--in <symbol>] [--each-method] [-e PAT]... [--count] [--no-tests] [--path PREFIX] [-C N] [--limit N]` — content search
 
 Regex search inside `.scala` and `.java` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala/Java files. Has a 20-second timeout for large codebases.
 
 The pattern is a **Java regex** (not POSIX) — use `|` for alternation (not `\|`), `( )` for grouping (not `\( \)`). If you get zero results, check for POSIX-style escapes. Scalex will print a hint if it detects this.
 
-Use `-e` to search multiple patterns in one call — they're combined with `|`. Use `--count` to get match/file counts without full output (great for triaging before reading all results). Use `-C N` to show context lines around each match. Use `--in <symbol>` to scope the grep to a specific class or method body — supports `Owner.member` dot syntax.
+Use `-e` to search multiple patterns in one call — they're combined with `|`. Use `--count` to get match/file counts without full output (great for triaging before reading all results). Use `-C N` to show context lines around each match. Use `--in <symbol>` to scope the grep to a specific class or method body — supports `Owner.member` dot syntax. Use `--each-method` with `--in` to grep each method body independently and report which methods matched — answers "which methods in this class contain X?" in one call.
 
 ```bash
 scalex grep "def.*process" --no-tests          # find method-like patterns
@@ -197,6 +197,7 @@ scalex grep "TODO|FIXME|HACK"                  # find code markers
 scalex grep -e "Ystop" -e "stopAfter" --path compiler/src/  # multi-pattern
 scalex grep "isRunnable" --count               # count only: "31 matches across 15 files"
 scalex grep "ctx.settings" --in Run.compileUnits  # search within a specific method
+scalex grep "test(" --in ParseSuite --each-method  # which methods call test()?
 ```
 ```
   src/main/scala/Service.scala:45 — def processPayment(amount: BigDecimal): Unit =
@@ -392,6 +393,8 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 **"How do different types implement method X?"** → `scalex overrides run --of Phase --body` — show each override's source body inline
 
 **"Search within a specific class"** → `scalex grep "pattern" --in ClassName` — restrict grep to the class body; supports `Owner.member` dot syntax
+
+**"Which methods in this class call X?"** → `scalex grep "test(" --in ParseSuite --each-method` — per-method grep: iterates members, reports which methods matched with counts
 
 **"What types should I explore next?"** → `scalex explain UserService --related` — shows project-defined types from member signatures (User, Database, etc.)
 

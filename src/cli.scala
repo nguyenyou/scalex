@@ -40,6 +40,7 @@ case class ParsedFlags(
   concise: Boolean = false,
   maxOutput: Int = 0,
   inPackageFilter: Option[String] = None,
+  eachMethod: Boolean = false,
   cleanArgs: List[String] = Nil,
 )
 
@@ -157,6 +158,7 @@ def parseFlags(argList: List[String]): ParsedFlags =
   val inPackageFilter: Option[String] = argList.indexOf("--in-package") match
     case -1 => None
     case i => argList.lift(i + 1)
+  val eachMethod = argList.contains("--each-method")
 
   val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
     val prev = argList.indexOf(a) - 1
@@ -169,7 +171,7 @@ def parseFlags(argList: List[String]): ParsedFlags =
     hasMethodFilter, extendsFilter, bodyContainsFilter, focusPackage, expandDepth, membersLimit,
     brief, strict, usedByFilter, returnsFilter, takesFilter, shallow, noDoc, excludePath, topN,
     summaryMode, timingsEnabled, withBody, maxBodyLines, showImports, offset, related, explainMode,
-    concise, maxOutput, inPackageFilter, cleanArgs)
+    concise, maxOutput, inPackageFilter, eachMethod, cleanArgs)
 
 private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
                            batchMode: Boolean = false, effectiveNoTests: Option[Boolean] = None): CommandContext =
@@ -189,7 +191,8 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
     shallow = f.shallow, noDoc = f.noDoc, excludePath = f.excludePath, summaryMode = f.summaryMode,
     withBody = f.withBody, maxBodyLines = f.maxBodyLines, showImports = f.showImports,
     offset = f.offset, related = f.related, explainMode = f.explainMode, concise = f.concise,
-    maxOutput = f.maxOutput, inPackageFilter = f.inPackageFilter)
+    maxOutput = f.maxOutput, inPackageFilter = f.inPackageFilter,
+    eachMethod = f.eachMethod)
 
 @main def main(args: String*): Unit =
   val f = parseFlags(args.toList)
@@ -260,6 +263,7 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
         |  --json                Output results as JSON (structured output for programmatic use)
         |  --version             Print version and exit
         |  --in OWNER            Body/grep: restrict to members of the given enclosing type
+        |  --each-method         Grep: with --in, report which methods match (per-method grep)
         |  --of TRAIT            Overrides: restrict to implementations of the given trait
         |  --body                Members/overrides/explain: inline method bodies into output
         |  --max-lines N         Members/overrides/explain: only inline bodies ≤ N lines (0 = unlimited)

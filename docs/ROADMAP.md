@@ -12,6 +12,10 @@
 - Discarded: stale symbol hints in `explain` — false positives (cross-repo impls, macros) waste more agent tokens than they save; agent can run `impl` + `refs` directly
 - Deferred: `members --diff <ref>` — medium effort, niche; `diff` + `git diff` already cover this well
 
+### Scoped body grep per method (#253)
+
+- [ ] `grep --in <Type> --each-method` — iterate members of a type, grep each method body for the pattern, report which methods matched with counts; combines `extractMembers` + `extractBody` + regex match in a single command
+
 ### Concise overview mode (#248)
 
 - [x] `overview --concise` — fixed-size summary (~60 lines) regardless of codebase size; compact header, inline symbols, top packages, dep stats (not full graph), hub types, drill-down hints; implies `--architecture`
@@ -130,6 +134,10 @@
 - [x] Option bloom filters — `identifierBloom: Option[BloomFilter]` replaces null sentinel; index v8
 - [x] Error handling — narrow `Exception` catches to `IOException` for file I/O; stderr logging for parse failures and unreadable files
 - [x] Deduplicate extraction — shared `extractRawSymbols` used by both `extractSymbols` and `extractSymbolsFromSource`; fixes missing Given/Extension/Pkg.Object in diff command
+
+### Discarded from #253
+
+- ~~`refs --category CallSite`~~ — split `Usage` into `CallSite` vs `Usage` by checking if symbol appears in function position of `Term.Apply`; text heuristic (`name(` / `name[`) is cheap but noisy for common names (`get`, `apply`, `map`); AST-based detection adds parsing cost per file; same reasoning as discarded call-site extraction (#137) and call-site vs override distinction (#103)
 
 ### Discarded from #141
 

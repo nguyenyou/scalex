@@ -114,6 +114,8 @@ case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[
 
 case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int, packageName: String, signature: String)
 
+case class MethodGrepMatch(member: MemberInfo, file: Path, matchCount: Int)
+
 case class ExplainedImpl(sym: SymbolInfo, members: List[MemberInfo], subImpls: List[ExplainedImpl] = Nil)
 
 case class PackageExplainedEntry(sym: SymbolInfo, members: List[MemberInfo], implCount: Int)
@@ -158,6 +160,7 @@ case class CommandContext(
   concise: Boolean = false,
   maxOutput: Int = 0,
   inPackageFilter: Option[String] = None,
+  eachMethod: Boolean = false,
 ):
   val fmt: (SymbolInfo, Path) => String = if verbose then formatSymbolVerbose else formatSymbol
   val jRef: Reference => String =
@@ -220,6 +223,7 @@ enum CmdResult:
   case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])
   case AstMatches(filters: String, results: List[AstPatternMatch])
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
+  case GrepByMethod(pattern: String, owner: String, methods: List[MethodGrepMatch], stderrHint: Option[String] = None)
   case Packages(packages: List[String])
   case PackageSymbols(pkg: String, symbols: List[SymbolInfo])
   case PackageExplained(pkg: String, entries: List[PackageExplainedEntry], totalSymbols: Int, totalTypes: Int)

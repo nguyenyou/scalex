@@ -2161,6 +2161,66 @@ class CliSuite extends ScalexTestBase:
     assert(!output.contains(" in "), s"Global grep header should not have 'in': $output")
   }
 
+  // ── #253: grep --in --each-method ──────────────────────────────────────
+
+  test("grep --each-method reports matching methods with counts") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("def"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("PaymentServiceLive"), eachMethod = true))
+    }
+    // Should list methods whose body contains "def"
+    assert(output.contains("Methods in PaymentServiceLive"), s"Should have header: $output")
+    assert(output.contains("match"), s"Should show match counts: $output")
+  }
+
+  test("grep --each-method shows empty message when no methods match") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("ZZZZNONEXISTENT"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("PaymentServiceLive"), eachMethod = true))
+    }
+    assert(output.contains("No methods"), s"Should show no-match message: $output")
+  }
+
+  test("grep --each-method returns not-found for unknown owner") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("def"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("NoSuchType"), eachMethod = true))
+    }
+    assert(output.contains("not found") || output.contains("No class"),
+      s"Should indicate type not found: $output")
+  }
+
+  test("grep --each-method JSON output") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("true"),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("PaymentServiceLive"), eachMethod = true, jsonOutput = true))
+    }
+    assert(output.contains(""""pattern":"true""""), s"JSON should contain pattern: $output")
+    assert(output.contains(""""owner":"PaymentServiceLive""""), s"JSON should contain owner: $output")
+    assert(output.contains(""""methods":["""), s"JSON should contain methods array: $output")
+    assert(output.contains(""""name":"processPayment""""), s"JSON should contain matching method: $output")
+  }
+
+  test("grep --each-method without --in falls back to global grep") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("processPayment"),
+        CommandContext(idx = idx, workspace = workspace, eachMethod = true))
+    }
+    // Without --in, eachMethod is ignored; should work as normal grep
+    assert(output.contains("processPayment"), s"Should find results globally: $output")
+    assert(!output.contains("Methods in"), s"Should NOT use per-method format: $output")
+  }
+
   // ── #180: extractImportLines ──────────────────────────────────────────
 
   test("extractImportLines returns top-level imports only") {

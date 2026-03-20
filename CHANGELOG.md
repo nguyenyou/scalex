@@ -5,6 +5,7 @@
 ### Added
 - `--max-output N` — global character budget that truncates any command's output at N characters with a pagination hint; works on all commands including batch mode (#252)
 - `--in-package PKG` — filter symbols and references to files whose package matches PKG prefix; cheaper than `--path` for cross-compiled projects where package != directory (#252)
+- `grep --in <Type> --each-method` — iterate members of a type, grep each method body for the pattern, report which methods matched with counts; single command replaces N `body --in` + manual grep round-trips (#253)
 
 ## [1.35.0] — 2026-03-19
 
