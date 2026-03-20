@@ -87,6 +87,8 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
   (results.toList, false)
 }
 
+private val eachMethodTimeoutMs = 20_000L
+
 private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, hint: Option[String], stderrHint: Option[String]): CmdResult = boundary {
   val regex = try java.util.regex.Pattern.compile(pattern)
   catch
@@ -102,28 +104,36 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
   if ownerDefs.isEmpty then
     break(CmdResult.NotFound(s"Type not found: $owner", mkNotFoundWithSuggestions(owner, ctx, "grep")))
 
+  val deadline = System.nanoTime() + eachMethodTimeoutMs * 1_000_000
+  var timedOut = false
   val matches = scala.collection.mutable.ListBuffer.empty[MethodGrepMatch]
   ownerDefs.foreach { sym =>
-    val members = extractMembers(sym.file, sym.name, Some(sym.kind))
-    val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch
-      case _: java.io.IOException =>
-        System.err.println(s"scalex: unreadable file: ${sym.file}")
-        Seq.empty
+    if !timedOut then
+      // Single parse: extract members with body spans
+      val membersWithSpans = extractMembersWithSpans(sym.file, sym.name, Some(sym.kind))
+      val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch
+        case _: java.io.IOException =>
+          System.err.println(s"scalex: unreadable file: ${sym.file}")
+          Seq.empty
 
-    if lines.nonEmpty then
-      members.foreach { m =>
-        val bodies = extractBody(sym.file, m.name, Some(sym.name))
-        bodies.foreach { b =>
-          var count = 0
-          var lineIdx = b.startLine - 1
-          val endIdx = math.min(b.endLine, lines.size)
-          while lineIdx < endIdx do
-            if regex.matcher(lines(lineIdx)).find() then count += 1
-            lineIdx += 1
-          if count > 0 then
-            matches += MethodGrepMatch(m, sym.file, count)
+      if lines.nonEmpty then
+        membersWithSpans.foreach { ms =>
+          if System.nanoTime() < deadline then
+            var count = 0
+            var lineIdx = ms.startLine - 1
+            val endIdx = math.min(ms.endLine, lines.size)
+            while lineIdx < endIdx do
+              if regex.matcher(lines(lineIdx)).find() then count += 1
+              lineIdx += 1
+            if count > 0 then
+              matches += MethodGrepMatch(ms.member, sym.file, count)
+          else timedOut = true
         }
-      }
   }
-  CmdResult.GrepByMethod(pattern, owner, matches.toList, hint, stderrHint)
+  if ctx.countOnly then
+    val total = matches.map(_.matchCount).sum
+    val suffix = if timedOut then " (timed out — partial results)" else ""
+    CmdResult.GrepCount(total, matches.map(_.file).distinct.size, timedOut, hint, stderrHint)
+  else
+    CmdResult.GrepByMethod(pattern, owner, matches.toList, hint, stderrHint, timedOut)
 }

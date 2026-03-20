@@ -341,6 +341,73 @@ private def extractScalaMembers(file: Path, symbolName: String, filterKind: Opti
       findAndExtract(tree)
       buf.toList
 
+/** Extract members with their body line spans in a single parse.
+  * Returns (member info, 1-indexed startLine, 1-indexed endLine) for each member. */
+def extractMembersWithSpans(file: Path, symbolName: String, filterKind: Option[SymbolKind] = None): List[(member: MemberInfo, startLine: Int, endLine: Int)] =
+  if isJavaFile(file) then return Nil // Java not supported for this path
+  parseFile(file) match
+    case None => Nil
+    case Some(tree) =>
+      val buf = mutable.ListBuffer.empty[(member: MemberInfo, startLine: Int, endLine: Int)]
+
+      def extractFromTemplate(templ: Template): Unit =
+        templ.body.stats.foreach {
+          case d: Defn.Def =>
+            val params = formatParamClauses(d.paramClauses)
+            val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+            val annots = extractAnnotations(d.mods)
+            buf += ((member = MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+          case d: Defn.Val =>
+            val annots = extractAnnotations(d.mods)
+            d.pats.foreach {
+              case Pat.Var(name) =>
+                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+                buf += ((member = MemberInfo(name.value, SymbolKind.Val, d.pos.startLine + 1, s"val ${name.value}$tpe", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+              case _ =>
+            }
+          case d: Defn.Var =>
+            val annots = extractAnnotations(d.mods)
+            d.pats.foreach {
+              case Pat.Var(name) =>
+                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+                buf += ((member = MemberInfo(name.value, SymbolKind.Var, d.pos.startLine + 1, s"var ${name.value}$tpe", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+              case _ =>
+            }
+          case d: Defn.Type =>
+            val annots = extractAnnotations(d.mods)
+            buf += ((member = MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value} = ${d.body.toString().take(60)}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+          case d: Decl.Def =>
+            val params = formatParamClauses(d.paramClauses)
+            val ret = s": ${d.decltpe.toString()}"
+            val annots = extractAnnotations(d.mods)
+            buf += ((member = MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+          case d: Defn.Class =>
+            val annots = extractAnnotations(d.mods)
+            buf += ((member = MemberInfo(d.name.value, SymbolKind.Class, d.pos.startLine + 1, s"class ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+          case d: Defn.Trait =>
+            val annots = extractAnnotations(d.mods)
+            buf += ((member = MemberInfo(d.name.value, SymbolKind.Trait, d.pos.startLine + 1, s"trait ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+          case d: Defn.Object =>
+            val annots = extractAnnotations(d.mods)
+            buf += ((member = MemberInfo(d.name.value, SymbolKind.Object, d.pos.startLine + 1, s"object ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+          case d: Defn.Enum =>
+            val annots = extractAnnotations(d.mods)
+            buf += ((member = MemberInfo(d.name.value, SymbolKind.Enum, d.pos.startLine + 1, s"enum ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
+          case _ =>
+        }
+
+      def kindMatches(k: SymbolKind): Boolean = filterKind.forall(_ == k)
+
+      def findAndExtract(t: Tree): Unit = t match
+        case d: Defn.Class if d.name.value == symbolName && kindMatches(SymbolKind.Class) => extractFromTemplate(d.templ)
+        case d: Defn.Trait if d.name.value == symbolName && kindMatches(SymbolKind.Trait) => extractFromTemplate(d.templ)
+        case d: Defn.Object if d.name.value == symbolName && kindMatches(SymbolKind.Object) => extractFromTemplate(d.templ)
+        case d: Defn.Enum if d.name.value == symbolName && kindMatches(SymbolKind.Enum) => extractFromTemplate(d.templ)
+        case _ => t.children.foreach(findAndExtract)
+
+      findAndExtract(tree)
+      buf.toList
+
 // ── Doc extraction (Scaladoc / Javadoc) ─────────────────────────────────────
 
 def extractDoc(file: Path, targetLine: Int): Option[String] =

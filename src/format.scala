@@ -1030,6 +1030,7 @@ private def renderGrepCount(r: CmdResult.GrepCount, ctx: CommandContext): Unit =
 
 private def renderGrepByMethod(r: CmdResult.GrepByMethod, ctx: CommandContext): Unit = {
   r.stderrHint.foreach(System.err.println)
+  val suffix = if r.timedOut then " (timed out — partial results)" else ""
   if ctx.jsonOutput then {
     val shown = r.methods.take(ctx.limit)
     val items = shown.map { m =>
@@ -1038,14 +1039,15 @@ private def renderGrepByMethod(r: CmdResult.GrepByMethod, ctx: CommandContext): 
     }.mkString("[", ",", "]")
     val total = r.methods.map(_.matchCount).sum
     val truncated = if r.methods.size > ctx.limit then s""","truncated":true,"totalMethods":${r.methods.size}""" else ""
+    val timedOutStr = if r.timedOut then s""","timedOut":true""" else ""
     val hintStr = r.hint.getOrElse("")
-    println(s"""{"pattern":"${jsonEscape(r.pattern)}","owner":"${jsonEscape(r.owner)}","methods":$items,"totalMatches":$total$truncated$hintStr}""")
+    println(s"""{"pattern":"${jsonEscape(r.pattern)}","owner":"${jsonEscape(r.owner)}","methods":$items,"totalMatches":$total$truncated$timedOutStr$hintStr}""")
   } else {
     if r.methods.isEmpty then
-      println(s"""No methods in ${r.owner} whose body contains "${r.pattern}"""")
+      println(s"""No methods in ${r.owner} whose body contains "${r.pattern}"$suffix""")
     else {
       val total = r.methods.map(_.matchCount).sum
-      println(s"""Methods in ${r.owner} whose body contains "${r.pattern}" — ${r.methods.size} methods, $total matches:""")
+      println(s"""Methods in ${r.owner} whose body contains "${r.pattern}" — ${r.methods.size} methods, $total matches:$suffix""")
       val shown = r.methods.take(ctx.limit)
       val maxSig = shown.map(_.member.signature.length).maxOption.getOrElse(0)
       shown.foreach { m =>
