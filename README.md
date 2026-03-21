@@ -21,6 +21,7 @@
 - [Commands](#commands)
 - [What Makes It Coding-Agent-Friendly](#what-makes-it-coding-agent-friendly)
 - [Scalex vs Grep — Honest Comparison](#scalex-vs-grep--honest-comparison)
+- [scalex-intellij: Squeeze More from Your Running IDE](#scalex-intellij-squeeze-more-from-your-running-ide)
 - [Credits](#credits)
 - [Name](#name)
 - [Mascot](#mascot)
@@ -414,6 +415,26 @@ scalex imports Compiler
 | "What does this file/package export?" | **Scalex** | `overview` and `members` commands |
 
 **Best approach: use both.** Scalex for Scala-aware navigation, Grep for text search. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
+
+## scalex-intellij: Squeeze More from Your Running IDE
+
+Most Scala developers already have IntelliJ IDEA open all day. The JVM is running, the project is indexed, the compiler is warm. That's a world-class index and query engine sitting right there doing nothing while your coding agent shells out to grep.
+
+If you're already paying the cost of running an IntelliJ instance — the memory, the CPU, the indexing time — why not squeeze more value out of it? Turn on the MCP Server setting (built-in since 2025.2), and you instantly get 27 compiler-powered tools over HTTP: build, inspections, semantic search, rename refactoring, run configurations, symbol info, project structure. No extra plugins, no daemons, no setup. It's already there.
+
+`scalex-intellij` is a Claude Code skill that lets your coding agent tap into all of this. It's just a shell script (`jb-mcp`) and a SKILL.md — nothing else. The script talks to IntelliJ's Streamable HTTP endpoint, extracts the response, and gets out of the way. Lightweight, works out of the box.
+
+```bash
+jb-mcp projects                                          # what projects are open?
+jb-mcp -w /project call build_project '{}'               # build and get compiler errors
+jb-mcp -w /project call get_file_problems '{"filePath":"src/Main.scala"}'
+jb-mcp -w /project call search_symbol '{"q":"Builder"}'
+jb-mcp -w /project call rename_refactoring '{"pathInProject":"src/X.scala","symbolName":"old","newName":"new"}'
+```
+
+**scalex** and **scalex-intellij** overlap on purpose. Both can search symbols and navigate code. scalex works anywhere — no IDE needed, just a git repo. scalex-intellij gives you compiler-level precision — resolved types, implicits, overloads — because it queries the real IntelliJ index. Use whichever fits. Use both.
+
+The skill lives at [`plugin/skills/scalex-intellij/`](plugin/skills/scalex-intellij/).
 
 ## Credits
 

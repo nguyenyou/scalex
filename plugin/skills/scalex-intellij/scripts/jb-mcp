@@ -1,0 +1,390 @@
+#!/usr/bin/env bash
+# jb-mcp — JetBrains MCP Server client via Streamable HTTP
+#
+# Communicates with a running JetBrains IDE's MCP Server plugin
+# using the Streamable HTTP transport (POST /stream).
+#
+# Usage:
+#   jb-mcp projects                          List open IDE projects
+#   jb-mcp tools                             List available tools
+#   jb-mcp call <tool> [json-args]           Call a tool
+#   jb-mcp call <tool> -f <file>             Call a tool with args from file
+#   jb-mcp init                              Explicitly initialize a session
+#
+# Options:
+#   -w <path>       Project path (default: cwd or $JETBRAINS_PROJECT_PATH)
+#   -p <port>       IDE port (default: auto-discover or $JETBRAINS_MCP_PORT)
+#   -t <seconds>    Timeout (default: 60 or $JETBRAINS_MCP_TIMEOUT)
+#   -q              Quiet — suppress status messages
+#   -r              Raw — don't extract content from tool results
+#
+# Environment:
+#   JETBRAINS_MCP_PORT          Override port
+#   JETBRAINS_PROJECT_PATH      Override project path
+#   JETBRAINS_MCP_TIMEOUT       Override timeout (seconds)
+
+set -euo pipefail
+
+# --- Configuration ---
+HOST="127.0.0.1"
+DEFAULT_PORT=64342
+SCAN_PORTS=(64342 64344)
+SCAN_RANGE=10
+PORT="${JETBRAINS_MCP_PORT:-}"
+PROJECT="${JETBRAINS_PROJECT_PATH:-$(pwd)}"
+TIMEOUT="${JETBRAINS_MCP_TIMEOUT:-60}"
+QUIET=false
+RAW=false
+
+# Session file keyed by port to support multiple IDEs
+session_file() {
+  echo "/tmp/jb-mcp-session-${1:-unknown}.json"
+}
+
+# --- Helpers ---
+log() {
+  if [ "$QUIET" = false ]; then
+    echo "$@" >&2
+  fi
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not found"
+}
+
+# --- Port Discovery ---
+find_port() {
+  # If explicit port set, use it
+  if [ -n "$PORT" ]; then
+    if curl -s -o /dev/null --max-time 2 "http://${HOST}:${PORT}/stream" -X POST \
+         -H "Content-Type: application/json" -d '{}' 2>/dev/null; then
+      echo "$PORT"
+      return 0
+    fi
+    # Even a 400 means the endpoint exists
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 \
+      "http://${HOST}:${PORT}/stream" -X POST \
+      -H "Content-Type: application/json" -d '{}' 2>/dev/null || true)
+    if [ "$code" = "400" ] || [ "$code" = "405" ]; then
+      echo "$PORT"
+      return 0
+    fi
+    die "IDE not reachable on port $PORT"
+  fi
+
+  # Scan preferred ports first, then range
+  local candidates=()
+  for p in "${SCAN_PORTS[@]}"; do
+    candidates+=("$p")
+  done
+  for ((i=0; i<SCAN_RANGE; i++)); do
+    local p=$((DEFAULT_PORT + i))
+    # Skip if already in preferred
+    local skip=false
+    for sp in "${SCAN_PORTS[@]}"; do
+      [ "$p" -eq "$sp" ] && skip=true
+    done
+    [ "$skip" = true ] && continue
+    candidates+=("$p")
+  done
+
+  for p in "${candidates[@]}"; do
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 1 \
+      "http://${HOST}:${p}/stream" -X POST \
+      -H "Content-Type: application/json" -d '{}' 2>/dev/null || true)
+    if [ "$code" = "400" ] || [ "$code" = "200" ] || [ "$code" = "405" ]; then
+      echo "$p"
+      return 0
+    fi
+  done
+
+  die "No JetBrains IDE found. Ensure the MCP Server plugin is installed and enabled. Scanned ports: ${candidates[*]}"
+}
+
+# --- Session Management ---
+init_session() {
+  local port="$1"
+  local url="http://${HOST}:${port}/stream"
+  local sf
+  sf=$(session_file "$port")
+
+  log "Initializing MCP session on port $port..."
+
+  # Initialize request
+  local response headers
+  headers=$(mktemp)
+  response=$(curl -s -D "$headers" -X POST "$url" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    --max-time "$TIMEOUT" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"jb-mcp","version":"1.0"}}}')
+
+  local session_id
+  session_id=$(grep -i 'mcp-session-id' "$headers" | tr -d '\r' | awk '{print $2}')
+  rm -f "$headers"
+
+  if [ -z "$session_id" ]; then
+    die "Failed to initialize session — no session ID in response"
+  fi
+
+  # Send initialized notification
+  curl -s -o /dev/null -X POST "$url" \
+    -H "Content-Type: application/json" \
+    -H "mcp-session-id: $session_id" \
+    --max-time 5 \
+    -d '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
+
+  # Save session
+  cat > "$sf" <<EOF
+{"session_id":"${session_id}","port":${port},"project":"${PROJECT}"}
+EOF
+
+  log "Session ready: $session_id"
+  echo "$session_id"
+}
+
+get_session() {
+  local port="$1"
+  local sf
+  sf=$(session_file "$port")
+
+  if [ -f "$sf" ]; then
+    local sid
+    sid=$(jq -r '.session_id' "$sf" 2>/dev/null || true)
+    if [ -n "$sid" ] && [ "$sid" != "null" ]; then
+      echo "$sid"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+ensure_session() {
+  local port="$1"
+  local sid
+  if sid=$(get_session "$port"); then
+    echo "$sid"
+  else
+    init_session "$port"
+  fi
+}
+
+# --- RPC ---
+# Send a JSON-RPC request and return the response.
+# On session error, re-initializes and retries once.
+rpc() {
+  local port="$1"
+  local method="$2"
+  local params="$3"
+  local id="${4:-2}"
+  local url="http://${HOST}:${port}/stream"
+
+  local sid
+  sid=$(ensure_session "$port")
+
+  local body="{\"jsonrpc\":\"2.0\",\"id\":${id},\"method\":\"${method}\",\"params\":${params}}"
+
+  local response http_code
+  local tmpfile
+  tmpfile=$(mktemp)
+
+  http_code=$(curl -s -o "$tmpfile" -w "%{http_code}" -X POST "$url" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "mcp-session-id: $sid" \
+    --max-time "$TIMEOUT" \
+    -d "$body" 2>/dev/null || echo "000")
+
+  response=$(cat "$tmpfile")
+  rm -f "$tmpfile"
+
+  # Session expired — reinit and retry once
+  if [ "$http_code" = "400" ] || [ "$http_code" = "404" ] || [ "$http_code" = "410" ]; then
+    if echo "$response" | grep -qi "session"; then
+      log "Session expired, re-initializing..."
+      rm -f "$(session_file "$port")"
+      sid=$(init_session "$port")
+
+      tmpfile=$(mktemp)
+      http_code=$(curl -s -o "$tmpfile" -w "%{http_code}" -X POST "$url" \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json, text/event-stream" \
+        -H "mcp-session-id: $sid" \
+        --max-time "$TIMEOUT" \
+        -d "$body" 2>/dev/null || echo "000")
+      response=$(cat "$tmpfile")
+      rm -f "$tmpfile"
+    fi
+  fi
+
+  if [ "$http_code" = "000" ]; then
+    die "Connection failed — is the IDE running?"
+  fi
+
+  echo "$response"
+}
+
+# --- Tool Call ---
+call_tool() {
+  local port="$1"
+  local tool_name="$2"
+  local args="$3"
+
+  # Inject projectPath if not already present
+  if ! echo "$args" | jq -e '.projectPath // .project_path' >/dev/null 2>&1; then
+    args=$(echo "$args" | jq --arg p "$PROJECT" '. + {projectPath: $p}')
+  fi
+
+  local params
+  params=$(jq -n --arg name "$tool_name" --argjson args "$args" \
+    '{name: $name, arguments: $args}')
+
+  local response
+  response=$(rpc "$port" "tools/call" "$params")
+
+  if [ "$RAW" = true ]; then
+    echo "$response" | jq .
+    return
+  fi
+
+  # Check for JSON-RPC error
+  local rpc_error
+  rpc_error=$(echo "$response" | jq -r '.error.message // empty' 2>/dev/null || true)
+  if [ -n "$rpc_error" ]; then
+    die "$rpc_error"
+  fi
+
+  # Check for MCP tool error
+  local is_error
+  is_error=$(echo "$response" | jq -r '.result.isError // false' 2>/dev/null || true)
+
+  # Extract structured content if available, otherwise text content
+  local structured
+  structured=$(echo "$response" | jq '.result.structuredContent // empty' 2>/dev/null || true)
+  if [ -n "$structured" ] && [ "$structured" != "null" ]; then
+    echo "$structured" | jq .
+  else
+    # Extract text content
+    echo "$response" | jq -r '.result.content[]? | select(.type=="text") | .text' 2>/dev/null | while read -r text; do
+      # Try to parse as JSON for pretty printing
+      if echo "$text" | jq . >/dev/null 2>&1; then
+        echo "$text" | jq .
+      else
+        echo "$text"
+      fi
+    done
+  fi
+
+  if [ "$is_error" = "true" ]; then
+    return 1
+  fi
+}
+
+# --- Commands ---
+cmd_projects() {
+  local port="$1"
+
+  # Call any tool with a bogus project path to get the project list
+  local args='{"projectPath":"/__nonexistent__"}'
+  local params
+  params=$(jq -n --arg name "get_repositories" --argjson args "$args" \
+    '{name: $name, arguments: $args}')
+
+  local response
+  response=$(rpc "$port" "tools/call" "$params")
+
+  # The error response includes the project list in structuredContent
+  local projects
+  projects=$(echo "$response" | jq -r '.result.structuredContent.projects // empty' 2>/dev/null || true)
+
+  if [ -n "$projects" ] && [ "$projects" != "null" ]; then
+    echo "$projects" | jq -r '.[].path'
+  else
+    # Try text content
+    echo "$response" | jq -r '.result.content[]? | select(.type=="text") | .text' 2>/dev/null
+  fi
+}
+
+cmd_tools() {
+  local port="$1"
+
+  local response
+  response=$(rpc "$port" "tools/list" "{}")
+
+  echo "$response" | jq -r '.result.tools[] | "\(.name)\t\(.description | split("\n")[0] | .[0:80])"' 2>/dev/null | column -t -s $'\t'
+}
+
+cmd_init() {
+  local port="$1"
+  rm -f "$(session_file "$port")"
+  init_session "$port" >/dev/null
+  log "Session initialized on port $port"
+}
+
+# --- Main ---
+main() {
+  require_cmd curl
+  require_cmd jq
+
+  # Parse options
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -w) PROJECT="$2"; shift 2 ;;
+      -p) PORT="$2"; shift 2 ;;
+      -t) TIMEOUT="$2"; shift 2 ;;
+      -q) QUIET=true; shift ;;
+      -r) RAW=true; shift ;;
+      -*) die "Unknown option: $1" ;;
+      *)  break ;;
+    esac
+  done
+
+  local cmd="${1:-help}"
+  shift || true
+
+  # Discover port
+  local port
+  port=$(find_port)
+
+  case "$cmd" in
+    projects)
+      cmd_projects "$port"
+      ;;
+    tools)
+      cmd_tools "$port"
+      ;;
+    init)
+      cmd_init "$port"
+      ;;
+    call)
+      local tool_name="${1:-}"
+      [ -z "$tool_name" ] && die "Usage: jb-mcp call <tool-name> [json-args | -f file]"
+      shift
+
+      local args="{}"
+      if [ "${1:-}" = "-f" ]; then
+        [ -z "${2:-}" ] && die "Usage: jb-mcp call <tool> -f <file>"
+        args=$(cat "$2")
+      elif [ -n "${1:-}" ]; then
+        args="$1"
+      fi
+
+      call_tool "$port" "$tool_name" "$args"
+      ;;
+    help|--help|-h)
+      sed -n '2,/^$/{ s/^# //; s/^#//; p; }' "$0"
+      ;;
+    *)
+      die "Unknown command: $cmd. Use 'help' for usage."
+      ;;
+  esac
+}
+
+main "$@"
