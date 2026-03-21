@@ -432,6 +432,8 @@ jb-mcp -w /project call search_symbol '{"q":"Builder"}'
 jb-mcp -w /project call rename_refactoring '{"pathInProject":"src/X.scala","symbolName":"old","newName":"new"}'
 ```
 
+**Requirements:** IntelliJ IDEA **2026.1 RC** or later, with MCP Server enabled via Settings → Tools → MCP Server → Enable MCP Server. The script also needs `curl` and `jq`.
+
 **scalex** and **scalex-intellij** overlap on purpose. Both can search symbols and navigate code. scalex works anywhere — no IDE needed, just a git repo. scalex-intellij gives you compiler-level precision — resolved types, implicits, overloads — because it queries the real IntelliJ index. Use whichever fits. Use both.
 
 The skill lives at [`plugin/skills/scalex-intellij/`](plugin/skills/scalex-intellij/).
