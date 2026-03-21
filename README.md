@@ -420,7 +420,7 @@ scalex imports Compiler
 
 Most Scala developers already have IntelliJ IDEA open all day. The JVM is running, the project is indexed, the compiler is warm. That's a world-class index and query engine sitting right there doing nothing while your coding agent shells out to grep.
 
-If you're already paying the cost of running an IntelliJ instance — the memory, the CPU, the indexing time — why not squeeze more value out of it? Turn on the MCP Server setting (built-in since 2025.2), and you instantly get 27 compiler-powered tools over HTTP: build, inspections, semantic search, rename refactoring, run configurations, symbol info, project structure. No extra plugins, no daemons, no setup. It's already there.
+If you're already paying the cost of running an IntelliJ instance — the memory, the CPU, the indexing time — why not squeeze more value out of it? Turn on the MCP Server setting, and you instantly get 27 compiler-powered tools over HTTP: build, inspections, semantic search, rename refactoring, run configurations, symbol info, project structure. No extra plugins, no daemons, no setup. It's already there.
 
 `scalex-intellij` is a Claude Code skill that lets your coding agent tap into all of this. It's just a shell script (`jb-mcp`) and a SKILL.md — nothing else. The script talks to IntelliJ's Streamable HTTP endpoint, extracts the response, and gets out of the way. Lightweight, works out of the box.
 
