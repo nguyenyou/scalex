@@ -434,7 +434,13 @@ jb-mcp -w /project call rename_refactoring '{"pathInProject":"src/X.scala","symb
 
 **Requirements:** IntelliJ IDEA **2026.1 RC** or later, with MCP Server enabled via Settings → Tools → MCP Server → Enable MCP Server. The script also needs `curl` and `jq`.
 
-**scalex** and **scalex-intellij** overlap on purpose. Both can search symbols and navigate code. scalex works anywhere — no IDE needed, just a git repo. scalex-intellij gives you compiler-level precision — resolved types, implicits, overloads — because it queries the real IntelliJ index. Use whichever fits. Use both.
+**When to use which:**
+
+- **scalex** — for quick codebase exploration. It's grep for ASTs instead of raw text. Clone any repo, index in seconds, start navigating. No IDE, no build server, no setup. Use it when you want to rapidly explore unfamiliar code, find definitions, trace references, understand inheritance — the kind of thing you'd do with grep but with Scala-aware precision.
+
+- **scalex-intellij** — when you already have IntelliJ open with your working project. It gives you the full precision IntelliJ offers: compiler-resolved types, implicit resolution, real build errors, IDE inspections, run configurations, semantic refactoring. If the IDE is already running, you're already paying the cost — use it.
+
+Both overlap on purpose. Use whichever fits. Use both.
 
 The skill lives at [`plugin/skills/scalex-intellij/`](plugin/skills/scalex-intellij/).
 
