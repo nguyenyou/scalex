@@ -434,11 +434,14 @@ jb-mcp -w /project call rename_refactoring '{"pathInProject":"src/X.scala","symb
 
 **Requirements:** IntelliJ IDEA **2026.1 RC** or later, with MCP Server enabled via Settings → Tools → MCP Server → Enable MCP Server. The script also needs `curl` and `jq`.
 
-**When to use which:**
-
-- **scalex** — for quick codebase exploration. It's grep for ASTs instead of raw text. Clone any repo, index in seconds, start navigating. No IDE, no build server, no setup. Use it when you want to rapidly explore unfamiliar code, find definitions, trace references, understand inheritance — the kind of thing you'd do with grep but with Scala-aware precision.
-
-- **scalex-intellij** — when you already have IntelliJ open with your working project. It gives you the full precision IntelliJ offers: compiler-resolved types, implicit resolution, real build errors, IDE inspections, run configurations, semantic refactoring. If the IDE is already running, you're already paying the cost — use it.
+| | **scalex** | **scalex-intellij** |
+|---|---|---|
+| **What it is** | Grep for ASTs, not raw text | Query your running IntelliJ instance |
+| **When to use** | Quick codebase exploration — clone any repo and navigate in seconds | When IntelliJ is already open with your working project |
+| **Setup** | Just a binary + git repo | IntelliJ running with MCP Server enabled |
+| **Precision** | Source-level — sees what's written in code | Compiler-level — resolved types, implicits, overloads |
+| **Unique strengths** | Works anywhere, no IDE needed. Categorized refs, wildcard import resolution, inheritance trees, batch commands | Real build errors, IDE inspections, run configs, semantic rename, project modules/deps |
+| **Speed** | ~0.1–0.5s per query | ~0.1s (search), seconds (build/inspections) |
 
 Both overlap on purpose. Use whichever fits. Use both.
 
