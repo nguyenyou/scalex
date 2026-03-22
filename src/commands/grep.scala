@@ -2,13 +2,18 @@ import scala.jdk.CollectionConverters.*
 import scala.util.boundary, boundary.break
 
 def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
-  val patternOpt = if ctx.grepPatterns.nonEmpty then Some(ctx.grepPatterns.mkString("|"))
-                   else args.headOption
+  // Fix each -e pattern individually before joining, so one invalid sub-pattern
+  // doesn't cause the entire joined string to be literal-quoted
+  val patternOpt = if ctx.grepPatterns.nonEmpty then
+    Some(ctx.grepPatterns.map(p => fixPosixRegex(p).pattern).mkString("|"))
+  else args.headOption
   patternOpt match
     case None => CmdResult.UsageError("Usage: scalex grep <pattern>")
     case Some(rawPattern) =>
       val (pattern, wasFixed) = fixPosixRegex(rawPattern)
       val isLiteralQuoted = wasFixed && pattern.startsWith("\\Q")
+      // Use rawPattern in display strings so users never see \Q...\E internals
+      val displayPattern = rawPattern
       val stderrHint =
         if isLiteralQuoted then Some(s"""  Note: invalid regex, treating as literal search: "$rawPattern"""")
         else if wasFixed then Some(s"""  Note: auto-corrected POSIX regex to Java regex: "$rawPattern" → "$pattern"""")
@@ -17,7 +22,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
       ctx.inOwner match
         case Some(owner) if ctx.eachMethod =>
           // Per-method grep: iterate members, grep each body, report which methods matched
-          grepEachMethod(pattern, owner, ctx, hint, stderrHint)
+          grepEachMethod(pattern, displayPattern, owner, ctx, hint, stderrHint)
         case Some(owner) =>
           // Scoped grep: restrict to a specific symbol's body span
           val (scopedResults, scopedTimedOut) = grepInSymbol(pattern, owner, ctx)
@@ -28,11 +33,11 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
             val suffix = if scopedTimedOut then " (timed out — partial results)" else ""
             val inStr = s""" in $owner"""
             CmdResult.RefList(
-              header = s"""Matches for "$pattern"$inStr — ${scopedResults.size} found:$suffix""",
+              header = s"""Matches for "$displayPattern"$inStr — ${scopedResults.size} found:$suffix""",
               refs = scopedResults,
               timedOut = scopedTimedOut,
               hint = hint,
-              emptyMessage = s"""No matches for "$pattern"$inStr$suffix""",
+              emptyMessage = s"""No matches for "$displayPattern"$inStr$suffix""",
               stderrHint = stderrHint)
         case None =>
           val (results, grepTimedOut) = ctx.idx.grepFiles(pattern, ctx.noTests, ctx.pathFilter, ctx.excludePath)
@@ -42,11 +47,11 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
           else
             val suffix = if grepTimedOut then " (timed out — partial results)" else ""
             CmdResult.RefList(
-              header = s"""Matches for "$pattern" — ${results.size} found:$suffix""",
+              header = s"""Matches for "$displayPattern" — ${results.size} found:$suffix""",
               refs = results,
               timedOut = grepTimedOut,
               hint = hint,
-              emptyMessage = s"""No matches for "$pattern"$suffix""",
+              emptyMessage = s"""No matches for "$displayPattern"$suffix""",
               stderrHint = stderrHint)
 
 private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (results: List[Reference], timedOut: Boolean) = boundary {
@@ -89,7 +94,7 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
 
 private val eachMethodTimeoutMs = 20_000L
 
-private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, hint: Option[String], stderrHint: Option[String]): CmdResult = boundary {
+private def grepEachMethod(pattern: String, displayPattern: String, owner: String, ctx: CommandContext, hint: Option[String], stderrHint: Option[String]): CmdResult = boundary {
   val regex = java.util.regex.Pattern.compile(pattern) // pattern is pre-validated by fixPosixRegex
 
   // Find the owner type
@@ -131,5 +136,5 @@ private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, 
     val total = matches.map(_.matchCount).sum
     CmdResult.GrepCount(total, matches.map(_.file).distinct.size, timedOut, hint, stderrHint)
   else
-    CmdResult.GrepByMethod(pattern, owner, matches.toList, hint, stderrHint, timedOut)
+    CmdResult.GrepByMethod(displayPattern, owner, matches.toList, hint, stderrHint, timedOut)
 }
