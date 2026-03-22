@@ -63,21 +63,6 @@ val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = M
   "symbols"     -> cmdSymbols,
   "occurrences" -> cmdOccurrences,
   "stats"       -> cmdStats,
-  // New 14
-  "file"        -> cmdFile,
-  "packages"    -> cmdPackages,
-  "package"     -> cmdPackageSymbols,
-  "annotated"   -> cmdAnnotated,
-  "summary"     -> cmdSummary,
-  "overrides"   -> cmdOverrides,
-  "entrypoints" -> cmdEntrypoints,
-  "api"         -> cmdApi,
-  "overview"    -> cmdOverview,
-  "imports"     -> cmdImports,
-  "coverage"    -> cmdCoverage,
-  "deps"        -> cmdDeps,
-  "context"     -> cmdContext,
-  "explain"     -> cmdExplain,
 )
 
 def cmdStats(args: List[String], ctx: SemCommandContext): SemCmdResult =
@@ -166,23 +151,29 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
 // ── Usage ──────────────────────────────────────────────────────────────────
 
 def printUsage(): Unit =
-  println("""scalex-semanticdb — SemanticDB index & query tool
+  println("""scalex-semanticdb — Compiler-precise code intelligence from SemanticDB
     |
     |Usage: scalex-semanticdb <command> [args] [options]
     |
-    |Commands:
-    |  lookup <symbol>       Full info by FQN or display name
-    |  refs <symbol>         Compiler-precise references
-    |  supertypes <symbol>   Parent type chain
-    |  subtypes <symbol>     Who extends this
-    |  members <symbol>      Declarations/members
-    |  type <symbol>         Return type / value type
+    |Call graph (compiler-only):
+    |  flow <method>         Downstream call tree (the killer feature)
     |  callers <symbol>      Who calls this method
     |  callees <symbol>      What does this method call
-    |  flow <method>         Downstream call tree
-    |  related <symbol>      Co-occurring symbols
+    |
+    |Compiler-precise queries:
+    |  refs <symbol>         Zero-false-positive references
+    |  type <symbol>         Resolved type signature
+    |  related <symbol>      Co-occurring symbols ranked by frequency
+    |  occurrences <file>    All symbol occurrences in file with roles
+    |
+    |Navigation:
+    |  lookup <symbol>       Find symbol by FQN or display name
+    |  supertypes <symbol>   Resolved parent type chain
+    |  subtypes <symbol>     Who extends this
+    |  members <symbol>      Declarations with resolved types
     |  symbols [file]        Symbols defined in file
-    |  occurrences <file>    All occurrences in file
+    |
+    |Index:
     |  index                 Rebuild index (force)
     |  stats                 Index statistics
     |
