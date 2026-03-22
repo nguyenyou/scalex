@@ -11,7 +11,7 @@ object Discovery:
   private val buildOutputDirs = List("out", "target", ".bloop")
 
   /** Directories to always skip */
-  private val skipDirs = Set(".git", "node_modules", ".idea", ".metals", ".bsp", "src", "test", "tests")
+  private val skipDirs = Set(".git", "node_modules", ".idea", ".metals", ".bsp")
 
   /** Find all .semanticdb files under workspace build output directories. */
   def discoverSemanticdbFiles(workspace: Path): List[Path] =
@@ -25,7 +25,7 @@ object Discovery:
     for root <- roots do
       walkForSemanticdb(root, results)
 
-    results.sortBy(_.toString).toList
+    deduplicateByRelativePath(results.toList)
 
   /** Find .semanticdb files under an explicit path (e.g. from --semanticdb-path). */
   def discoverFromExplicitPath(path: Path): List[Path] =
@@ -37,7 +37,7 @@ object Discovery:
 
     val results = ListBuffer.empty[Path]
     walkForSemanticdb(abs, results)
-    results.sortBy(_.toString).toList
+    deduplicateByRelativePath(results.toList)
 
   /** Walk a directory tree collecting .semanticdb files.
     * Skips known non-build directories and caps depth at 20. */
@@ -62,16 +62,17 @@ object Discovery:
           FileVisitResult.CONTINUE
     )
 
-  /** Collect parent directories that contain META-INF/semanticdb — these are the
-    * "classes" roots needed by the Locator. Returns deduplicated roots. */
-  def semanticdbRoots(semanticdbFiles: List[Path]): List[Path] =
-    semanticdbFiles
-      .flatMap { f =>
-        // Walk up to find the directory that contains META-INF/semanticdb/...
-        val str = f.toString
-        val idx = str.indexOf("META-INF" + java.io.File.separator + "semanticdb")
-        if idx > 0 then Some(Path.of(str.substring(0, idx)))
-        else None
-      }
-      .distinct
-      .sorted
+  /** Deduplicate .semanticdb files by their relative path after META-INF/semanticdb/.
+    * Mill produces duplicates in classes/ and data/ directories — keep only one. */
+  private def deduplicateByRelativePath(files: List[Path]): List[Path] =
+    val sep = java.io.File.separator
+    val marker = "META-INF" + sep + "semanticdb" + sep
+    val seen = scala.collection.mutable.HashSet.empty[String]
+    files.filter { f =>
+      val str = f.toString
+      val idx = str.indexOf(marker)
+      if idx >= 0 then
+        val relPath = str.substring(idx + marker.length)
+        seen.add(relPath) // true if new, false if duplicate
+      else true
+    }.sortBy(_.toString)

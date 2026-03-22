@@ -1,7 +1,8 @@
-import java.nio.file.Path
-import scala.collection.mutable.ListBuffer
+import java.nio.file.{Files, Path}
+import java.util.concurrent.ConcurrentLinkedQueue
+import scala.jdk.CollectionConverters.*
 import scala.meta.internal.semanticdb.{
-  Locator, TextDocuments, TextDocument,
+  TextDocuments, TextDocument,
   SymbolInformation => SdbInfo, SymbolOccurrence => SdbOcc,
   Diagnostic => SdbDiag, Signature => SdbSig,
   ClassSignature, MethodSignature, TypeSignature, ValueSignature,
@@ -19,15 +20,22 @@ import scala.meta.internal.semanticdb.Scala._
 
 object Parser:
 
-  /** Load all .semanticdb files from the given root directories and convert to IndexedDocuments. */
-  def loadDocuments(roots: List[Path]): List[IndexedDocument] =
-    val docs = ListBuffer.empty[IndexedDocument]
-    Locator(roots) { (path, textDocuments) =>
-      textDocuments.documents.foreach { doc =>
-        docs += convertDocument(doc)
-      }
+  /** Load all .semanticdb files in parallel and convert to IndexedDocuments. */
+  def loadDocuments(files: List[Path]): List[IndexedDocument] =
+    val results = ConcurrentLinkedQueue[IndexedDocument]()
+    files.asJava.parallelStream().forEach { file =>
+      try
+        val stream = Files.newInputStream(file)
+        try
+          val textDocs = TextDocuments.parseFrom(stream)
+          textDocs.documents.foreach { doc =>
+            results.add(convertDocument(doc))
+          }
+        finally stream.close()
+      catch
+        case _: Exception => () // skip unparseable files
     }
-    docs.toList
+    results.asScala.toList.sortBy(_.uri)
 
   /** Convert a single TextDocument to our IndexedDocument model. */
   def convertDocument(doc: TextDocument): IndexedDocument =
