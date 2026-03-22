@@ -68,17 +68,26 @@ scalex-sdb auto-discovers `.semanticdb` files. For Mill projects, it finds `sema
 
 ### Call graph (compiler-only — no scalex equivalent)
 
-#### `scalex-sdb flow <method> [--depth N] [--no-accessors] [--exclude "p1,p2"]` — downstream call tree
+#### `scalex-sdb flow <method> [--depth N] [--kind K] [--no-accessors] [--smart] [--exclude "p1,p2"]` — downstream call tree
 
 The killer feature. Traces what a method calls, recursively through service layers. Filters out stdlib calls. Default depth is 3. What takes 15–30 round trips with grep/scalex takes 1 call here.
 
-On large codebases, `flow` output can explode at depth 3+ because it follows val accessors, protobuf-generated code, and utility internals. Use `--no-accessors` to filter out val/var field accesses and `--exclude` to skip symbols whose FQN contains any of the given patterns. These flags also prevent recursion into filtered symbols, dramatically reducing output size.
+On large codebases, `flow` output can explode at depth 3+ because it follows val accessors, protobuf-generated code, and utility internals. Use these flags to control noise:
+- `--kind method` — resolve to a method (not a case object/class with the same name)
+- `--no-accessors` — filter out val/var field accesses
+- `--smart` — auto-filter all infrastructure noise (accessors + generated code + protobuf boilerplate + functional plumbing like map/flatMap)
+- `--exclude "p1,p2"` — skip symbols whose FQN or file path contains any pattern
+
+These flags also prevent recursion into filtered symbols, dramatically reducing output size.
 
 ```bash
 scalex-sdb flow processPayment --depth 3 -w /project
 scalex-sdb flow main --depth 2 -w /project
 
-# On large codebases, filter noise:
+# On large codebases — recommended approach:
+scalex-sdb flow createOrder --kind method --depth 3 --smart -w /project
+
+# Or fine-tune manually:
 scalex-sdb flow createOrder --depth 3 --no-accessors --exclude "protobuf,RecordIO" -w /project
 ```
 ```
@@ -94,11 +103,11 @@ method main (Main.scala:10)
 
 #### `scalex-sdb callers <symbol> [--kind K] [--exclude "p1,p2"]` — reverse call graph
 
-Finds all methods that call the target symbol. Compiler-precise — tells you *which method* contains the call, not just which file. Use `--exclude` to filter out callers from specific packages.
+Finds all methods that call the target symbol. Compiler-precise — tells you *which method* contains the call, not just which file. `--kind` narrows which symbol is resolved (e.g., `--kind method` picks the method over a companion object). `--exclude` filters callers matching FQN or file path patterns.
 
 ```bash
 scalex-sdb callers handleRequest -w /project
-scalex-sdb callers handleRequest --exclude "test,integ" -w /project
+scalex-sdb callers handleRequest --kind method --exclude "test,integ" -w /project
 ```
 ```
 9 callers of 'handleRequest'
@@ -107,15 +116,18 @@ scalex-sdb callers handleRequest --exclude "test,integ" -w /project
   method testHandler (HandlerSpec.scala)
 ```
 
-#### `scalex-sdb callees <symbol> [--kind K] [--no-accessors] [--exclude "p1,p2"]` — forward call graph
+#### `scalex-sdb callees <symbol> [--kind K] [--no-accessors] [--smart] [--exclude "p1,p2"]` — forward call graph
 
-Finds all symbols referenced within a method's body. Use `--no-accessors` to filter out val/var field accesses (e.g., `.userId`, `.entityId`, `.config`) which are often noise when you want to see the actual service calls a method makes. Use `--exclude` to skip symbols matching specific FQN patterns.
+Finds all symbols referenced within a method's body. `--kind` narrows symbol resolution (e.g., `--kind method` picks the method over a companion object). Use `--no-accessors` to filter out val/var field accesses, or `--smart` to auto-filter all infrastructure noise. `--exclude` matches against both FQN and file path.
 
 ```bash
 scalex-sdb callees main -w /project
 
-# Filter val accessors and protobuf noise:
-scalex-sdb callees createOrder --no-accessors --exclude "protobuf" -w /project
+# Recommended for large codebases:
+scalex-sdb callees createOrder --kind method --smart -w /project
+
+# Or fine-tune manually:
+scalex-sdb callees createOrder --no-accessors --exclude "protobuf,radixFactories" -w /project
 ```
 ```
 5 callees of 'main'
@@ -256,19 +268,20 @@ Build time:   1546ms (cached)
 | `--limit N` | Max results (default: 50, 0=unlimited) |
 | `--json` | JSON output |
 | `--verbose`, `-v` | Full signatures and properties |
-| `--kind K` | Filter by kind (class, trait, object, method, field, type) |
+| `--kind K` | Filter by kind AND narrow symbol resolution (class, trait, object, method, field, type) |
 | `--role R` | Filter occurrences (def, ref) |
 | `--depth N` | Max depth for flow/subtypes (default: 3) |
 | `--no-accessors` | Exclude val/var accessors from flow/callees output |
-| `--exclude "p1,p2,..."` | Exclude symbols whose FQN contains any pattern (flow/callees/callers) |
+| `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, functional plumbing |
+| `--exclude "p1,p2,..."` | Exclude symbols matching FQN or file path (flow/callees/callers) |
 | `--timings` | Print timing info to stderr |
 
 ## Common workflows
 
-**"What happens when X is called?"** — the #1 use case. On large codebases, add `--no-accessors` and `--exclude` to cut noise:
+**"What happens when X is called?"** — the #1 use case. On large codebases, use `--smart` for clean output:
 ```bash
 scalex-sdb flow handleRequest --depth 3 -w /project
-scalex-sdb flow handleRequest --depth 3 --no-accessors --exclude "protobuf,util" -w /project
+scalex-sdb flow handleRequest --kind method --depth 3 --smart -w /project
 ```
 
 **"Who calls this method?"** — reverse call graph:
