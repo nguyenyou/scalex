@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "scalex",
-      "source": "./plugin",
+      "source": "./plugins/scalex",
       "description": "Scala code intelligence for coding agents — search symbols, find definitions, find implementations, find references, explore imports. Works on Scala 2 and 3 codebases without a compiler or build server.",
       "version": "1.36.1",
       "author": {
@@ -22,6 +22,21 @@
       "keywords": ["scala", "code-intelligence", "search", "navigation", "coding-agent"],
       "category": "code-intelligence",
       "tags": ["scala", "scala3", "navigation", "find-definition", "find-references"]
+    },
+    {
+      "name": "scalex-intellij",
+      "source": "./plugins/scalex-intellij",
+      "description": "JetBrains IntelliJ IDEA integration for coding agents — build, compile, run tests, inspections, semantic rename, and compiler-resolved code intelligence via MCP Server.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Tu Nguyen"
+      },
+      "homepage": "https://github.com/nguyenyou/scalex",
+      "repository": "https://github.com/nguyenyou/scalex",
+      "license": "MIT",
+      "keywords": ["scala", "intellij", "jetbrains", "mcp", "code-intelligence"],
+      "category": "code-intelligence",
+      "tags": ["scala", "intellij", "jetbrains", "mcp-server", "build", "compile"]
     }
   ]
 }

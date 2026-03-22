@@ -167,7 +167,7 @@ curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-l
 
 ```bash
 mkdir -p scalex
-curl -fsSL https://raw.githubusercontent.com/nguyenyou/scalex/main/plugin/skills/scalex/SKILL.md -o scalex/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/nguyenyou/scalex/main/plugins/scalex/skills/scalex/SKILL.md -o scalex/SKILL.md
 ```
 
 Place the `scalex/` folder wherever your agent reads skills from.
@@ -284,7 +284,7 @@ scalex graph --render "A->B"   Render directed graph as ASCII/Unicode art
 scalex graph --parse           Parse ASCII diagram from stdin into boxes+edges
 ```
 
-All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--in-package PKG`, `--max-output N`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugin/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
+All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--in-package PKG`, `--max-output N`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugins/scalex/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
 
 ## What Makes It Coding-Agent-Friendly
 
@@ -445,7 +445,7 @@ jb-mcp -w /project call rename_refactoring '{"pathInProject":"src/X.scala","symb
 
 Both overlap on purpose. Use whichever fits. Use both.
 
-The skill lives at [`plugin/skills/scalex-intellij/`](plugin/skills/scalex-intellij/).
+The skill lives at [`plugins/scalex-intellij/`](plugins/scalex-intellij/).
 
 ## Credits
 

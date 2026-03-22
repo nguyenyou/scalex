@@ -33,7 +33,8 @@ scala-cli test src/ tests/
 # Output: ./scalex (26MB standalone binary)
 
 # Validate Claude Code plugin structure
-claude plugin validate plugin/
+claude plugin validate plugins/scalex/
+claude plugin validate plugins/scalex-intellij/
 ```
 
 ## Architecture
@@ -107,12 +108,19 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 ## Plugin structure
 
 ```
-plugin/
-├── .claude-plugin/plugin.json    # Manifest
-└── skills/scalex/
-    ├── SKILL.md                  # Teaches Claude when/how to use scalex
-    └── scripts/
-        └── scalex-cli            # Bootstrap: downloads + caches binary, forwards args
+plugins/
+├── scalex/                        # scalex plugin
+│   ├── .claude-plugin/plugin.json
+│   └── skills/scalex/
+│       ├── SKILL.md
+│       ├── references/
+│       └── scripts/scalex-cli     # Bootstrap: downloads + caches binary, forwards args
+└── scalex-intellij/               # scalex-intellij plugin (separate)
+    ├── .claude-plugin/plugin.json
+    └── skills/scalex-intellij/
+        ├── SKILL.md
+        ├── references/tools.md
+        └── scripts/jb-mcp         # MCP client: discovers IDE, manages sessions
 ```
 
 The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumped alongside `ScalexVersion` in `src/model.scala` when releasing.
@@ -128,18 +136,18 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 4. Tag as `vX.Y.Z` and push — GitHub Actions builds native binaries + creates release
 
 ### Step 3: Plugin version bump
-5. Bump `EXPECTED_VERSION` in `plugin/skills/scalex/scripts/scalex-cli`
+5. Bump `EXPECTED_VERSION` in `plugins/scalex/skills/scalex/scripts/scalex-cli`
 6. Update `CHECKSUM_scalex_*` values in `scalex-cli` — get hashes from individual `.sha256` release assets (iterate: `gh release view vX.Y.Z --json assets --jq '.assets[] | select(.name | endswith(".sha256")) | .name'` then download each with `gh release download vX.Y.Z -p <name> -O -`)
-7. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugin/.claude-plugin/plugin.json`)
+7. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugins/scalex/.claude-plugin/plugin.json`)
 8. Commit, push to main
 
-Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`), NOT inside `plugin/`.
+Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`), NOT inside `plugins/`.
 
 ## Feature checklist
 
 When adding or changing commands/flags in `src/cli.scala`:
 - Update help text in the `main` function
-- Update `plugin/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter) and `plugin/skills/scalex/references/commands.md` (command signature, description, examples, options table). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
+- Update `plugins/scalex/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter) and `plugins/scalex/skills/scalex/references/commands.md` (command signature, description, examples, options table). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
 - Update `docs/ROADMAP.md`
 - Update `CHANGELOG.md`
 - Update `README.md` (commands block, Coding-Agent-Friendly Features, "Use it" examples). README does NOT duplicate the options table — it links to SKILL.md

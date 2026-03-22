@@ -1,0 +1,10 @@
+{
+  "name": "scalex-intellij",
+  "description": "JetBrains IntelliJ IDEA integration for coding agents — build, compile, run tests, inspections, semantic rename, and compiler-resolved code intelligence via MCP Server",
+  "author": {
+    "name": "Tu Nguyen"
+  },
+  "repository": "https://github.com/nguyenyou/scalex",
+  "license": "MIT",
+  "keywords": ["scala", "intellij", "jetbrains", "mcp", "code-intelligence"]
+}
