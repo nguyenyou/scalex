@@ -13,7 +13,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
         if isLiteralQuoted then Some(s"""  Note: invalid regex, treating as literal search: "$rawPattern"""")
         else if wasFixed then Some(s"""  Note: auto-corrected POSIX regex to Java regex: "$rawPattern" → "$pattern"""")
         else None
-      val hint = if wasFixed then Some(s""","corrected":"$pattern"""") else None
+      val hint = if wasFixed && !isLiteralQuoted then Some(s""","corrected":"$pattern"""") else None
       ctx.inOwner match
         case Some(owner) if ctx.eachMethod =>
           // Per-method grep: iterate members, grep each body, report which methods matched
@@ -50,11 +50,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
               stderrHint = stderrHint)
 
 private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (results: List[Reference], timedOut: Boolean) = boundary {
-  val regex = try java.util.regex.Pattern.compile(pattern)
-  catch
-    case e: java.util.regex.PatternSyntaxException =>
-      Console.err.println(s"Invalid regex: ${e.getMessage}")
-      break((Nil, false))
+  val regex = java.util.regex.Pattern.compile(pattern) // pattern is pre-validated by fixPosixRegex
 
   // Split Owner.member if present
   val (ownerName, memberName) = if owner.contains(".") then
@@ -94,11 +90,7 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
 private val eachMethodTimeoutMs = 20_000L
 
 private def grepEachMethod(pattern: String, owner: String, ctx: CommandContext, hint: Option[String], stderrHint: Option[String]): CmdResult = boundary {
-  val regex = try java.util.regex.Pattern.compile(pattern)
-  catch
-    case e: java.util.regex.PatternSyntaxException =>
-      Console.err.println(s"Invalid regex: ${e.getMessage}")
-      break(CmdResult.GrepByMethod(pattern, owner, Nil, hint, stderrHint))
+  val regex = java.util.regex.Pattern.compile(pattern) // pattern is pre-validated by fixPosixRegex
 
   // Find the owner type
   var ownerDefs = filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
