@@ -1424,16 +1424,19 @@
         </div>
         <div class="install-block reveal">
           <span class="comment"
-            ># Manual install — native binary, no JVM needed</span
+            ># Other coding agents — just copy the skill folder</span
           ><br />
           <span class="t-cmd"
-            >curl -fsSL
-            https://github.com/nguyenyou/scalex/releases/latest/download/scalex-macos-arm64
-            \</span
+            >git clone --depth 1
+            https://github.com/nguyenyou/scalex.git /tmp/scalex</span
           ><br />
           <span class="t-cmd"
-            >&nbsp;&nbsp;-o ~/.local/bin/scalex && chmod +x
-            ~/.local/bin/scalex</span
+            >cp -r /tmp/scalex/plugins/scalex/skills/scalex
+            /path/to/your/agent/skills/</span
+          ><br />
+          <br />
+          <span class="comment"
+            ># Bootstrap script auto-downloads the binary on first run</span
           >
         </div>
       </div>
