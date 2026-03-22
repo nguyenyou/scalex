@@ -192,9 +192,12 @@ scalex-sdb related UserService
 --limit N                    Max results (default: 50, 0=unlimited)
 --json                       JSON output
 --verbose, -v                Full signatures and properties
---kind K                     Filter by kind
+--kind K                     Filter by kind and narrow symbol resolution
 --role R                     Filter occurrences (def/ref)
 --depth N                    Max depth for flow/subtypes (default: 3)
+--no-accessors               Exclude val/var accessors from flow/callees
+--smart                      Auto-filter infrastructure noise (accessors, generated, plumbing)
+--exclude "p1,p2,..."        Exclude symbols matching FQN or file path
 --timings                    Print timing info to stderr
 ```
 

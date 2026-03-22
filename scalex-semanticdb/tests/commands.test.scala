@@ -240,11 +240,9 @@ class CommandsTest extends SemTestBase:
   test("flow with --no-accessors produces fewer lines") {
     val withAccessors = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2))
     val withoutAccessors = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2, noAccessors = true))
-    (withAccessors, withoutAccessors) match
-      case (SemCmdResult.FlowTree(_, linesA), SemCmdResult.FlowTree(_, linesB)) =>
-        assert(linesB.size <= linesA.size, s"--no-accessors should not increase lines: ${linesB.size} vs ${linesA.size}")
-      case other =>
-        fail(s"unexpected results: $other")
+    val linesA = withAccessors.asInstanceOf[SemCmdResult.FlowTree].lines
+    val linesB = withoutAccessors.asInstanceOf[SemCmdResult.FlowTree].lines
+    assert(linesB.size <= linesA.size, s"--no-accessors should not increase lines: ${linesB.size} vs ${linesA.size}")
   }
 
   test("flow with --exclude filters symbols from tree") {
@@ -501,23 +499,19 @@ class CommandsTest extends SemTestBase:
   test("flow with --smart produces fewer lines than without") {
     val without = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2))
     val withSmart = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2, smart = true))
-    (without, withSmart) match
-      case (SemCmdResult.FlowTree(_, linesA), SemCmdResult.FlowTree(_, linesB)) =>
-        assert(linesB.size <= linesA.size,
-          s"--smart should not increase lines: ${linesB.size} vs ${linesA.size}")
-      case other =>
-        fail(s"unexpected results: $other")
+    val linesA = without.asInstanceOf[SemCmdResult.FlowTree].lines
+    val linesB = withSmart.asInstanceOf[SemCmdResult.FlowTree].lines
+    assert(linesB.size <= linesA.size,
+      s"--smart should not increase lines: ${linesB.size} vs ${linesA.size}")
   }
 
-  test("callees with --smart filters accessors and plumbing") {
+  test("callees with --smart filters accessors") {
     val without = cmdCallees(List("example/Main.main()."), makeCtx())
     val withSmart = cmdCallees(List("example/Main.main()."), makeCtx(smart = true))
-    (without, withSmart) match
-      case (SemCmdResult.SymbolList(_, _, totalA), SemCmdResult.SymbolList(_, _, totalB)) =>
-        assert(totalB <= totalA,
-          s"--smart should not increase callees: $totalB vs $totalA")
-      case other =>
-        fail(s"unexpected results: $other")
+    val totalA = without.asInstanceOf[SemCmdResult.SymbolList].total
+    val totalB = withSmart.asInstanceOf[SemCmdResult.SymbolList].total
+    assert(totalB <= totalA,
+      s"--smart should not increase callees: $totalB vs $totalA")
   }
 
   // ── resolveSymbol generated disambiguation ──────────────────────────────

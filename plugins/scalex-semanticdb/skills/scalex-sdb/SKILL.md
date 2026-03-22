@@ -221,7 +221,7 @@ scalex-sdb symbols --kind trait -w /project
 
 #### `scalex-sdb batch "cmd1" "cmd2" ...` — multiple queries in one invocation
 
-Amortizes the ~1.5s index load across many queries. Each positional arg is a full sub-command string (command + args + flags). Results are separated by `--- <command> ---` delimiters in text mode, or wrapped in `{"batch":[...]}` in JSON mode.
+Amortizes the ~1.5s index load across many queries. Each positional arg is a full sub-command string (command + args + flags). Results are separated by `--- <command> ---` delimiters in text mode, or wrapped in `{"batch":[...]}` in JSON mode. Unknown sub-commands produce an error for that entry without affecting others.
 
 ```bash
 scalex-sdb batch "lookup Dog" "members Animal" "subtypes Shape" -w /project

@@ -200,9 +200,9 @@ def printUsage(): Unit =
     |Usage: scalex-semanticdb <command> [args] [options]
     |
     |Call graph (compiler-only):
-    |  flow <method>         Downstream call tree (the killer feature)
-    |  callers <symbol>      Who calls this method
-    |  callees <symbol>      What does this method call
+    |  callers <symbol>      Who calls this method (reverse call graph)
+    |  callees <symbol>      What does this method call (forward call graph)
+    |  flow <method>         Recursive call tree (use --smart on large codebases)
     |
     |Compiler-precise queries:
     |  refs <symbol>         Zero-false-positive references
@@ -230,7 +230,7 @@ def printUsage(): Unit =
     |  --limit N                    Max results (default: 50, 0=unlimited)
     |  --json                       JSON output
     |  --verbose, -v                Full signatures and properties
-    |  --kind K                     Filter by kind
+    |  --kind K                     Filter by kind and narrow symbol resolution
     |  --role R                     Filter occurrences (def/ref)
     |  --depth N                    Max depth for flow/subtypes (default: 3)
     |  --no-accessors               Exclude val/var accessors from flow/callees

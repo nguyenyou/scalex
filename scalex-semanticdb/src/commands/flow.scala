@@ -10,12 +10,11 @@ private def isTrivial(fqn: String): Boolean =
   trivialPrefixes.exists(fqn.startsWith)
 
 /** Extract module prefix from a source URI for same-module detection.
-  * "modules/billing/billing/jvm/src/..." → "modules/billing/"
-  * "platform/core/jvm/src/..." → "platform/core/"
-  * Falls back to first two path segments if pattern doesn't match. */
+  * Uses the first two path segments: "modules/billing/jvm/src/..." → "modules/billing/".
+  * URIs with fewer than 2 segments return empty string (disables same-module filtering). */
 private def modulePrefix(uri: String): String =
   val parts = uri.split("/")
-  if parts.length >= 2 then s"${parts(0)}/${parts(1)}/" else uri
+  if parts.length >= 2 then s"${parts(0)}/${parts(1)}/" else ""
 
 def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
@@ -46,14 +45,16 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
           .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
 
         callees.foreach { callee =>
-          val prefix = "  " * indent
-          val loc = ctx.index.definitionRanges.get(callee.fqn) match
-            case Some((file, range)) => s" ($file:${range.startLine + 1})"
-            case None => ""
-          lines += s"$prefix${callee.kind.toString.toLowerCase} ${callee.displayName}$loc"
-          // In --smart mode, only recurse into same-module callees
-          val sameModule = rootModule.forall(rm => callee.sourceUri.startsWith(rm))
-          if sameModule then walk(callee.fqn, indent + 1)
+          if !visited.contains(callee.fqn) then
+            val prefix = "  " * indent
+            val loc = ctx.index.definitionRanges.get(callee.fqn) match
+              case Some((file, range)) => s" ($file:${range.startLine + 1})"
+              case None => ""
+            lines += s"$prefix${callee.kind.toString.toLowerCase} ${callee.displayName}$loc"
+            // In --smart mode, only recurse into same-module callees
+            val sameModule = rootModule.forall(rm => callee.sourceUri.startsWith(rm))
+            if sameModule then walk(callee.fqn, indent + 1)
+            else visited += callee.fqn // mark cross-module leaves as visited to prevent duplicates
         }
 
       val rootLoc = ctx.index.definitionRanges.get(sym.fqn) match

@@ -278,10 +278,7 @@ class SemIndex(val workspace: Path):
             allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
       }
     // Deterministic ordering: non-local before local, source before generated, then by kind rank, then shorter FQN first
-    raw.sortBy(s => (isLocal = if s.kind == SemKind.Local then 1 else 0, isGenerated = if isGenerated(s.sourceUri) then 1 else 0, kindRank = kindRank(s.kind), fqnLen = s.fqn.length, fqn = s.fqn))
-
-  private def isGenerated(uri: String): Boolean =
-    uri.startsWith("out/") || uri.contains("compileScalaPB.dest") || uri.contains("compilePB.dest")
+    raw.sortBy(s => (isLocal = if s.kind == SemKind.Local then 1 else 0, isGenerated = if isGeneratedSource(s.sourceUri) then 1 else 0, kindRank = kindRank(s.kind), fqnLen = s.fqn.length, fqn = s.fqn))
 
   private def kindRank(k: SemKind): Int = k match
     case SemKind.Class       => 0
