@@ -38,7 +38,7 @@ mkdir -p "$CACHE_DIR"
 TMP=$(mktemp "$CACHE_DIR/scalex-sdb-temp.XXXXXX")
 trap 'rm -f "$TMP"' EXIT
 
-BASE_URL="https://github.com/${REPO}/releases/download/v${EXPECTED_VERSION}"
+BASE_URL="https://github.com/${REPO}/releases/download/sdb-v${EXPECTED_VERSION}"
 
 curl -f -L -o "$TMP" "${BASE_URL}/${ARTIFACT}" || {
   echo "scalex-sdb: download failed. Visit https://github.com/${REPO}/releases" >&2

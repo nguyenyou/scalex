@@ -1,0 +1,87 @@
+name: Release scalex-semanticdb
+
+on:
+  push:
+    tags:
+      - 'sdb-v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: VirtusLab/scala-cli-setup@59e308800210b0414d2d7190068c80021e1b3e5d # v1
+        with:
+          power: true
+
+      - name: Build assembly JAR
+        run: ./build-native-semanticdb.sh scalex-sdb
+
+      - name: Test binary
+        run: |
+          ./scalex-sdb --help
+          ./scalex-sdb --version
+
+      - name: Generate checksum
+        run: shasum -a 256 scalex-sdb > scalex-sdb.sha256
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: scalex-sdb
+          path: |
+            scalex-sdb
+            scalex-sdb.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: artifacts
+
+      - name: Make binary executable
+        run: chmod +x artifacts/*/scalex-sdb
+
+      - name: Generate checksum
+        run: |
+          cd artifacts
+          shasum -a 256 */scalex-sdb | sed 's|[^/]*/||' > ../checksums.txt
+          cd ..
+          echo "Generated checksums.txt:"
+          cat checksums.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: |
+            artifacts/*/scalex-sdb
+
+      - name: Extract changelog
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#sdb-v}"
+          BODY=$(awk "/^## \[${VERSION}\]/{found=1; next} /^## \[/{if(found) exit} found" scalex-semanticdb/CHANGELOG.md)
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
+        with:
+          files: |
+            artifacts/*/scalex-sdb
+            checksums.txt
+          body: ${{ steps.changelog.outputs.body }}
