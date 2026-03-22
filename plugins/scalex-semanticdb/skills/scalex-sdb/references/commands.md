@@ -2,21 +2,37 @@
 
 ## All Commands
 
+**Call graph (compiler-only):**
+
+| Command | Arguments | Description |
+|---|---|---|
+| `flow` | `<method>` | Downstream call tree with `--depth N` |
+| `callers` | `<symbol>` | Reverse call graph — who calls this |
+| `callees` | `<symbol>` | Forward call graph — what does this call |
+
+**Compiler-precise queries:**
+
+| Command | Arguments | Description |
+|---|---|---|
+| `refs` | `<symbol>` | Zero-false-positive references |
+| `type` | `<symbol>` | Resolved type signature |
+| `related` | `<symbol>` | Co-occurring symbols by frequency |
+| `occurrences` | `<file>` | All occurrences in a file with roles |
+
+**Navigation (with resolved types):**
+
 | Command | Arguments | Description |
 |---|---|---|
 | `lookup` | `<symbol>` | Find symbol by FQN or display name |
-| `refs` | `<symbol>` | Compiler-precise references |
-| `supertypes` | `<symbol>` | Parent type chain |
+| `supertypes` | `<symbol>` | Resolved parent type chain |
 | `subtypes` | `<symbol>` | Who extends this |
-| `members` | `<symbol>` | Declarations/members of a type |
-| `type` | `<symbol>` | Resolved type signature |
-| `callers` | `<symbol>` | Reverse call graph |
-| `callees` | `<symbol>` | Forward call graph |
-| `flow` | `<method>` | Recursive downstream call tree |
-| `related` | `<symbol>` | Co-occurring symbols by frequency |
-| `diagnostics` | `[file]` | Compiler warnings/errors |
+| `members` | `<symbol>` | Declarations with resolved types |
 | `symbols` | `[file]` | List symbols (all or per-file) |
-| `occurrences` | `<file>` | All occurrences in a file |
+
+**Index:**
+
+| Command | Arguments | Description |
+|---|---|---|
 | `index` | — | Force rebuild index |
 | `stats` | — | Index statistics |
 
@@ -44,6 +60,8 @@ When you pass a symbol name, scalex-sdb resolves it in this order:
 3. **Display name** — `MyService` matches by case-insensitive display name
 4. **Partial name** — `Service` matches any symbol containing "Service"
 
+Results are ranked: classes/traits first, then methods/fields, locals last.
+
 SemanticDB fully-qualified names use `/` for packages, `#` for types, `.` for terms:
 - `scala/collection/List#` — type (class/trait)
 - `scala/Predef.println(+1).` — term (method/val), `+1` disambiguates overloads
@@ -56,12 +74,11 @@ Use with `--kind` flag: `class`, `trait`, `object`, `method`, `field`, `type`, `
 
 ## JSON Output
 
-All commands support `--json`. Output is a single JSON object per invocation. Key fields vary by command:
+All commands support `--json`. Output is a single JSON object per invocation:
 
 - `lookup`/`members`/`symbols`: `{"header", "total", "symbols": [...]}`
 - `refs`/`occurrences`: `{"header", "total", "occurrences": [...]}`
-- `diagnostics`: `{"header", "total", "diagnostics": [...]}`
 - `flow`: `{"header", "lines": [...]}`
 - `related`: `{"header", "total", "related": [...]}`
-- `stats`: `{"files", "symbols", "occurrences", "diagnostics", "buildTimeMs", "cached"}`
+- `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached"}`
 - Errors: `{"error": "not_found"|"usage", "message": "..."}`
