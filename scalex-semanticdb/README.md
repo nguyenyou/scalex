@@ -103,6 +103,24 @@ scalex-sdb related UserService
 --timings                    Print timing info to stderr
 ```
 
+## Why this matters: tool call comparison
+
+Tested on a production Scala monorepo (15k files, 2M symbols). Each scenario shows how many round-trip tool calls a coding agent needs:
+
+| Scenario | grep | scalex | scalex-sdb |
+|---|---|---|---|
+| **"What happens when `createRouter` is called?"** (depth 2, 25 callees) | Impossible | Impossible | **1 call** (`flow`) |
+| **"Full call chain from `start()` depth 3"** (40+ nodes across 4 services) | ~30+ calls | ~15+ calls | **1 call** (`flow`) |
+| **"What does `TokenService.start()` call?"** (7 callees) | ~10 calls (find file, read, grep each) | ~6 calls (def, read, def each) | **1 call** (`callees`) |
+| **"Who calls `authCheck`?"** (9 callers) | 1 call — raw lines, no caller names | 1 call — text matches, no caller context | **1 call** — 9 exact caller methods |
+| **"What type does `configLayer` return?"** (inferred `ULayer[AppConfig]`) | Cannot answer | Shows `val configLayer` (no type) | **1 call** — `ULayer[AppConfig]` |
+| **"What symbols are related to `TokenService`?"** | Cannot answer | Cannot answer | **1 call** (`related`) — 1,048 co-occurring symbols ranked |
+| **"Precise refs of `authCheck`"** (no false positives) | 10 lines (includes def) | 10 text matches | **9 exact references** |
+
+The `flow` command is the clearest win: what takes a coding agent **15–30 round trips** with grep/scalex takes **1 call** with scalex-sdb.
+
+For a 3-level deep trace like `start() → checkToken → getTokenClaim → loadContext`, the agent would need to `def` → `Read` → `def` → `Read` → `def` → `Read` at minimum. scalex-sdb returns the entire tree in a single invocation.
+
 ## Performance
 
 | Project | Files | Symbols | Occurrences | Cold Index | Warm Index |
