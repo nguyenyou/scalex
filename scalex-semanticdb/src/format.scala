@@ -62,6 +62,13 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
       println(s"Occurrences:  $oc")
       println(s"Build time:   ${ms}ms${if cached then " (cached)" else ""}")
 
+    case SemCmdResult.Batch(results) =>
+      results.foreach { entry =>
+        println(s"--- ${entry.command} ---")
+        renderText(entry.result, ctx)
+        println()
+      }
+
     case SemCmdResult.NotFound(msg) =>
       println(s"Not found: $msg")
 
@@ -125,6 +132,14 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
 
     case SemCmdResult.Stats(fc, sc, oc, ms, cached) =>
       println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached}""")
+
+    case SemCmdResult.Batch(results) =>
+      val items = results.map { entry =>
+        val buf = java.io.ByteArrayOutputStream()
+        Console.withOut(buf) { Console.withErr(java.io.ByteArrayOutputStream()) { renderJson(entry.result, ctx) } }
+        s"""{"command":${jsonStr(entry.command)},"result":${buf.toString.trim}}"""
+      }
+      println(s"""{"batch":[${items.mkString(",")}]}""")
 
     case SemCmdResult.NotFound(msg) =>
       println(s"""{"error":"not_found","message":${jsonStr(msg)}}""")

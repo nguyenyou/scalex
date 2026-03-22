@@ -39,9 +39,12 @@ import java.nio.file.{Files, Path}
 
   val ctx = flagsToContext(flags, index, workspace)
 
-  val result = commands.get(cmd) match
-    case Some(handler) => handler(flags.cleanArgs, ctx)
-    case None => SemCmdResult.UsageError(s"Unknown command: $cmd\nRun with --help for usage.")
+  val result =
+    if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
+    else
+      commands.get(cmd) match
+        case Some(handler) => handler(flags.cleanArgs, ctx)
+        case None => SemCmdResult.UsageError(s"Unknown command: $cmd\nRun with --help for usage.")
 
   render(result, ctx)
   SemTimings.report()
@@ -64,6 +67,28 @@ val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = M
   "occurrences" -> cmdOccurrences,
   "stats"       -> cmdStats,
 )
+
+def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
+  if args.isEmpty then return SemCmdResult.UsageError("batch requires at least one sub-command argument.\nUsage: batch \"lookup Dog\" \"members Animal\" ...")
+
+  val results = args.map { subCmdStr =>
+    val parts = subCmdStr.trim.split("\\s+").toList
+    val (subCmd, subRest) = (parts.head, parts.tail)
+    val subFlags = parseFlags(subRest)
+    val subCtx = ctx.copy(
+      limit = if subFlags.limit == 0 then Int.MaxValue else subFlags.limit,
+      verbose = subFlags.verbose || ctx.verbose,
+      jsonOutput = ctx.jsonOutput,
+      kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
+      roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
+      depth = subFlags.depth,
+    )
+    val result = commands.get(subCmd) match
+      case Some(handler) => handler(subFlags.cleanArgs, subCtx)
+      case None => SemCmdResult.UsageError(s"Unknown command: $subCmd")
+    (command = subCmdStr, result = result)
+  }
+  SemCmdResult.Batch(results)
 
 def cmdStats(args: List[String], ctx: SemCommandContext): SemCmdResult =
   SemCmdResult.Stats(
@@ -167,6 +192,9 @@ def printUsage(): Unit =
     |  subtypes <symbol>     Who extends this
     |  members <symbol>      Declarations with resolved types
     |  symbols [file]        Symbols defined in file
+    |
+    |Batch:
+    |  batch "cmd1" "cmd2"   Run multiple queries in one invocation
     |
     |Index:
     |  index                 Rebuild index (force)

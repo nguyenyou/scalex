@@ -195,6 +195,36 @@ scalex-sdb symbols Dog.scala -w /project
 scalex-sdb symbols --kind trait -w /project
 ```
 
+### Batch
+
+#### `scalex-sdb batch "cmd1" "cmd2" ...` — multiple queries in one invocation
+
+Amortizes the ~1.5s index load across many queries. Each positional arg is a full sub-command string (command + args + flags). Results are separated by `--- <command> ---` delimiters in text mode, or wrapped in `{"batch":[...]}` in JSON mode. Unknown sub-commands produce an error for that entry without affecting others.
+
+```bash
+scalex-sdb batch "lookup Dog" "members Animal" "subtypes Shape" -w /project
+scalex-sdb batch "callers handleRequest" "flow processPayment --depth 3" -w /project
+scalex-sdb batch --json "lookup Dog" "refs greet" -w /project
+```
+```
+--- lookup Dog ---
+class Dog [case]
+  fqn: example/Dog#
+  file: src/example/Dog.scala
+
+--- members Animal ---
+3 members of 'Animal'
+  method name (src/example/Animal.scala)
+  method sound (src/example/Animal.scala)
+  method greet (src/example/Animal.scala)
+
+--- subtypes Shape ---
+Subtypes of 'Shape'
+  class Circle
+  class Rectangle
+  class Triangle
+```
+
 ### Index management
 
 ```bash
@@ -247,6 +277,11 @@ scalex-sdb type computeResult -w /project
 **"What's related to this symbol?"** — discover the conceptual neighborhood:
 ```bash
 scalex-sdb related BillingService -w /project
+```
+
+**"Verify multiple symbols in one shot"** — batch amortizes index load:
+```bash
+scalex-sdb batch "lookup UserService" "lookup PaymentService" "members Config" -w /project
 ```
 
 ## Why scalex-sdb over scalex refs
