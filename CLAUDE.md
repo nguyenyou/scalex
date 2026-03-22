@@ -123,6 +123,7 @@ scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
 - **SemanticDB generation**: Scala 3 uses `-Xsemanticdb` (built-in). Scala 2 needs the `semanticdb-scalac` plugin + `-Yrangepos`.
 - **`.semanticdb` file location**: Always under `META-INF/semanticdb/` inside a classes directory (Mill: `out/**/compile.dest/classes/`, sbt: `target/scala-*/classes/`).
 - **Callees body range**: When finding callees, skip local definitions (`local0`, etc.) for end-boundary detection — use next sibling definition (same owner) instead.
+- **Ship as assembly JAR, not GraalVM native image**: JVM JIT is ~11x faster on warm loads for this protobuf-heavy workload (1.8s vs 20s). Use `./build-native-semanticdb.sh` which runs `scala-cli package --assembly`.
 
 ## Plugin structure
 

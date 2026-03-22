@@ -154,7 +154,9 @@ scala-cli run scalex-semanticdb/src/ -- <command> [args...]
 # Run tests
 scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
 
-# Build native image
+# Build assembly JAR (requires scala-cli, produces self-executable JAR)
 ./build-native-semanticdb.sh
-# Output: ./scalex-sdb
+# Output: ./scalex-sdb (~49MB, requires Java 11+ at runtime)
 ```
+
+The assembly JAR is shipped instead of a GraalVM native image because the JVM's JIT compiler is ~11x faster on warm loads for this protobuf-heavy workload (1.8s vs 20s for 3M symbols).
