@@ -339,9 +339,11 @@ class SemIndex(val workspace: Path):
       case None => ()
 
     // Discover and parse
-    val files = semanticdbPath match
-      case Some(p) => Discovery.discoverFromExplicitPath(Path.of(p))
-      case None    => Discovery.discoverSemanticdbFiles(workspace)
+    val files = SemTimings.phase("discover") {
+      semanticdbPath match
+        case Some(p) => Discovery.discoverFromExplicitPath(Path.of(p))
+        case None    => Discovery.discoverSemanticdbFiles(workspace)
+    }
 
     if files.isEmpty then
       documents = Nil
@@ -363,9 +365,11 @@ class SemIndex(val workspace: Path):
   def rebuild(semanticdbPath: Option[String] = None): Unit =
     val start = System.currentTimeMillis()
 
-    val files = semanticdbPath match
-      case Some(p) => Discovery.discoverFromExplicitPath(Path.of(p))
-      case None    => Discovery.discoverSemanticdbFiles(workspace)
+    val files = SemTimings.phase("discover") {
+      semanticdbPath match
+        case Some(p) => Discovery.discoverFromExplicitPath(Path.of(p))
+        case None    => Discovery.discoverSemanticdbFiles(workspace)
+    }
 
     if files.isEmpty then
       documents = Nil
