@@ -147,9 +147,21 @@ Then try:
 
 > *"use scalex to explore how authentication works in this codebase"*
 
-### Other coding agents / manual install
+### Other coding agents
 
-**1. Install the binary** to `~/.local/bin`:
+Copy the skill folder to wherever your agent reads skills — that's it. The included bootstrap script auto-downloads and caches the native binary on first run.
+
+```bash
+# Clone and copy the skill folder
+git clone --depth 1 https://github.com/nguyenyou/scalex.git /tmp/scalex
+cp -r /tmp/scalex/plugins/scalex/skills/scalex /path/to/your/agent/skills/
+```
+
+The skill folder contains everything: `SKILL.md` (teaches the agent when and how to use scalex), reference docs, and a bootstrap script that downloads the correct binary for your platform.
+
+### Manual binary install
+
+If you prefer to install the binary yourself:
 
 ```bash
 mkdir -p ~/.local/bin
@@ -163,15 +175,6 @@ curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-m
 # Linux x64
 curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-linux-x64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex
 ```
-
-**2. Download the skill** (teaches your coding agent how to use scalex):
-
-```bash
-mkdir -p scalex
-curl -fsSL https://raw.githubusercontent.com/nguyenyou/scalex/main/plugins/scalex/skills/scalex/SKILL.md -o scalex/SKILL.md
-```
-
-Place the `scalex/` folder wherever your agent reads skills from.
 
 ### Run without installing
 
