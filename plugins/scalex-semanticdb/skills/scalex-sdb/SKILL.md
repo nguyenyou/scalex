@@ -252,36 +252,100 @@ scalex-sdb stats -w /project              # Show counts
 | `--exclude "p1,p2,..."` | Exclude symbols matching FQN or file path (flow/callees/callers) |
 | `--timings` | Print timing info to stderr |
 
-## Common workflows
+## Getting the most out of scalex-sdb
 
-**"Who calls this method?"** — the #1 reason to use scalex-sdb:
+### When to reach for scalex-sdb (and when not to)
+
+scalex is the better default — zero setup, fast, good enough for 90% of queries. Reach for scalex-sdb only when scalex fundamentally can't answer your question:
+
+| Question | scalex can't because... | scalex-sdb command |
+|---|---|---|
+| "Who calls `processPayment`?" | Text search finds the name but can't identify which *method* contains the call | `callers processPayment` |
+| "All references to this specific `Config`" | `refs Config` matches every `Config` in every package | `refs Config` (resolves to exact FQN) |
+| "Every class implementing `Repository`" | Text-based `impl` misses implementations in unexpected packages | `subtypes Repository` |
+| "What type does `val result = ...` have?" | Inferred types aren't written in source | `type result` |
+| "What service methods does `createOrder` call?" | Text search can't resolve which overload of `validate` is being called | `callees createOrder --smart` |
+
+### Avoiding the biggest pitfalls
+
+**Pitfall 1: Ambiguous symbol names.** If a name matches multiple symbols (e.g., `createOrder` matches both a case object and a method), scalex-sdb picks the first by rank (classes before methods). Add `--kind method` to disambiguate, or use the full FQN from `lookup`:
+
 ```bash
-scalex-sdb callers processPayment -w /project
+# Bad: might match the wrong symbol
+scalex-sdb callees createOrder
+
+# Good: explicitly target the method
+scalex-sdb callees createOrder --kind method
+
+# Best: use the FQN when you know it (zero ambiguity)
+scalex-sdb callees "com/example/OrderService#createOrder()."
 ```
 
-**"What does this method do?"** — flat list of calls, clean output:
+**Pitfall 2: Using `flow` without `--smart` on large codebases.** Raw `flow` at depth 3 can produce thousands of lines because it follows every val accessor, generated method, and utility call. On large codebases, always use `--smart`. If still too verbose, fall back to `callees --smart` (flat list, same signal, no depth explosion).
+
+**Pitfall 3: One query at a time.** Each invocation pays ~1.5s index load. Use `batch` to amortize this when verifying multiple symbols:
+
+```bash
+# Bad: 3 invocations = ~4.5s of index loading
+scalex-sdb callers handleRequest -w /project
+scalex-sdb subtypes Repository -w /project
+scalex-sdb members Config -w /project
+
+# Good: 1 invocation = ~1.5s of index loading
+scalex-sdb batch "callers handleRequest" "subtypes Repository" "members Config" -w /project
+```
+
+### Decision tree: which command to use
+
+```
+What do you need?
+│
+├─ "Who calls X?" ──────────────── callers X
+├─ "What does X call?" ─────────── callees X --kind method --smart
+├─ "Trace X through layers" ────── flow X --kind method --smart --depth 3
+├─ "All references to X" ──────── refs X
+├─ "Who implements trait X?" ───── subtypes X
+├─ "What type is X?" ──────────── type X
+├─ "What members does X have?" ── members X
+├─ "What's related to X?" ─────── related X
+└─ "Verify 5 symbols at once" ── batch "cmd1" "cmd2" "cmd3" ...
+```
+
+### Common workflows
+
+**Impact analysis** — before changing a method, find all callers:
+```bash
+scalex-sdb callers processPayment --exclude "test,integ" -w /project
+```
+
+**Understanding a method** — what it calls (clean, flat):
 ```bash
 scalex-sdb callees createOrder --kind method --smart -w /project
 ```
 
-**"Precise references (no false positives)"**:
+**Understanding a method** — recursive view into same-module internals:
 ```bash
-scalex-sdb refs MyService -w /project
+scalex-sdb flow createOrder --kind method --depth 3 --smart -w /project
 ```
 
-**"What type does this return?"** — especially useful for inferred types:
+**Documentation fact-checking** — verify many claims in one shot:
+```bash
+scalex-sdb batch \
+  "lookup UserService" \
+  "members RequestContext" \
+  "subtypes AuthProvider" \
+  "callers handleLogin" \
+  -w /project
+```
+
+**Precise references** — when the name is common (Config, Service, etc.):
+```bash
+scalex-sdb refs MyConfig -w /project
+```
+
+**Type exploration** — for inferred or complex types:
 ```bash
 scalex-sdb type computeResult -w /project
-```
-
-**"Who implements this trait?"** — exhaustive, compiler-verified:
-```bash
-scalex-sdb subtypes Repository -w /project
-```
-
-**"Verify multiple symbols in one shot"** — batch amortizes index load:
-```bash
-scalex-sdb batch "callers handleRequest" "subtypes Repository" "members Config" -w /project
 ```
 
 ## Why scalex-sdb over scalex
