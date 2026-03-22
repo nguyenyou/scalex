@@ -12,7 +12,7 @@ REPO="nguyenyou/scalex"
 ARTIFACT="scalex-sdb"
 
 # Expected SHA-256 checksum (updated each release alongside EXPECTED_VERSION)
-CHECKSUM_scalex_sdb=""
+CHECKSUM_scalex_sdb="fb8cf80d83951d56b0034b6a7c7df4427614d4c6596fcaf5e408f9598bc62e4f"
 
 # Cache location: follow XDG spec
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/scalex-semanticdb"
