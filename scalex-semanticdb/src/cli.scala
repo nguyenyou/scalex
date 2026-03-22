@@ -87,6 +87,8 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
         kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
         roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
         depth = if hasExplicitDepth then subFlags.depth else ctx.depth,
+        noAccessors = subFlags.noAccessors || ctx.noAccessors,
+        excludePatterns = if subFlags.excludePatterns.nonEmpty then subFlags.excludePatterns else ctx.excludePatterns,
       )
       val result = commands.get(subCmd) match
         case Some(handler) => handler(subFlags.cleanArgs, subCtx)
@@ -114,6 +116,8 @@ case class SemParsedFlags(
   explicitWorkspace: Option[String] = None,
   semanticdbPath: Option[String] = None,
   timingsEnabled: Boolean = false,
+  noAccessors: Boolean = false,
+  excludePatterns: List[String] = Nil,
   cleanArgs: List[String] = Nil,
 )
 
@@ -152,6 +156,12 @@ def parseFlags(args: List[String]): SemParsedFlags =
       case "--timings" =>
         flags = flags.copy(timingsEnabled = true)
         i += 1
+      case "--no-accessors" =>
+        flags = flags.copy(noAccessors = true)
+        i += 1
+      case "--exclude" if i + 1 < arr.length =>
+        flags = flags.copy(excludePatterns = arr(i + 1).split(",").map(_.trim).filter(_.nonEmpty).toList)
+        i += 2
       case arg if arg.startsWith("--") =>
         // Unknown flag, skip (and its arg if it looks like a flag-with-arg)
         i += 1
@@ -172,6 +182,8 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
     roleFilter = flags.roleFilter,
     depth = flags.depth,
     timingsEnabled = flags.timingsEnabled,
+    noAccessors = flags.noAccessors,
+    excludePatterns = flags.excludePatterns,
   )
 
 // ── Usage ──────────────────────────────────────────────────────────────────
@@ -215,6 +227,8 @@ def printUsage(): Unit =
     |  --kind K                     Filter by kind
     |  --role R                     Filter occurrences (def/ref)
     |  --depth N                    Max depth for flow/subtypes (default: 3)
+    |  --no-accessors               Exclude val/var accessors from flow/callees
+    |  --exclude "p1,p2,..."        Exclude symbols whose FQN contains any pattern
     |  --timings                    Print timing info to stderr
     |  --version                    Print version
     |""".stripMargin)

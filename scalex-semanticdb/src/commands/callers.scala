@@ -25,7 +25,7 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
       }
 
       val callerSymbols = callerFqns.toList.flatMap(ctx.index.symbolByFqn.get)
-      val filtered = filterByKind(callerSymbols, ctx.kindFilter)
+      val filtered = filterByExclude(filterByKind(callerSymbols, ctx.kindFilter), ctx.excludePatterns)
       val limited = filtered.take(ctx.limit)
       val name = symbols.head.displayName
 

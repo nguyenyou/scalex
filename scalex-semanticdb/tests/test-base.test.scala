@@ -58,6 +58,8 @@ abstract class SemTestBase extends FunSuite:
     kindFilter: Option[String] = None,
     roleFilter: Option[String] = None,
     depth: Int = 3,
+    noAccessors: Boolean = false,
+    excludePatterns: List[String] = Nil,
   ): SemCommandContext =
     SemCommandContext(
       index = index,
@@ -68,6 +70,8 @@ abstract class SemTestBase extends FunSuite:
       kindFilter = kindFilter,
       roleFilter = roleFilter,
       depth = depth,
+      noAccessors = noAccessors,
+      excludePatterns = excludePatterns,
     )
 
   private def deleteRecursive(path: Path): Unit =

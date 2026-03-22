@@ -157,4 +157,6 @@ case class SemCommandContext(
   roleFilter: Option[String] = None,
   depth: Int = 3,
   timingsEnabled: Boolean = false,
+  noAccessors: Boolean = false,
+  excludePatterns: List[String] = Nil,
 )

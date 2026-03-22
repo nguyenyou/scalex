@@ -7,6 +7,13 @@ def filterByKind(symbols: List[SemSymbol], kindFilter: Option[String]): List[Sem
       val lower = k.toLowerCase
       symbols.filter(_.kind.toString.toLowerCase == lower)
 
+def isAccessor(s: SemSymbol): Boolean =
+  (s.isVal || s.isVar) && (s.kind == SemKind.Field || s.kind == SemKind.Method)
+
+def filterByExclude(symbols: List[SemSymbol], patterns: List[String]): List[SemSymbol] =
+  if patterns.isEmpty then symbols
+  else symbols.filterNot(s => patterns.exists(p => s.fqn.contains(p)))
+
 // ── Output rendering ───────────────────────────────────────────────────────
 
 def render(result: SemCmdResult, ctx: SemCommandContext): Unit =

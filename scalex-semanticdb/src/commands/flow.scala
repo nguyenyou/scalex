@@ -28,6 +28,8 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
 
         val callees = findCallees(fqn, ctx.index)
           .filterNot(s => isTrivial(s.fqn))
+          .filterNot(s => ctx.noAccessors && isAccessor(s))
+          .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p)))
 
         callees.foreach { callee =>
           val prefix = "  " * indent

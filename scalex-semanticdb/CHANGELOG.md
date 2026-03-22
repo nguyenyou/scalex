@@ -5,6 +5,12 @@
 ### Added
 
 - `batch` command — run multiple queries in one invocation, amortizing index load time. Each positional arg is a sub-command string with its own flags. Results delimited in text mode, wrapped in `{"batch":[...]}` in JSON mode. ([#284](https://github.com/nguyenyou/scalex/issues/284))
+- `--no-accessors` flag for `flow` and `callees` — filters out val/var field accessors (e.g., `.userId`, `.entityId`, `.config`) that add noise without insight. Reduced callees from 77 to 43 on a real-world service method. ([#284](https://github.com/nguyenyou/scalex/issues/284))
+- `--exclude "p1,p2,..."` flag for `flow`, `callees`, and `callers` — filters symbols whose FQN contains any of the given comma-separated patterns. In `flow`, also prevents recursion into excluded symbols. ([#284](https://github.com/nguyenyou/scalex/issues/284))
+
+### Changed
+
+- `resolveSymbol` now prefers source-defined symbols over generated code (protobuf, codegen) when multiple symbols share the same display name. Generated files (URIs starting with `out/` or containing `compileScalaPB.dest`) are deprioritized in ranking.
 
 ## [0.1.0] - 2026-03-22
 

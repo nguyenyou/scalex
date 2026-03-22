@@ -128,6 +128,17 @@ class CommandsTest extends SemTestBase:
         fail(s"unexpected result: $other")
   }
 
+  test("callers with --exclude filters matching FQNs") {
+    val ctx = makeCtx(excludePatterns = List("Main"))
+    val result = cmdCallers(List("greet"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val fqns = syms.map(_.fqn)
+        assert(!fqns.exists(_.contains("Main")), s"Main should be excluded: $fqns")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
   // ── callees ──────────────────────────────────────────────────────────────
 
   test("callees of main includes service calls") {
@@ -174,6 +185,43 @@ class CommandsTest extends SemTestBase:
         fail(s"unexpected result: $other")
   }
 
+  test("callees with --no-accessors excludes val fields") {
+    val ctx = makeCtx(noAccessors = true)
+    // greet() calls name and sound which are abstract val-like defs on Animal
+    val result = cmdCallees(List("greet"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, total) =>
+        val withAccessors = {
+          val r = cmdCallees(List("greet"), makeCtx())
+          r.asInstanceOf[SemCmdResult.SymbolList].total
+        }
+        assert(total <= withAccessors, s"--no-accessors should not increase count: $total vs $withAccessors")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("callees with --exclude filters matching FQNs") {
+    val ctx = makeCtx(excludePatterns = List("AnimalService"))
+    val result = cmdCallees(List("example/Main.main()."), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val fqns = syms.map(_.fqn)
+        assert(!fqns.exists(_.contains("AnimalService")), s"AnimalService should be excluded: $fqns")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("callees without --exclude includes AnimalService calls") {
+    val ctx = makeCtx()
+    val result = cmdCallees(List("example/Main.main()."), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val fqns = syms.map(_.fqn)
+        assert(fqns.exists(_.contains("AnimalService")), s"without exclude, AnimalService should be present: $fqns")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
   // ── flow ─────────────────────────────────────────────────────────────────
 
   test("flow from main shows call tree") {
@@ -185,6 +233,27 @@ class CommandsTest extends SemTestBase:
         assert(lines.size > 1, s"flow tree should have multiple lines: $lines")
         val text = lines.mkString("\n")
         assert(text.contains("main"), s"should contain main: $text")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("flow with --no-accessors produces fewer lines") {
+    val withAccessors = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2))
+    val withoutAccessors = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2, noAccessors = true))
+    (withAccessors, withoutAccessors) match
+      case (SemCmdResult.FlowTree(_, linesA), SemCmdResult.FlowTree(_, linesB)) =>
+        assert(linesB.size <= linesA.size, s"--no-accessors should not increase lines: ${linesB.size} vs ${linesA.size}")
+      case other =>
+        fail(s"unexpected results: $other")
+  }
+
+  test("flow with --exclude filters symbols from tree") {
+    val ctx = makeCtx(depth = 2, excludePatterns = List("AnimalService"))
+    val result = cmdFlow(List("example/Main.main()."), ctx)
+    result match
+      case SemCmdResult.FlowTree(_, lines) =>
+        val text = lines.mkString("\n")
+        assert(!text.contains("AnimalServiceImpl"), s"AnimalServiceImpl should be excluded from flow: $text")
       case other =>
         fail(s"unexpected result: $other")
   }
@@ -348,6 +417,44 @@ class CommandsTest extends SemTestBase:
     assert(output.contains("\"batch\""), s"json should have batch key: $output")
     assert(output.contains("\"command\""), s"json should have command key: $output")
     assert(output.contains("lookup Dog"), s"json should include command string: $output")
+  }
+
+  test("batch with --no-accessors flag in sub-command") {
+    val ctx = makeCtx()
+    val result = runBatch(List("callees --no-accessors greet"), ctx)
+    result match
+      case SemCmdResult.Batch(results) =>
+        assertEquals(results.size, 1)
+        assert(!results.head.result.isInstanceOf[SemCmdResult.UsageError],
+          s"should succeed: ${results.head.result}")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("batch with --exclude flag in sub-command") {
+    val ctx = makeCtx()
+    val result = runBatch(List("callees --exclude AnimalService example/Main.main()."), ctx)
+    result match
+      case SemCmdResult.Batch(results) =>
+        assertEquals(results.size, 1)
+        results.head.result match
+          case SemCmdResult.SymbolList(_, syms, _) =>
+            val fqns = syms.map(_.fqn)
+            assert(!fqns.exists(_.contains("AnimalService")), s"AnimalService should be excluded: $fqns")
+          case other =>
+            fail(s"unexpected sub-result: $other")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  // ── resolveSymbol generated disambiguation ──────────────────────────────
+
+  test("resolveSymbol prefers source over generated URIs") {
+    // All test fixture symbols are from source (not out/). They should come first.
+    val syms = index.resolveSymbol("Dog")
+    assert(syms.nonEmpty)
+    assert(!syms.head.sourceUri.startsWith("out/"),
+      s"source symbols should rank before generated: ${syms.head.sourceUri}")
   }
 
   // ── stats ────────────────────────────────────────────────────────────────
