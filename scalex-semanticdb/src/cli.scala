@@ -27,7 +27,7 @@ import java.nio.file.{Files, Path}
     index.rebuild(flags.semanticdbPath)
     val result = SemCmdResult.Stats(
       index.fileCount, index.symbolCount, index.occurrenceCount,
-      index.diagnosticCount, index.buildTimeMs, index.cachedLoad,
+      index.buildTimeMs, index.cachedLoad,
     )
     val ctx = flagsToContext(flags, index, workspace)
     render(result, ctx)
@@ -60,7 +60,6 @@ val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = M
   "callees"     -> cmdCallees,
   "flow"        -> cmdFlow,
   "related"     -> cmdRelated,
-  "diagnostics" -> cmdDiagnostics,
   "symbols"     -> cmdSymbols,
   "occurrences" -> cmdOccurrences,
   "stats"       -> cmdStats,
@@ -84,7 +83,7 @@ val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = M
 def cmdStats(args: List[String], ctx: SemCommandContext): SemCmdResult =
   SemCmdResult.Stats(
     ctx.index.fileCount, ctx.index.symbolCount, ctx.index.occurrenceCount,
-    ctx.index.diagnosticCount, ctx.index.buildTimeMs, ctx.index.cachedLoad,
+    ctx.index.buildTimeMs, ctx.index.cachedLoad,
   )
 
 // ── Flag parsing ───────────────────────────────────────────────────────────
@@ -182,7 +181,6 @@ def printUsage(): Unit =
     |  callees <symbol>      What does this method call
     |  flow <method>         Downstream call tree
     |  related <symbol>      Co-occurring symbols
-    |  diagnostics [file]    Compiler warnings/errors
     |  symbols [file]        Symbols defined in file
     |  occurrences <file>    All occurrences in file
     |  index                 Rebuild index (force)

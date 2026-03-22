@@ -4,7 +4,7 @@ import scala.jdk.CollectionConverters.*
 import scala.meta.internal.semanticdb.{
   TextDocuments, TextDocument,
   SymbolInformation => SdbInfo, SymbolOccurrence => SdbOcc,
-  Diagnostic => SdbDiag, Signature => SdbSig,
+  Signature => SdbSig,
   ClassSignature, MethodSignature, TypeSignature, ValueSignature,
   Type => SdbType, TypeRef, SingleType, ThisType, SuperType,
   IntersectionType, UnionType, WithType, AnnotatedType,
@@ -42,13 +42,11 @@ object Parser:
     val symtab = PrinterSymtab.fromTextDocument(doc)
     val symbols = doc.symbols.iterator.map(info => convertSymbol(info, doc.uri, symtab)).toList
     val occurrences = doc.occurrences.iterator.map(occ => convertOccurrence(occ, doc.uri)).toList
-    val diagnostics = doc.diagnostics.iterator.map(diag => convertDiagnostic(diag, doc.uri)).toList
     IndexedDocument(
       uri = doc.uri,
       md5 = doc.md5,
       symbols = symbols,
       occurrences = occurrences,
-      diagnostics = diagnostics,
     )
 
   // ── Symbol conversion ──────────────────────────────────────────────────
@@ -129,21 +127,3 @@ object Parser:
       role = OccRole.fromSdb(occ.role),
     )
 
-  // ── Diagnostic conversion ──────────────────────────────────────────────
-
-  private def convertDiagnostic(diag: SdbDiag, uri: String): SemDiagnostic =
-    val range = diag.range match
-      case Some(r) => SemRange(r.startLine, r.startCharacter, r.endLine, r.endCharacter)
-      case None    => SemRange(0, 0, 0, 0)
-    val severity = diag.severity match
-      case SdbDiag.Severity.ERROR       => "error"
-      case SdbDiag.Severity.WARNING     => "warning"
-      case SdbDiag.Severity.INFORMATION => "info"
-      case SdbDiag.Severity.HINT        => "hint"
-      case _                            => "unknown"
-    SemDiagnostic(
-      file = uri,
-      range = range,
-      severity = severity,
-      message = diag.message,
-    )

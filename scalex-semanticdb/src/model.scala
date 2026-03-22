@@ -121,19 +121,11 @@ case class SemOccurrence(
   role: OccRole,
 )
 
-case class SemDiagnostic(
-  file: String,
-  range: SemRange,
-  severity: String,
-  message: String,
-)
-
 case class IndexedDocument(
   uri: String,
   md5: String,
   symbols: List[SemSymbol],
   occurrences: List[SemOccurrence],
-  diagnostics: List[SemDiagnostic],
 )
 
 // ── Result types ───────────────────────────────────────────────────────────
@@ -142,12 +134,11 @@ enum SemCmdResult:
   case SymbolDetail(sym: SemSymbol)
   case SymbolList(header: String, symbols: List[SemSymbol], total: Int)
   case OccurrenceList(header: String, occs: List[SemOccurrence], total: Int)
-  case DiagnosticList(header: String, diags: List[SemDiagnostic], total: Int)
   case TypeResult(symbol: String, typeString: String)
   case Tree(header: String, lines: List[String])
   case FlowTree(header: String, lines: List[String])
   case RelatedList(header: String, entries: List[(SemSymbol, Int)], total: Int)
-  case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, diagnosticCount: Int, buildTimeMs: Long, cached: Boolean)
+  case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, buildTimeMs: Long, cached: Boolean)
   case PackageList(header: String, packages: List[String], total: Int)
   case SummaryList(header: String, entries: List[(String, Int)], total: Int)
   case FileList(header: String, files: List[String], total: Int)

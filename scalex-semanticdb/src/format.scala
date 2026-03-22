@@ -37,14 +37,6 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
       if total > occs.size then
         println(s"... and ${total - occs.size} more")
 
-    case SemCmdResult.DiagnosticList(header, diags, total) =>
-      println(header)
-      diags.foreach { d =>
-        println(s"  [${d.severity}] ${d.file}:${d.range.startLine + 1}: ${d.message}")
-      }
-      if total > diags.size then
-        println(s"... and ${total - diags.size} more")
-
     case SemCmdResult.TypeResult(symbol, typeString) =>
       println(s"$symbol: $typeString")
 
@@ -64,11 +56,10 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
       if total > entries.size then
         println(s"... and ${total - entries.size} more")
 
-    case SemCmdResult.Stats(fc, sc, oc, dc, ms, cached) =>
+    case SemCmdResult.Stats(fc, sc, oc, ms, cached) =>
       println(s"Files:        $fc")
       println(s"Symbols:      $sc")
       println(s"Occurrences:  $oc")
-      println(s"Diagnostics:  $dc")
       println(s"Build time:   ${ms}ms${if cached then " (cached)" else ""}")
 
     case SemCmdResult.PackageList(header, pkgs, total) =>
@@ -153,12 +144,6 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
       }
       println(s"""{"header":${jsonStr(header)},"total":$total,"occurrences":[${items.mkString(",")}]}""")
 
-    case SemCmdResult.DiagnosticList(header, diags, total) =>
-      val items = diags.map { d =>
-        s"""{"file":${jsonStr(d.file)},"line":${d.range.startLine + 1},"severity":${jsonStr(d.severity)},"message":${jsonStr(d.message)}}"""
-      }
-      println(s"""{"header":${jsonStr(header)},"total":$total,"diagnostics":[${items.mkString(",")}]}""")
-
     case SemCmdResult.TypeResult(symbol, typeString) =>
       println(s"""{"symbol":${jsonStr(symbol)},"type":${jsonStr(typeString)}}""")
 
@@ -174,8 +159,8 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
       }
       println(s"""{"header":${jsonStr(header)},"total":$total,"related":[${items.mkString(",")}]}""")
 
-    case SemCmdResult.Stats(fc, sc, oc, dc, ms, cached) =>
-      println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"diagnostics":$dc,"buildTimeMs":$ms,"cached":$cached}""")
+    case SemCmdResult.Stats(fc, sc, oc, ms, cached) =>
+      println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached}""")
 
     case SemCmdResult.PackageList(header, pkgs, total) =>
       println(s"""{"header":${jsonStr(header)},"total":$total,"packages":[${pkgs.map(jsonStr).mkString(",")}]}""")

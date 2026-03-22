@@ -6,7 +6,7 @@ import java.io.{BufferedInputStream, BufferedOutputStream, DataInputStream, Data
 
 object SemPersistence:
   private val MAGIC = 0x53454D44 // "SEMD"
-  private val VERSION: Byte = 1
+  private val VERSION: Byte = 2
 
   def indexPath(workspace: Path): Path =
     workspace.resolve(".scalex").resolve("semanticdb.bin")
@@ -32,9 +32,6 @@ object SemPersistence:
       }
       doc.occurrences.foreach { o =>
         intern(o.file); intern(o.symbol)
-      }
-      doc.diagnostics.foreach { d =>
-        intern(d.file); intern(d.severity); intern(d.message)
       }
     }
 
@@ -84,17 +81,6 @@ object SemPersistence:
           out.writeByte(o.role.id)
         }
 
-        // Diagnostics
-        out.writeInt(doc.diagnostics.size)
-        doc.diagnostics.foreach { d =>
-          out.writeInt(intern(d.file))
-          out.writeInt(d.range.startLine)
-          out.writeShort(d.range.startChar)
-          out.writeInt(d.range.endLine)
-          out.writeShort(d.range.endChar)
-          out.writeInt(intern(d.severity))
-          out.writeInt(intern(d.message))
-        }
       }
     finally out.close()
 
@@ -155,20 +141,7 @@ object SemPersistence:
             occs += SemOccurrence(file, SemRange(sl, sc, el, ec), symbol, role)
             oi += 1
 
-          // Diagnostics
-          val diagCount = in.readInt()
-          val diags = List.newBuilder[SemDiagnostic]
-          var ddi = 0
-          while ddi < diagCount do
-            val file = strings(in.readInt())
-            val sl = in.readInt(); val sc = in.readShort()
-            val el = in.readInt(); val ec = in.readShort()
-            val severity = strings(in.readInt())
-            val message = strings(in.readInt())
-            diags += SemDiagnostic(file, SemRange(sl, sc, el, ec), severity, message)
-            ddi += 1
-
-          docs += IndexedDocument(uri, md5, syms.result(), occs.result(), diags.result())
+          docs += IndexedDocument(uri, md5, syms.result(), occs.result())
           di += 1
 
         Some(docs.result())
@@ -215,7 +188,6 @@ class SemIndex(val workspace: Path):
   def fileCount: Int = documents.size
   def symbolCount: Int = documents.iterator.map(_.symbols.size).sum
   def occurrenceCount: Int = documents.iterator.map(_.occurrences.size).sum
-  def diagnosticCount: Int = documents.iterator.map(_.diagnostics.size).sum
 
   // ── Primary indexes ────────────────────────────────────────────────────
 
@@ -272,11 +244,6 @@ class SemIndex(val workspace: Path):
       allSymbols
         .filter(s => s.owner.nonEmpty && s.kind != SemKind.Parameter && s.kind != SemKind.TypeParam)
         .groupBy(_.owner)
-    }
-
-  lazy val diagnosticsByFile: Map[String, List[SemDiagnostic]] =
-    SemTimings.phase("build-diagnosticsByFile") {
-      documents.flatMap(_.diagnostics).groupBy(_.file)
     }
 
   /** Map from symbol FQN → (file, definition range). Built from DEFINITION occurrences. */

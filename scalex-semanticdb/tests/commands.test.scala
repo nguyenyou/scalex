@@ -173,16 +173,6 @@ class CommandsTest extends SemTestBase:
         fail(s"unexpected result: $other")
   }
 
-  // ── diagnostics ──────────────────────────────────────────────────────────
-
-  test("diagnostics returns list (may be empty for clean code)") {
-    val ctx = makeCtx()
-    val result = cmdDiagnostics(Nil, ctx)
-    result match
-      case SemCmdResult.DiagnosticList(_, _, _) => () // ok
-      case other => fail(s"unexpected result: $other")
-  }
-
   // ── symbols ──────────────────────────────────────────────────────────────
 
   test("symbols lists all symbols") {
@@ -249,7 +239,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdStats(Nil, ctx)
     result match
-      case SemCmdResult.Stats(fc, sc, oc, _, _, _) =>
+      case SemCmdResult.Stats(fc, sc, oc, _, _) =>
         assert(fc > 0, "should have files")
         assert(sc > 0, "should have symbols")
         assert(oc > 0, "should have occurrences")
