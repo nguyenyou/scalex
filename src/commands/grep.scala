@@ -8,7 +8,11 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
     case None => CmdResult.UsageError("Usage: scalex grep <pattern>")
     case Some(rawPattern) =>
       val (pattern, wasFixed) = fixPosixRegex(rawPattern)
-      val stderrHint = if wasFixed then Some(s"""  Note: auto-corrected POSIX regex to Java regex: "$rawPattern" → "$pattern"""") else None
+      val isLiteralQuoted = wasFixed && pattern.startsWith("\\Q")
+      val stderrHint =
+        if isLiteralQuoted then Some(s"""  Note: invalid regex, treating as literal search: "$rawPattern"""")
+        else if wasFixed then Some(s"""  Note: auto-corrected POSIX regex to Java regex: "$rawPattern" → "$pattern"""")
+        else None
       val hint = if wasFixed then Some(s""","corrected":"$pattern"""") else None
       ctx.inOwner match
         case Some(owner) if ctx.eachMethod =>

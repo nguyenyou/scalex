@@ -176,15 +176,12 @@ class CliSuite extends ScalexTestBase:
     assert(!changed)
   }
 
-  test("fixPosixRegex corrects invalid pattern when auto-fix helps") {
-    // Unbalanced "(" is invalid Java regex; replacing \( → ( doesn't help here
-    // but unescaped alternation like "a\|b" where \| makes it valid already — no correction needed
-    // Test a pattern that is genuinely invalid and fixable:
-    // "foo(" is invalid (unclosed group), but the POSIX auto-corrector only targets \| \( \)
-    // so this tests the passthrough for unfixable patterns
+  test("fixPosixRegex auto-quotes unfixable patterns as literal") {
+    // "foo(" is invalid Java regex (unclosed group) and POSIX fix doesn't help,
+    // so it should be auto-quoted as a literal string via Pattern.quote
     val (fixed, changed) = fixPosixRegex("foo(")
-    assertEquals(fixed, "foo(")
-    assert(!changed)
+    assertEquals(fixed, java.util.regex.Pattern.quote("foo("))
+    assert(changed)
   }
 
   test("fixPosixRegex is no-op for valid Java regex") {

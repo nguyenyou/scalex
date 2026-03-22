@@ -19,7 +19,8 @@ def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
         (fixed, true)
       catch
         case _: java.util.regex.PatternSyntaxException =>
-          (pattern, false) // auto-correction didn't help, return original
+          // Pattern is invalid even after POSIX fix — treat as literal string
+          (java.util.regex.Pattern.quote(pattern), true)
 
 // ── Suggestions for not-found ────────────────────────────────────────────────
 

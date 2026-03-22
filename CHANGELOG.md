@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `grep` no longer errors on invalid regex patterns (e.g. `MyRenderer(`) — auto-quotes them as literal strings instead of failing with "Invalid regex: Unclosed group"
+
 ### Changed
 - `tests --count` now reports dynamic test sites (string interpolation, concatenation) alongside literal test count; output format changed from `N suites, M tests` to `M tests (literal names only) across N suites` with dynamic site count when detected (#259)
 
