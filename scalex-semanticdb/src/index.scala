@@ -358,6 +358,41 @@ class SemIndex(val workspace: Path):
 
   // ── Build ──────────────────────────────────────────────────────────────
 
+  /** Mill generated-source markers in URIs. Files with these are copies of real sources. */
+  private val generatedSourceMarkers = List(
+    "jsSharedSources.dest/", "jvmSharedSources.dest/",
+    "nativeSharedSources.dest/",
+  )
+
+  /** Deduplicate documents where a generated copy duplicates a real source file.
+    * Extracts the "source identity" from each URI (package path + filename) and
+    * when two documents share the same identity, keeps the non-generated one. */
+  private def deduplicateDocuments(docs: List[IndexedDocument]): List[IndexedDocument] =
+    // Group by source identity: extract the meaningful suffix from the URI
+    // e.g. "out/modules/foo/js/jsSharedSources.dest/com/example/Foo.scala" → "com/example/Foo.scala"
+    // e.g. "modules/foo/shared/src/com/example/Foo.scala" → "com/example/Foo.scala"
+    def sourceIdentity(uri: String): String =
+      // For generated sources, extract path after the marker
+      val genMatch = generatedSourceMarkers.collectFirst {
+        case marker if uri.contains(marker) =>
+          uri.substring(uri.indexOf(marker) + marker.length)
+      }
+      genMatch.getOrElse {
+        // For real sources, extract path after last "src/" segment
+        val srcIdx = uri.lastIndexOf("src/")
+        if srcIdx >= 0 then uri.substring(srcIdx + 4)
+        else uri
+      }
+
+    val grouped = docs.groupBy(d => sourceIdentity(d.uri))
+    grouped.values.map { group =>
+      if group.size == 1 then group.head
+      else
+        // Prefer non-generated source
+        group.find(d => !generatedSourceMarkers.exists(d.uri.contains))
+          .getOrElse(group.head)
+    }.toList
+
   /** Build the index: discover .semanticdb files, parse, and persist. */
   def build(semanticdbPath: Option[String] = None): Unit =
     val start = System.currentTimeMillis()
@@ -383,8 +418,12 @@ class SemIndex(val workspace: Path):
       buildTimeMs = System.currentTimeMillis() - start
       return
 
-    documents = SemTimings.phase("parse-semanticdb") {
+    val parsed = SemTimings.phase("parse-semanticdb") {
       Parser.loadDocuments(files)
+    }
+
+    documents = SemTimings.phase("dedup-documents") {
+      deduplicateDocuments(parsed)
     }
 
     // Persist
@@ -409,8 +448,12 @@ class SemIndex(val workspace: Path):
       buildTimeMs = System.currentTimeMillis() - start
       return
 
-    documents = SemTimings.phase("parse-semanticdb") {
+    val parsed = SemTimings.phase("parse-semanticdb") {
       Parser.loadDocuments(files)
+    }
+
+    documents = SemTimings.phase("dedup-documents") {
+      deduplicateDocuments(parsed)
     }
 
     SemTimings.phase("save-index") {
