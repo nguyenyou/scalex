@@ -53,13 +53,11 @@ jobs:
           path: artifacts
 
       - name: Make binary executable
-        run: chmod +x artifacts/*/scalex-sdb
+        run: chmod +x artifacts/scalex-sdb/scalex-sdb
 
       - name: Generate checksum
         run: |
-          cd artifacts
-          shasum -a 256 */scalex-sdb | sed 's|[^/]*/||' > ../checksums.txt
-          cd ..
+          shasum -a 256 artifacts/scalex-sdb/scalex-sdb | sed 's|.*/||' > checksums.txt
           echo "Generated checksums.txt:"
           cat checksums.txt
 
@@ -67,7 +65,7 @@ jobs:
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: |
-            artifacts/*/scalex-sdb
+            artifacts/scalex-sdb/scalex-sdb
 
       - name: Extract changelog
         id: changelog
@@ -82,6 +80,7 @@ jobs:
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           files: |
-            artifacts/*/scalex-sdb
+            artifacts/scalex-sdb/scalex-sdb
+            artifacts/scalex-sdb/scalex-sdb.sha256
             checksums.txt
           body: ${{ steps.changelog.outputs.body }}
