@@ -447,17 +447,9 @@ Both overlap on purpose. Use whichever fits. Use both.
 
 ### Install scalex-intellij
 
-It's a separate plugin in the same marketplace. If you already have scalex installed:
+It's a separate plugin in the same marketplace:
 
 ```bash
-/plugin install scalex-intellij@scalex-marketplace
-```
-
-Or install both at once when setting up from scratch:
-
-```bash
-/plugin marketplace add nguyenyou/scalex
-/plugin install scalex@scalex-marketplace
 /plugin install scalex-intellij@scalex-marketplace
 ```
 
