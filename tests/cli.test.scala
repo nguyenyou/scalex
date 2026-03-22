@@ -157,7 +157,7 @@ class CliSuite extends ScalexTestBase:
 
   test("hasRegexHint detects POSIX-style backslash-pipe") {
     assert(hasRegexHint("class\\|trait"))
-    assert(hasRegexHint("\\(group\\)"))
+    assert(!hasRegexHint("\\(group\\)")) // \( / \) are not ambiguous — same meaning in POSIX and Java
     assert(!hasRegexHint("class|trait"))
     assert(!hasRegexHint("simple"))
   }
@@ -170,18 +170,40 @@ class CliSuite extends ScalexTestBase:
     assert(changed)
   }
 
-  test("fixPosixRegex converts backslash-parens to grouping") {
-    // \( \) \| are valid Java regex (literal parens/pipe) but users intend
-    // POSIX grouping+alternation — must convert to "(foo|bar)"
-    val (fixed, changed) = fixPosixRegex("\\(foo\\|bar\\)")
-    assertEquals(fixed, "(foo|bar)")
+  test("fixPosixRegex does not convert backslash-parens (regression #270)") {
+    // "test\(" is valid Java regex matching literal "(". Converting \( to (
+    // produces "test(" — an unclosed group — which falls back to Pattern.quote
+    // and breaks the original intent. Only \| should be converted.
+    val (fixed, changed) = fixPosixRegex("test\\(")
+    assertEquals(fixed, "test\\(")
+    assert(!changed)
+  }
+
+  test("fixPosixRegex converts only \\| in mixed \\| + \\( pattern (#270)") {
+    // Pattern has both \| and \( — must convert \| to alternation but
+    // leave \( alone so it still matches a literal paren
+    val (fixed, changed) = fixPosixRegex("foo\\(\\|bar")
+    assertEquals(fixed, "foo\\(|bar")
     assert(changed)
+    // Verify the result actually compiles and matches both alternatives
+    val regex = java.util.regex.Pattern.compile(fixed)
+    assert(regex.matcher("foo(").find())
+    assert(regex.matcher("bar").find())
   }
 
   test("fixPosixRegex converts multi-alternative backslash-pipe patterns") {
     // Real-world agent pattern: optimizer\|Optimizer\|IncOptimizer
     val (fixed, changed) = fixPosixRegex("optimizer\\|Optimizer\\|IncOptimizer")
     assertEquals(fixed, "optimizer|Optimizer|IncOptimizer")
+    assert(changed)
+  }
+
+  test("fixPosixRegex fallback quotes converted pattern not original (#270)") {
+    // "foo\|[unclosed" — has \| hint, converts to "foo|[unclosed" (still invalid).
+    // Fallback should quote the converted form so the literal search matches
+    // "foo|[unclosed" (with real pipe), not "foo\|[unclosed" (with backslash).
+    val (fixed, changed) = fixPosixRegex("foo\\|[unclosed")
+    assertEquals(fixed, java.util.regex.Pattern.quote("foo|[unclosed"))
     assert(changed)
   }
 
