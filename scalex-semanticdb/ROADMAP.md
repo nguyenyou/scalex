@@ -5,6 +5,15 @@
 - [ ] **Entrypoints false positives** — `extends App` check matches any parent containing "App" (ZIOApp, ScalaJSApp, etc.). Tighten to exact `scala/App#` FQN.
 - [ ] **Imports heuristic too conservative** — line < 15 threshold misses imports on later lines. Increase threshold or use occurrence context to detect import statements.
 
+## Generated file / symbol noise
+
+On a production monorepo: 3,008 generated files (26% of index), 600K symbols from `out/` URIs.
+
+- [ ] **Deduplicate `jsSharedSources.dest/`** — Mill copies shared sources to `out/**/jsSharedSources.dest/`. These are exact duplicates of real source files and pollute lookup results (e.g. `Page` appears twice). Keep only the source version.
+- [ ] **`--no-generated` flag** — optional filter to exclude files with `out/` URI prefix. Useful for `lookup`, `symbols`, `annotated`, `packages` where generated code inflates results (e.g. `annotated deprecated` returns 790 vs 9 because scalapb generates `@deprecated` on accessors).
+- [ ] **Filter compiler synthetics by default** — hide `$lessinit$greater`, `_1`, `_2`, `copy$default$N`, `unapply`, `$anonfun` in `lookup`/`symbols` output unless `--verbose`. These are compiler-generated methods on case classes that clutter results.
+- [ ] **Keep protobuf-generated types indexed** — `compileScalaPB.dest/` types are referenced by real Scala code. Don't exclude them, but mark them as generated so they can be filtered optionally.
+
 ## Output quality
 
 - [ ] **Show line numbers in default output** — use `definitionRanges` to add `:line` to file paths (currently only shown with `--verbose`)
