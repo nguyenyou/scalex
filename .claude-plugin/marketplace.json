@@ -24,6 +24,21 @@
       "tags": ["scala", "scala3", "navigation", "find-definition", "find-references"]
     },
     {
+      "name": "scalex-semanticdb",
+      "source": "./plugins/scalex-semanticdb",
+      "description": "Compiler-precise Scala code intelligence from SemanticDB — call graphs, precise references, resolved types, flow analysis. Companion to scalex for compiled codebases.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Tu Nguyen"
+      },
+      "homepage": "https://github.com/nguyenyou/scalex",
+      "repository": "https://github.com/nguyenyou/scalex",
+      "license": "MIT",
+      "keywords": ["scala", "semanticdb", "call-graph", "code-intelligence", "type-info"],
+      "category": "code-intelligence",
+      "tags": ["scala", "semanticdb", "callers", "callees", "flow", "precise-references"]
+    },
+    {
       "name": "scalex-intellij",
       "source": "./plugins/scalex-intellij",
       "description": "JetBrains IntelliJ IDEA integration for coding agents — build, compile, run tests, inspections, semantic rename, and compiler-resolved code intelligence via MCP Server.",

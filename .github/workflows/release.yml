@@ -14,7 +14,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
+  build-scalex:
     strategy:
       fail-fast: false
       matrix:
@@ -63,8 +63,54 @@ jobs:
             ${{ matrix.artifact }}
             ${{ matrix.artifact }}.sha256
 
+  build-scalex-semanticdb:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            artifact: scalex-semanticdb-macos-arm64
+          - os: macos-15-intel
+            artifact: scalex-semanticdb-macos-x64
+          - os: ubuntu-24.04
+            artifact: scalex-semanticdb-linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: graalvm/setup-graalvm@03e8abf916fd0e281b2efe7b2da3378bb0a1d085 # v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: VirtusLab/scala-cli-setup@59e308800210b0414d2d7190068c80021e1b3e5d # v1
+        with:
+          power: true
+          jvm: graalvm-java21
+
+      - name: Build native image
+        run: ./build-native-semanticdb.sh ${{ matrix.artifact }}
+
+      - name: Test binary
+        run: |
+          ./${{ matrix.artifact }} --help
+          ./${{ matrix.artifact }} --version
+
+      - name: Generate checksum
+        run: shasum -a 256 ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+
   release:
-    needs: build
+    needs: [build-scalex, build-scalex-semanticdb]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -74,12 +120,15 @@ jobs:
           path: artifacts
 
       - name: Make binaries executable
-        run: chmod +x artifacts/*/scalex-macos-* artifacts/*/scalex-linux-*
+        run: chmod +x artifacts/*/scalex-* artifacts/*/scalex-semanticdb-*
 
       - name: Generate combined checksums
         run: |
           cd artifacts
-          shasum -a 256 */scalex-macos-arm64 */scalex-macos-x64 */scalex-linux-x64 | sed 's|[^/]*/||' > ../checksums.txt
+          shasum -a 256 \
+            */scalex-macos-arm64 */scalex-macos-x64 */scalex-linux-x64 \
+            */scalex-semanticdb-macos-arm64 */scalex-semanticdb-macos-x64 */scalex-semanticdb-linux-x64 \
+            | sed 's|[^/]*/||' > ../checksums.txt
           cd ..
           echo "Generated checksums.txt:"
           cat checksums.txt
@@ -91,6 +140,9 @@ jobs:
             artifacts/*/scalex-macos-arm64
             artifacts/*/scalex-macos-x64
             artifacts/*/scalex-linux-x64
+            artifacts/*/scalex-semanticdb-macos-arm64
+            artifacts/*/scalex-semanticdb-macos-x64
+            artifacts/*/scalex-semanticdb-linux-x64
 
       - name: Extract changelog
         id: changelog

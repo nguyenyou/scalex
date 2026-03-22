@@ -106,6 +106,24 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 - `com.google.guava:guava:33.5.0-jre` — bloom filters
 - `org.scalameta::munit:1.2.4` — test framework (test only)
 
+## scalex-semanticdb module
+
+Standalone SemanticDB index & query tool at `scalex-semanticdb/`. Zero shared code with main scalex.
+
+```bash
+# Run
+scala-cli run scalex-semanticdb/src/ -- <command> [args...]
+
+# Test (compiles fixtures with -Xsemanticdb, needs ~30s first run)
+scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
+```
+
+### Gotchas
+- **`semanticdb-shared` has no `_3` artifact on Maven Central** — use `org.scalameta:semanticdb-shared_2.13:4.15.2` (single `:`, Java-style dep). The `_2.13` jar works fine with Scala 3.
+- **SemanticDB generation**: Scala 3 uses `-Xsemanticdb` (built-in). Scala 2 needs the `semanticdb-scalac` plugin + `-Yrangepos`.
+- **`.semanticdb` file location**: Always under `META-INF/semanticdb/` inside a classes directory (Mill: `out/**/compile.dest/classes/`, sbt: `target/scala-*/classes/`).
+- **Callees body range**: When finding callees, skip local definitions (`local0`, etc.) for end-boundary detection — use next sibling definition (same owner) instead.
+
 ## Plugin structure
 
 ```

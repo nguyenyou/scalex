@@ -21,6 +21,7 @@
 - [Commands](#commands)
 - [What Makes It Coding-Agent-Friendly](#what-makes-it-coding-agent-friendly)
 - [Scalex vs Grep — Honest Comparison](#scalex-vs-grep--honest-comparison)
+- [scalex-semanticdb: Compiler-Precise Code Intelligence](#scalex-semanticdb-compiler-precise-code-intelligence)
 - [scalex-intellij: Squeeze More from Your Running IDE](#scalex-intellij-squeeze-more-from-your-running-ide)
 - [Credits](#credits)
 - [Name](#name)
@@ -139,12 +140,15 @@ Installs the binary + skill (teaches Claude when and how to use scalex) in one s
 
 ```bash
 /plugin marketplace add nguyenyou/scalex
-/plugin install scalex@scalex-marketplace
+/plugin install scalex@scalex-marketplace              # source-level (zero setup)
+/plugin install scalex-semanticdb@scalex-marketplace   # compiler-precise (needs compiled .semanticdb)
 ```
 
 Then try:
 
 > *"use scalex to explore how authentication works in this codebase"*
+>
+> *"use scalex-sdb to trace the call flow from handleRequest"*
 
 ### Other coding agents / manual install
 
@@ -416,38 +420,71 @@ scalex imports Compiler
 
 **Best approach: use both.** Scalex for Scala-aware navigation, Grep for text search. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
 
-## scalex-intellij: Squeeze More from Your Running IDE
+## scalex-semanticdb: Compiler-Precise Code Intelligence
 
-Most Scala developers already have IntelliJ IDEA open all day. The JVM is running, the project is indexed, the compiler is warm. That's a world-class index and query engine sitting right there doing nothing while your coding agent shells out to grep.
+Scalex reads source text. `scalex-semanticdb` reads the compiler's output. The tradeoff is simple: you need to compile first, but you get things source parsing can never provide.
 
-If you're already paying the cost of running an IntelliJ instance — the memory, the CPU, the indexing time — why not squeeze more value out of it? Turn on the MCP Server setting, and you instantly get 27 compiler-powered tools over HTTP: build, inspections, semantic search, rename refactoring, run configurations, symbol info, project structure. No extra plugins, no daemons, no setup. It's already there.
+### What it enables
 
-`scalex-intellij` is a Claude Code skill that lets your coding agent tap into all of this. It's just a shell script (`jb-mcp`) and a SKILL.md — nothing else. The script talks to IntelliJ's Streamable HTTP endpoint, extracts the response, and gets out of the way. Lightweight, works out of the box.
+- **Call graph analysis** — `flow processPayment --depth 3` traces the full downstream call chain through service layers. `callers handleRequest` shows the reverse.
+- **Zero-false-positive references** — every reference is compiler-resolved to its exact fully-qualified symbol. No substring noise, no ambiguous overloads.
+- **Resolved type signatures** — return types, parameter types, inferred types — everything the compiler knows.
+- **Related symbol discovery** — finds symbols that frequently co-occur with a target, ranked by frequency. Discovers the "conceptual neighborhood" around a type.
 
-```bash
-jb-mcp projects                                          # what projects are open?
-jb-mcp -w /project call build_project '{}'               # build and get compiler errors
-jb-mcp -w /project call get_file_problems '{"filePath":"src/Main.scala"}'
-jb-mcp -w /project call search_symbol '{"q":"Builder"}'
-jb-mcp -w /project call rename_refactoring '{"pathInProject":"src/X.scala","symbolName":"old","newName":"new"}'
+### How it works
+
+```
+Scala compiler (-Xsemanticdb) → .semanticdb protobuf files → scalex-sdb indexes → query
 ```
 
-**Requirements:** IntelliJ IDEA **2026.1 RC** or later, with MCP Server enabled via Settings → Tools → MCP Server → Enable MCP Server. The script also needs `curl` and `jq`.
+The Scala compiler emits `.semanticdb` files containing every symbol definition, every reference with its resolved target, and full type information. `scalex-sdb` indexes this data into `.scalex/semanticdb.bin` and exposes it through 15 commands.
 
-| | **scalex** | **scalex-intellij** |
+**Generate .semanticdb files:**
+
+```bash
+./mill __.semanticDbData                      # Mill (easiest)
+# or: ThisBuild / semanticdbEnabled := true   # sbt
+```
+
+### Pros and cons
+
+| | Pros | Cons |
 |---|---|---|
-| **What it is** | Grep for ASTs, not raw text | Query your running IntelliJ instance |
-| **When to use** | Quick codebase exploration — clone any repo and navigate in seconds | When IntelliJ is already open with your working project |
-| **Setup** | Just a binary + git repo | IntelliJ running with MCP Server enabled |
-| **Precision** | Source-level — sees what's written in code | Compiler-level — resolved types, implicits, overloads |
-| **Unique strengths** | Works anywhere, no IDE needed. Categorized refs, wildcard import resolution, inheritance trees, batch commands | Real build errors, IDE inspections, run configs, semantic rename, project modules/deps |
-| **Speed** | ~0.1–0.5s per query | ~0.1s (search), seconds (build/inspections) |
+| **scalex** | Zero setup, works on any git repo. Fast cold start (~3s). Grep, AST patterns, body extraction, scaladoc, test discovery. | No type info. References are text-based (false positives). No call graph. |
+| **scalex-sdb** | Compiler-precise refs. Call graphs (callers/callees/flow). Resolved types. Related symbols. | Requires compilation with SemanticDB. Slower cold start (~50s). No source body extraction, grep, or scaladoc. |
 
-Both overlap on purpose. Use whichever fits. Use both.
+Use both together: scalex for fast exploration, scalex-sdb for precision queries.
 
-### Install scalex-intellij
+### Install
 
-It's a separate plugin in the same marketplace:
+```bash
+/plugin install scalex-semanticdb@scalex-marketplace
+```
+
+### Performance
+
+| Project | Files | Symbols | Occurrences | Cold Index | Warm Index |
+|---|---|---|---|---|---|
+| Production monorepo | 16,718 | 3,003,764 | 14,916,074 | 52s | 1.8s |
+
+See the full [scalex-semanticdb README](scalex-semanticdb/README.md) for command reference and detailed comparison.
+
+## scalex-intellij: Squeeze More from Your Running IDE
+
+If IntelliJ IDEA is already open with your project, you can tap into its compiler-powered index — build errors, inspections, semantic search, rename refactoring, run configs — all over HTTP via IntelliJ's MCP Server.
+
+`scalex-intellij` is a Claude Code skill that wraps this. Just a shell script (`jb-mcp`) and a SKILL.md. Talks to IntelliJ's Streamable HTTP endpoint, extracts the response, gets out of the way.
+
+**Requirements:** IntelliJ IDEA **2026.1 RC** or later, MCP Server enabled (Settings → Tools → MCP Server). Needs `curl` and `jq`.
+
+| | **scalex** | **scalex-sdb** | **scalex-intellij** |
+|---|---|---|---|
+| **Setup** | Just a binary + git repo | Compiled `.semanticdb` files | IntelliJ running with MCP Server |
+| **Precision** | Source-level | Compiler-level | Compiler-level + IDE features |
+| **Unique strengths** | Zero setup, wildcard imports, AST search, batch | Call graphs, precise refs, type info | Build errors, inspections, semantic rename, run configs |
+| **Speed** | ~0.1–0.5s | ~0.1s (warm) | ~0.1s (search), seconds (build) |
+
+### Install
 
 ```bash
 /plugin install scalex-intellij@scalex-marketplace
