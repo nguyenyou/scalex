@@ -9,7 +9,7 @@
 
 On a production monorepo: 3,008 generated files (26% of index), 600K symbols from `out/` URIs.
 
-- [ ] **Deduplicate `jsSharedSources.dest/`** — Mill copies shared sources to `out/**/jsSharedSources.dest/`. These are exact duplicates of real source files and pollute lookup results (e.g. `Page` appears twice). Keep only the source version.
+- [x] **Deduplicate `jsSharedSources.dest/`** — Mill copies shared sources to `out/**/jsSharedSources.dest/`. These are exact duplicates of real source files and pollute lookup results (e.g. `Page` appears twice). Keep only the source version. *(Done: 1,967 files removed, 267K fewer symbols, 35ms cost)*
 - [ ] **`--no-generated` flag** — optional filter to exclude files with `out/` URI prefix. Useful for `lookup`, `symbols`, `annotated`, `packages` where generated code inflates results (e.g. `annotated deprecated` returns 790 vs 9 because scalapb generates `@deprecated` on accessors).
 - [ ] **Filter compiler synthetics by default** — hide `$lessinit$greater`, `_1`, `_2`, `copy$default$N`, `unapply`, `$anonfun` in `lookup`/`symbols` output unless `--verbose`. These are compiler-generated methods on case classes that clutter results.
 - [ ] **Keep protobuf-generated types indexed** — `compileScalaPB.dest/` types are referenced by real Scala code. Don't exclude them, but mark them as generated so they can be filtered optionally.
