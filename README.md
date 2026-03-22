@@ -445,7 +445,21 @@ jb-mcp -w /project call rename_refactoring '{"pathInProject":"src/X.scala","symb
 
 Both overlap on purpose. Use whichever fits. Use both.
 
-The skill lives at [`plugins/scalex-intellij/`](plugins/scalex-intellij/).
+### Install scalex-intellij
+
+It's a separate plugin in the same marketplace. If you already have scalex installed:
+
+```bash
+/plugin install scalex-intellij@scalex-marketplace
+```
+
+Or install both at once when setting up from scratch:
+
+```bash
+/plugin marketplace add nguyenyou/scalex
+/plugin install scalex@scalex-marketplace
+/plugin install scalex-intellij@scalex-marketplace
+```
 
 ## Credits
 
