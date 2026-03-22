@@ -5,12 +5,14 @@ description: "Compiler-precise Scala code intelligence from SemanticDB data. Cal
 
 You have access to `scalex-sdb`, a compiler-precise Scala code intelligence CLI. It reads `.semanticdb` files produced by the Scala compiler and provides capabilities that source-text parsing fundamentally cannot:
 
-- **Call graph** (`flow`, `callers`, `callees`) — text search can't resolve which `process()` is being called across overloads and packages. This is the killer feature — what takes a coding agent 15–30 round trips with grep/scalex takes 1 call with `flow`.
-- **Zero-false-positive references** (`refs`) — the compiler resolves each reference to its exact fully-qualified symbol.
+- **Reverse call graph** (`callers`) — "who calls this method?" resolved to the exact enclosing method, not just the file. No scalex equivalent.
+- **Zero-false-positive references** (`refs`) — the compiler resolves each reference to its exact fully-qualified symbol. `refs Config` in scalex matches every `Config` across all packages; scalex-sdb resolves each to its exact FQN.
+- **Exhaustive subtypes** (`subtypes`) — compiler-verified, catches everything scalex's text-based `impl` might miss.
+- **Forward call graph** (`callees`, `flow`) — what does a method call? `callees` gives a flat list; `flow` gives a recursive tree. Use `--smart` on large codebases to filter infrastructure noise.
 - **Resolved types** (`type`) — source may have `val x = ???` with no annotation. Only the compiler knows the actual type.
 - **Related symbols** (`related`) — precise co-occurrence ranked by frequency, not text matching.
 
-For everything else — grep, body extraction, scaladoc, AST patterns, test discovery, overview — use `scalex`.
+**Use scalex as your primary tool** for exploration — it's zero-setup and fast. Reach for scalex-sdb when you need precision: `callers`, precise `refs`, exhaustive `subtypes`, or resolved types.
 
 First run discovers and indexes `.semanticdb` files from build output (~10s for large codebases). Subsequent runs load from cache (~1.5s). Index is stored at `.scalex/semanticdb.bin`.
 
@@ -22,8 +24,8 @@ A bootstrap script at `scripts/scalex-sdb-cli` (next to this SKILL.md) handles e
 
 ```bash
 # Pattern: bash "<path-to-scripts>/scalex-sdb-cli" <command> [args] -w <workspace>
-bash "/absolute/path/to/skills/scalex-sdb/scripts/scalex-sdb-cli" flow processPayment --depth 3 -w /project
 bash "/absolute/path/to/skills/scalex-sdb/scripts/scalex-sdb-cli" callers handleRequest -w /project
+bash "/absolute/path/to/skills/scalex-sdb/scripts/scalex-sdb-cli" refs PaymentService -w /project
 ```
 
 Replace `/absolute/path/to/skills/scalex-sdb` with the absolute path to the directory containing this SKILL.md. Remember this path and substitute it directly into every command.
@@ -59,51 +61,20 @@ scalex-sdb auto-discovers `.semanticdb` files. For Mill projects, it finds `sema
 | Zero-setup exploration, no compilation | `scalex` |
 | Source body extraction, scaladoc, grep | `scalex` |
 | AST patterns, test discovery, overview | `scalex` |
-| **Call graph (callers/callees/flow)** | `scalex-sdb` |
-| **Precise references (zero false positives)** | `scalex-sdb` |
-| **Resolved type signatures** | `scalex-sdb` |
-| **Related symbol discovery** | `scalex-sdb` |
+| **"Who calls this method?"** | `scalex-sdb callers` |
+| **Precise references (zero false positives)** | `scalex-sdb refs` |
+| **Exhaustive subtypes** | `scalex-sdb subtypes` |
+| **"What does this method call?"** | `scalex-sdb callees --smart` |
+| **Resolved type signatures** | `scalex-sdb type` |
+| **Related symbol discovery** | `scalex-sdb related` |
 
 ## Commands
 
-### Call graph (compiler-only — no scalex equivalent)
+### Precision queries (the primary reason to use scalex-sdb)
 
-#### `scalex-sdb flow <method> [--depth N] [--kind K] [--no-accessors] [--smart] [--exclude "p1,p2"]` — downstream call tree
+#### `scalex-sdb callers <symbol> [--kind K] [--exclude "p1,p2"]` — who calls this method?
 
-The killer feature. Traces what a method calls, recursively through service layers. Filters out stdlib calls. Default depth is 3. What takes 15–30 round trips with grep/scalex takes 1 call here.
-
-On large codebases, `flow` output can explode at depth 3+ because it follows val accessors, protobuf-generated code, and utility internals. Use these flags to control noise:
-- `--kind method` — resolve to a method (not a case object/class with the same name)
-- `--no-accessors` — filter out val/var field accesses
-- `--smart` — auto-filter all infrastructure noise (accessors + generated code + protobuf boilerplate + functional plumbing like map/flatMap)
-- `--exclude "p1,p2"` — skip symbols whose FQN or file path contains any pattern
-
-These flags also prevent recursion into filtered symbols, dramatically reducing output size.
-
-```bash
-scalex-sdb flow processPayment --depth 3 -w /project
-scalex-sdb flow main --depth 2 -w /project
-
-# On large codebases — recommended approach:
-scalex-sdb flow createOrder --kind method --depth 3 --smart -w /project
-
-# Or fine-tune manually:
-scalex-sdb flow createOrder --depth 3 --no-accessors --exclude "protobuf,RecordIO" -w /project
-```
-```
-Call flow from 'main' (depth=2)
-method main (Main.scala:10)
-  method register (AnimalService.scala:11)
-    method find (Repository.scala:5)
-  method greet (Animal.scala:6)
-    method name (Animal.scala:4)
-    method sound (Animal.scala:5)
-  method fetch (Dog.scala:5)
-```
-
-#### `scalex-sdb callers <symbol> [--kind K] [--exclude "p1,p2"]` — reverse call graph
-
-Finds all methods that call the target symbol. Compiler-precise — tells you *which method* contains the call, not just which file. `--kind` narrows which symbol is resolved (e.g., `--kind method` picks the method over a companion object). `--exclude` filters callers matching FQN or file path patterns.
+The most valuable command — no scalex equivalent exists. Tells you *which method* contains each call, not just which file. `--kind` narrows symbol resolution (e.g., `--kind method` picks the method over a companion object). `--exclude` filters callers matching FQN or file path patterns.
 
 ```bash
 scalex-sdb callers handleRequest -w /project
@@ -116,28 +87,6 @@ scalex-sdb callers handleRequest --kind method --exclude "test,integ" -w /projec
   method testHandler (HandlerSpec.scala)
 ```
 
-#### `scalex-sdb callees <symbol> [--kind K] [--no-accessors] [--smart] [--exclude "p1,p2"]` — forward call graph
-
-Finds all symbols referenced within a method's body. `--kind` narrows symbol resolution (e.g., `--kind method` picks the method over a companion object). Use `--no-accessors` to filter out val/var field accesses, or `--smart` to auto-filter all infrastructure noise. `--exclude` matches against both FQN and file path.
-
-```bash
-scalex-sdb callees main -w /project
-
-# Recommended for large codebases:
-scalex-sdb callees createOrder --kind method --smart -w /project
-
-# Or fine-tune manually:
-scalex-sdb callees createOrder --no-accessors --exclude "protobuf,radixFactories" -w /project
-```
-```
-5 callees of 'main'
-  method register (AnimalService.scala)
-  method greet (Animal.scala)
-  method fetch (Dog.scala)
-```
-
-### Compiler-precise queries
-
 #### `scalex-sdb refs <symbol> [--role def|ref]` — zero-false-positive references
 
 Every occurrence is compiler-resolved — distinguishes overloads, resolves across renames. Filter by role: `--role def` for definitions, `--role ref` for references only.
@@ -145,6 +94,14 @@ Every occurrence is compiler-resolved — distinguishes overloads, resolves acro
 ```bash
 scalex-sdb refs PaymentService -w /project
 scalex-sdb refs processPayment --role ref -w /project
+```
+
+#### `scalex-sdb subtypes <symbol> [--depth N]` — exhaustive subtype tree
+
+Compiler-verified — catches every implementation, including those in unexpected packages that text-based search might miss.
+
+```bash
+scalex-sdb subtypes Shape --depth 2 -w /project
 ```
 
 #### `scalex-sdb type <symbol>` — resolved type signature
@@ -158,9 +115,59 @@ scalex-sdb type configLayer -w /project
 configLayer: val method configLayer ULayer[AppConfig]
 ```
 
+### Forward call graph
+
+#### `scalex-sdb callees <symbol> [--kind K] [--no-accessors] [--smart] [--exclude "p1,p2"]` — what does this method call?
+
+Flat list of all symbols referenced within a method's body. On large codebases, raw output includes val accessors (`.userId`, `.config`), generated code, and functional plumbing — use `--smart` to auto-filter all of this, or `--no-accessors` and `--exclude` for manual control.
+
+`--kind` narrows symbol resolution (e.g., `--kind method` picks the method over a companion object). `--exclude` matches against both FQN and file path.
+
+```bash
+scalex-sdb callees main -w /project
+
+# Recommended for large codebases — clean, flat list of meaningful calls:
+scalex-sdb callees createOrder --kind method --smart -w /project
+
+# Fine-tune manually:
+scalex-sdb callees createOrder --no-accessors --exclude "protobuf,radixFactories" -w /project
+```
+```
+5 callees of 'main'
+  method register (AnimalService.scala)
+  method greet (Animal.scala)
+  method fetch (Dog.scala)
+```
+
+#### `scalex-sdb flow <method> [--depth N] [--kind K] [--smart] [--exclude "p1,p2"]` — recursive call tree
+
+Traces what a method calls, recursively through service layers. Default depth is 3.
+
+On large codebases, **always use `--smart`** — it filters accessors, generated code, and functional plumbing, and only recurses into callees from the same module (cross-module calls appear as leaves). Without `--smart`, depth 3 can produce thousands of lines of infrastructure noise.
+
+If the output is still too verbose, prefer `callees --smart` (flat list) over `flow` — it gives the same signal without the depth explosion.
+
+```bash
+# Small codebases — works fine without filters:
+scalex-sdb flow main --depth 2 -w /project
+
+# Large codebases — always use --smart:
+scalex-sdb flow createOrder --kind method --depth 3 --smart -w /project
+```
+```
+Call flow from 'main' (depth=2)
+method main (Main.scala:10)
+  method register (AnimalService.scala:11)
+    method find (Repository.scala:5)
+  method greet (Animal.scala:6)
+  method fetch (Dog.scala:5)
+```
+
+### Discovery
+
 #### `scalex-sdb related <symbol>` — co-occurring symbols
 
-Discovers symbols that frequently appear alongside the target. Ranked by co-occurrence count. Filters stdlib noise. Useful for discovering the "conceptual neighborhood" around a type.
+Discovers symbols that frequently appear alongside the target. Ranked by co-occurrence count. Useful for discovering the "conceptual neighborhood" around a type.
 
 ```bash
 scalex-sdb related UserService -w /project
@@ -197,12 +204,6 @@ scalex-sdb lookup "com/example/PaymentService#" -w /project
 scalex-sdb supertypes AnimalRepository -w /project
 ```
 
-#### `scalex-sdb subtypes <symbol> [--depth N]` — who extends this
-
-```bash
-scalex-sdb subtypes Shape --depth 2 -w /project
-```
-
 #### `scalex-sdb members <symbol> [--kind K]` — declarations with resolved types
 
 ```bash
@@ -220,30 +221,11 @@ scalex-sdb symbols --kind trait -w /project
 
 #### `scalex-sdb batch "cmd1" "cmd2" ...` — multiple queries in one invocation
 
-Amortizes the ~1.5s index load across many queries. Each positional arg is a full sub-command string (command + args + flags). Results are separated by `--- <command> ---` delimiters in text mode, or wrapped in `{"batch":[...]}` in JSON mode. Unknown sub-commands produce an error for that entry without affecting others.
+Amortizes the ~1.5s index load across many queries. Each positional arg is a full sub-command string (command + args + flags). Results are separated by `--- <command> ---` delimiters in text mode, or wrapped in `{"batch":[...]}` in JSON mode.
 
 ```bash
 scalex-sdb batch "lookup Dog" "members Animal" "subtypes Shape" -w /project
-scalex-sdb batch "callers handleRequest" "flow processPayment --depth 3" -w /project
-scalex-sdb batch --json "lookup Dog" "refs greet" -w /project
-```
-```
---- lookup Dog ---
-class Dog [case]
-  fqn: example/Dog#
-  file: src/example/Dog.scala
-
---- members Animal ---
-3 members of 'Animal'
-  method name (src/example/Animal.scala)
-  method sound (src/example/Animal.scala)
-  method greet (src/example/Animal.scala)
-
---- subtypes Shape ---
-Subtypes of 'Shape'
-  class Circle
-  class Rectangle
-  class Triangle
+scalex-sdb batch "callers handleRequest" "callees processPayment --smart" -w /project
 ```
 
 ### Index management
@@ -251,12 +233,6 @@ Subtypes of 'Shape'
 ```bash
 scalex-sdb index -w /project              # Force rebuild
 scalex-sdb stats -w /project              # Show counts
-```
-```
-Files:        15268
-Symbols:      2057320
-Occurrences:  10435517
-Build time:   1546ms (cached)
 ```
 
 ## Options
@@ -272,21 +248,20 @@ Build time:   1546ms (cached)
 | `--role R` | Filter occurrences (def, ref) |
 | `--depth N` | Max depth for flow/subtypes (default: 3) |
 | `--no-accessors` | Exclude val/var accessors from flow/callees output |
-| `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, functional plumbing |
+| `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, functional plumbing. In flow, only recurses into same-module callees. |
 | `--exclude "p1,p2,..."` | Exclude symbols matching FQN or file path (flow/callees/callers) |
 | `--timings` | Print timing info to stderr |
 
 ## Common workflows
 
-**"What happens when X is called?"** — the #1 use case. On large codebases, use `--smart` for clean output:
-```bash
-scalex-sdb flow handleRequest --depth 3 -w /project
-scalex-sdb flow handleRequest --kind method --depth 3 --smart -w /project
-```
-
-**"Who calls this method?"** — reverse call graph:
+**"Who calls this method?"** — the #1 reason to use scalex-sdb:
 ```bash
 scalex-sdb callers processPayment -w /project
+```
+
+**"What does this method do?"** — flat list of calls, clean output:
+```bash
+scalex-sdb callees createOrder --kind method --smart -w /project
 ```
 
 **"Precise references (no false positives)"**:
@@ -299,18 +274,24 @@ scalex-sdb refs MyService -w /project
 scalex-sdb type computeResult -w /project
 ```
 
-**"What's related to this symbol?"** — discover the conceptual neighborhood:
+**"Who implements this trait?"** — exhaustive, compiler-verified:
 ```bash
-scalex-sdb related BillingService -w /project
+scalex-sdb subtypes Repository -w /project
 ```
 
 **"Verify multiple symbols in one shot"** — batch amortizes index load:
 ```bash
-scalex-sdb batch "lookup UserService" "lookup PaymentService" "members Config" -w /project
+scalex-sdb batch "callers handleRequest" "subtypes Repository" "members Config" -w /project
 ```
 
-## Why scalex-sdb over scalex refs
+## Why scalex-sdb over scalex
 
-scalex's `refs` uses text matching — `refs Config` matches every `Config` across all packages. scalex-sdb's `refs` resolves each reference to its exact fully-qualified name. Zero false positives, distinguishes overloads.
+scalex is the better default — zero setup, fast, good enough for 90% of queries. Use scalex-sdb for the things scalex fundamentally cannot do:
 
-For call graph analysis (`callers`, `callees`, `flow`), there is no scalex equivalent — these features are only possible with compiler-resolved data.
+| Capability | Why scalex can't |
+|---|---|
+| `callers` — reverse call graph | Text search finds the method name but can't identify the enclosing caller |
+| `refs` — precise references | `refs Config` in scalex matches every `Config` in every package |
+| `subtypes` — exhaustive | Text-based `impl` can miss implementations in unexpected packages |
+| `type` — inferred types | Only the compiler knows the return type of `val x = computeStuff()` |
+| `callees`/`flow` — forward call graph | Text search can't resolve which overload is being called |
