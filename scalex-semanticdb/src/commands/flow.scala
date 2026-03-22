@@ -9,6 +9,14 @@ private val trivialPrefixes = Set(
 private def isTrivial(fqn: String): Boolean =
   trivialPrefixes.exists(fqn.startsWith)
 
+/** Extract module prefix from a source URI for same-module detection.
+  * "modules/billing/billing/jvm/src/..." → "modules/billing/"
+  * "platform/core/jvm/src/..." → "platform/core/"
+  * Falls back to first two path segments if pattern doesn't match. */
+private def modulePrefix(uri: String): String =
+  val parts = uri.split("/")
+  if parts.length >= 2 then s"${parts(0)}/${parts(1)}/" else uri
+
 def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
     case Nil => SemCmdResult.UsageError("Usage: flow <method> [--depth N]")
@@ -22,6 +30,10 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
       val lines = scala.collection.mutable.ListBuffer.empty[String]
       val visited = scala.collection.mutable.Set.empty[String]
       val maxDepth = ctx.depth
+
+      // In --smart mode, only recurse into callees from the same module as the root method.
+      // Cross-module callees appear as leaves (shown but not expanded).
+      val rootModule = if ctx.smart then Some(modulePrefix(sym.sourceUri)) else None
 
       def walk(fqn: String, indent: Int): Unit =
         if indent > maxDepth || visited.contains(fqn) then return
@@ -39,7 +51,9 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
             case Some((file, range)) => s" ($file:${range.startLine + 1})"
             case None => ""
           lines += s"$prefix${callee.kind.toString.toLowerCase} ${callee.displayName}$loc"
-          walk(callee.fqn, indent + 1)
+          // In --smart mode, only recurse into same-module callees
+          val sameModule = rootModule.forall(rm => callee.sourceUri.startsWith(rm))
+          if sameModule then walk(callee.fqn, indent + 1)
         }
 
       val rootLoc = ctx.index.definitionRanges.get(sym.fqn) match
