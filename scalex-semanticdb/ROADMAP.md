@@ -2,8 +2,8 @@
 
 ## Bugs (found via scalex comparison)
 
-- [ ] **Entrypoints false positives** — `extends App` check matches any parent containing "App" (ZIOApp, ScalaJSApp, etc.). Tighten to exact `scala/App#` FQN.
-- [ ] **Imports heuristic too conservative** — line < 15 threshold misses imports on later lines. Increase threshold or use occurrence context to detect import statements.
+- [x] **Entrypoints false positives** — `extends App` check matches any parent containing "App" (ZIOApp, ScalaJSApp, etc.). Tighten to exact `scala/App#` FQN. *(Fixed: 117 → 17 results on production monorepo)*
+- [x] **Imports heuristic too conservative** — line < 15 threshold misses imports on later lines. *(Fixed: use first definition line as boundary instead of hardcoded 15. 8 → 17 results for AuthRoutes)*
 
 ## Generated file / symbol noise
 
