@@ -16,6 +16,101 @@ scalex parses source text — fast, zero-setup, but blind to types. scalex-seman
 
 For everything else — grep, body extraction, scaladoc, AST patterns, test discovery, overview — use scalex.
 
+## How It Works
+
+```
+                    ┌────────────┐
+                    │scalex-sdb  │
+                    │    CLI     │
+                    └─────┬──────┘
+                          │
+                          v
+                    ┌────────────┐
+                    │  SemIndex  │
+                    └──┬────┬──┬─┘
+                       │    │  │
+          ┌────────────┘    │  └───────────────┐
+          │                 │                  │
+          v                 v                  v
+  ┌──────────────┐  ┌────────────────┐  ┌────────────────┐
+  │.semanticdb   │  │.scalex/        │  │  Discovery      │
+  │protobuf files│  │semanticdb.bin  │  │(Mill out/ scan) │
+  └──────────────┘  └────────────────┘  └────────────────┘
+```
+
+- **scalex-sdb CLI** — 14 commands focused on compiler-unique capabilities
+- **SemIndex** — lazy indexes: symbolByFqn, occurrencesBySymbol, subtypeIndex, memberIndex, definitionRanges
+- **Discovery** — targeted scan of Mill's `semanticDbDataDetailed.dest` directories (fast), with fallback walk for sbt/Bloop
+- **.semanticdb protobuf** — compiler output: symbols with resolved types, every occurrence with DEFINITION/REFERENCE role
+- **.scalex/semanticdb.bin** — binary cache with string interning
+
+### Pipeline
+
+```
+  1. Discover .semanticdb files
+     │  Mill: find semanticDbDataDetailed.dest dirs, walk only data/META-INF/semanticdb/
+     │  sbt/Bloop: walk target/ or .bloop/ for META-INF/semanticdb/*.semanticdb
+     │  ~2s for 15k files (Mill targeted), ~25s without optimization.
+     │
+  2. Parse protobuf (parallel)
+     │  TextDocuments.parseFrom() via Java parallelStream().
+     │  Converts SymbolInformation → SemSymbol, SymbolOccurrence → SemOccurrence.
+     │  ~4s for 15k files on all CPU cores.
+     │
+  3. Deduplicate
+     │  Mill copies shared sources to jsSharedSources.dest/.
+     │  Remove duplicates by source identity (package path + filename).
+     │  ~35ms.
+     │
+  4. Save to .scalex/semanticdb.bin
+     │  Binary format with string interning (deduplicates FQNs, file paths).
+     │  ~3.5s write, ~1.5s load on subsequent runs.
+     │
+  5. Answer the query
+     │  Index maps build lazily — each query only pays for the indexes it needs.
+```
+
+### What's in the index
+
+Each `.semanticdb` file (one per source file) contains the compiler's full picture:
+
+**Symbols** — every definition with its resolved signature:
+```
+example/Dog#         → class Dog extends Animal { +5 decls }
+example/Dog#fetch(). → method fetch(item: String): String
+```
+
+**Occurrences** — every reference with its exact target:
+```
+Dog.scala:3:36  example/Animal#     REFERENCE   (extends Animal)
+Main.scala:8:4  example/Dog#fetch() REFERENCE   (dog.fetch("ball"))
+```
+
+From these two data sources, the index builds:
+
+| Index | What it maps | Enables |
+|---|---|---|
+| `symbolByFqn` | FQN → symbol info | `lookup`, `type` |
+| `symbolsByName` | display name → symbols | fuzzy `lookup` |
+| `occurrencesBySymbol` | FQN → all occurrences | `refs`, `callers`, `related` |
+| `occurrencesByFile` | file → all occurrences | `occurrences`, `callees` |
+| `subtypeIndex` | parent FQN → child FQNs | `subtypes` |
+| `memberIndex` | owner FQN → member symbols | `members` |
+| `definitionRanges` | FQN → (file, line) | `callers`, `callees`, `flow` |
+| `symbolsByFile` | file → symbols | `symbols` |
+
+### How `flow` works
+
+The killer feature traces call chains by combining `callees` recursively:
+
+1. Resolve the target method → get its definition range from `definitionRanges`
+2. Find the next sibling definition (same owner) → that's the body boundary
+3. Collect all REFERENCE occurrences between def line and body end
+4. Each referenced symbol is a callee → resolve to SemSymbol
+5. Filter out stdlib (`scala/`, `java/`) → repeat from step 1 for each callee up to `--depth`
+
+This is why it needs compiler data: step 3 requires knowing which exact symbol each reference points to. Text search would match the wrong `process()` across overloads.
+
 ## Getting .semanticdb files
 
 **Mill** (easiest):
