@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.38.0] — 2026-03-22
+
 ### Fixed
 - `grep` with POSIX-style `\|` alternation (e.g. `Optimizer\|IncOptimizer`) now correctly converts to Java regex alternation instead of silently matching literal pipe characters — previously returned zero results because `\|` is valid Java regex (literal `|`)
 
