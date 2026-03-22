@@ -140,15 +140,12 @@ Installs the binary + skill (teaches Claude when and how to use scalex) in one s
 
 ```bash
 /plugin marketplace add nguyenyou/scalex
-/plugin install scalex@scalex-marketplace              # source-level (zero setup)
-/plugin install scalex-semanticdb@scalex-marketplace   # compiler-precise (needs compiled .semanticdb)
+/plugin install scalex@scalex-marketplace
 ```
 
 Then try:
 
 > *"use scalex to explore how authentication works in this codebase"*
->
-> *"use scalex-sdb to trace the call flow from handleRequest"*
 
 ### Other coding agents / manual install
 
