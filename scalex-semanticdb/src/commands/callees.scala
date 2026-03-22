@@ -41,12 +41,15 @@ def findCallees(fqn: String, index: SemIndex): List[SemSymbol] =
 
       val bodyEndLine = siblingDefs.headOption.map(_.range.startLine).getOrElse(Int.MaxValue)
 
-      // Collect all references within the body range
+      // Collect all references within the body range.
+      // On the def line itself, only include refs after the definition's end column
+      // (handles single-line methods like `def sound: String = "Woof"`).
       val refsInBody = fileOccs.filter { o =>
         o.role == OccRole.Reference &&
-        o.range.startLine > defRange.startLine &&
         o.range.startLine < bodyEndLine &&
-        o.symbol != fqn // exclude self-references
+        o.symbol != fqn && // exclude self-references
+        (o.range.startLine > defRange.startLine ||
+         (o.range.startLine == defRange.startLine && o.range.startChar > defRange.endChar))
       }
 
       // Deduplicate and resolve to SemSymbols
