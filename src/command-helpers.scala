@@ -4,27 +4,26 @@ import scala.collection.mutable
 // ── Command helpers ─────────────────────────────────────────────────────────
 
 def hasRegexHint(pattern: String): Boolean =
-  pattern.contains("\\|") || pattern.contains("\\(") || pattern.contains("\\)")
+  pattern.contains("\\|")
 
 def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
-  // If the pattern contains POSIX regex syntax (\|, \(, \)), always convert —
-  // these are valid Java regex (matching literal |, (, )) but almost certainly
-  // intended as POSIX alternation/grouping by grep-trained users.
+  // Only \| needs unconditional conversion: POSIX alternation vs Java literal pipe.
+  // \( and \) mean "literal paren" in both POSIX and Java — leave them alone.
   if hasRegexHint(pattern) then
-    val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
+    val fixed = pattern.replace("\\|", "|")
     try
       java.util.regex.Pattern.compile(fixed)
-      (fixed, true)
+      (pattern = fixed, wasFixed = true)
     catch
       case _: java.util.regex.PatternSyntaxException =>
-        (java.util.regex.Pattern.quote(pattern), true)
+        (pattern = java.util.regex.Pattern.quote(fixed), wasFixed = true)
   else
     try
       java.util.regex.Pattern.compile(pattern)
-      (pattern, false)
+      (pattern = pattern, wasFixed = false)
     catch
       case _: java.util.regex.PatternSyntaxException =>
-        (java.util.regex.Pattern.quote(pattern), true)
+        (pattern = java.util.regex.Pattern.quote(pattern), wasFixed = true)
 
 // ── Suggestions for not-found ────────────────────────────────────────────────
 

@@ -18,6 +18,7 @@ Source code lives in `src/` (production) and `tests/` (test suite). When searchi
 
 - Before planning or implementing any feature, first add it to `docs/ROADMAP.md` under the appropriate section
 - The roadmap is the source of truth for what's planned and what's done
+- **Bug fix workflow**: When receiving a bug report, always write a failing test that reproduces the bug *before* writing the fix. This validates the bug is real and ensures the fix is verifiable. Only then apply the code fix and confirm the test passes.
 
 ## Build & Run
 
