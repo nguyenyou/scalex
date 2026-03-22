@@ -134,8 +134,8 @@ object SemPersistence:
           var oi = 0
           while oi < occCount do
             val file = strings(in.readInt())
-            val sl = in.readInt(); val sc = in.readShort()
-            val el = in.readInt(); val ec = in.readShort()
+            val sl = in.readInt(); val sc = in.readUnsignedShort()
+            val el = in.readInt(); val ec = in.readUnsignedShort()
             val symbol = strings(in.readInt())
             val role = OccRole.fromId(in.readByte())
             occs += SemOccurrence(file, SemRange(sl, sc, el, ec), symbol, role)

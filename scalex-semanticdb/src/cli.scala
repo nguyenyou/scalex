@@ -8,7 +8,7 @@ import java.nio.file.{Files, Path}
     printUsage()
     return
   if argList.head == "--version" then
-    println("scalex-semanticdb 0.1.0")
+    println(s"scalex-semanticdb $ScalexSdbVersion")
     return
 
   val cmd = argList.head
@@ -49,7 +49,7 @@ import java.nio.file.{Files, Path}
 // ── Command dispatch ───────────────────────────────────────────────────────
 
 val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = Map(
-  // Original 14
+  // 13 commands (index handled separately above)
   "lookup"      -> cmdLookup,
   "refs"        -> cmdRefs,
   "supertypes"  -> cmdSupertypes,
@@ -84,11 +84,6 @@ case class SemParsedFlags(
   semanticdbPath: Option[String] = None,
   timingsEnabled: Boolean = false,
   cleanArgs: List[String] = Nil,
-)
-
-private val flagsWithArgs = Set(
-  "--limit", "--kind", "--workspace", "-w", "--role",
-  "--depth", "--semanticdb-path",
 )
 
 def parseFlags(args: List[String]): SemParsedFlags =

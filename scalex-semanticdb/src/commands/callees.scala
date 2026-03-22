@@ -29,14 +29,12 @@ def findCallees(fqn: String, index: SemIndex): List[SemSymbol] =
       val fileOccs = index.occurrencesByFile.getOrElse(file, Nil)
 
       // Find the next sibling definition (same owner) to approximate body end.
-      // We skip local definitions (local0, etc.) and nested members since they
-      // are part of this method's body, not siblings.
+      // Local definitions (local0, etc.) are skipped — they're inside the body.
       val owner = index.symbolByFqn.get(fqn).map(_.owner).getOrElse("")
       val siblingDefs = fileOccs
         .filter(o => o.role == OccRole.Definition && o.range.startLine > defRange.startLine)
         .sortBy(_.range.startLine)
         .filter { o =>
-          // A sibling is a symbol with the same owner, or a top-level def
           !o.symbol.startsWith("local") &&
           index.symbolByFqn.get(o.symbol).exists(s => s.owner == owner)
         }

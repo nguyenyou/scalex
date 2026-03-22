@@ -35,7 +35,7 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
         filtered.size,
       )
 
-/** Find the innermost symbol whose definition range encloses the given line in a file. */
+/** Find the method/field whose body contains the given line, using next-sibling heuristic. */
 private def findEnclosingSymbol(file: String, line: Int, index: SemIndex): Option[String] =
   // Get all definition occurrences in this file
   val fileOccs = index.occurrencesByFile.getOrElse(file, Nil)

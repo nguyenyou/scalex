@@ -2,6 +2,8 @@ import java.nio.file.Path
 import scala.meta.internal.{semanticdb => sdb}
 import scala.meta.internal.semanticdb.XtensionSemanticdbSymbolInformation
 
+val ScalexSdbVersion = "0.1.0"
+
 // ── Enums ──────────────────────────────────────────────────────────────────
 
 enum SemKind(val id: Byte):
@@ -30,7 +32,7 @@ object SemKind:
     import sdb.SymbolInformation.Kind.*
     info.kind match
       case LOCAL            => Local
-      case FIELD            => if info.isVal || info.isVar then Field else Field
+      case FIELD            => Field
       case METHOD           => Method
       case CONSTRUCTOR      => Constructor
       case MACRO            => Macro
