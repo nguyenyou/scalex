@@ -78,22 +78,14 @@ abstract class SemTestBase extends FunSuite:
   // ── Compilation ────────────────────────────────────────────────────────
 
   private def compileWithSemanticdb(srcDir: Path, outDir: Path): Unit =
-    // Collect all .scala files
-    val scalaFiles = Files.walk(srcDir).iterator().asScala
-      .filter(_.toString.endsWith(".scala"))
-      .map(_.toString)
-      .toList
-
-    if scalaFiles.isEmpty then
-      fail("No .scala files found in test fixture")
-
     val cmd = List(
       "scala-cli", "compile",
       "--scala", "3.8.2",
       "--scalac-option", "-Xsemanticdb",
       "--scalac-option", "-semanticdb-target",
       "--scalac-option", outDir.toString,
-    ) ++ scalaFiles
+      srcDir.toString,
+    )
 
     val pb = ProcessBuilder(cmd*)
     pb.directory(workspace.toFile)
@@ -215,6 +207,30 @@ abstract class SemTestBase extends FunSuite:
         |  case Red, Green, Blue
         |
         |given colorOrdering: Ordering[Color] = Ordering.by(_.ordinal)
+        |""".stripMargin)
+
+    // Annotated symbols for annotation tests
+    writeFile(srcDir, "example/Deprecated.scala",
+      """package example
+        |
+        |@deprecated("use NewService", "2.0")
+        |class OldService:
+        |  def oldMethod(): Unit = ()
+        |
+        |@deprecated("removed", "3.0")
+        |trait LegacyApi:
+        |  def legacyCall(): Unit
+        |""".stripMargin)
+
+    // Second package for package/summary tests
+    writeFile(srcDir, "util/Helpers.scala",
+      """package util
+        |
+        |object StringHelpers:
+        |  def capitalize(s: String): String = s.capitalize
+        |
+        |object MathHelpers:
+        |  def clamp(v: Int, lo: Int, hi: Int): Int = math.max(lo, math.min(hi, v))
         |""".stripMargin)
 
     // Companion + extension for related tests

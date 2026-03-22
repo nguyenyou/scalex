@@ -49,6 +49,7 @@ import java.nio.file.{Files, Path}
 // ── Command dispatch ───────────────────────────────────────────────────────
 
 val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = Map(
+  // Original 14
   "lookup"      -> cmdLookup,
   "refs"        -> cmdRefs,
   "supertypes"  -> cmdSupertypes,
@@ -63,6 +64,21 @@ val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = M
   "symbols"     -> cmdSymbols,
   "occurrences" -> cmdOccurrences,
   "stats"       -> cmdStats,
+  // New 14
+  "file"        -> cmdFile,
+  "packages"    -> cmdPackages,
+  "package"     -> cmdPackageSymbols,
+  "annotated"   -> cmdAnnotated,
+  "summary"     -> cmdSummary,
+  "overrides"   -> cmdOverrides,
+  "entrypoints" -> cmdEntrypoints,
+  "api"         -> cmdApi,
+  "overview"    -> cmdOverview,
+  "imports"     -> cmdImports,
+  "coverage"    -> cmdCoverage,
+  "deps"        -> cmdDeps,
+  "context"     -> cmdContext,
+  "explain"     -> cmdExplain,
 )
 
 def cmdStats(args: List[String], ctx: SemCommandContext): SemCmdResult =

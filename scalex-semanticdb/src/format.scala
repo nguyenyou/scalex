@@ -71,6 +71,42 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
       println(s"Diagnostics:  $dc")
       println(s"Build time:   ${ms}ms${if cached then " (cached)" else ""}")
 
+    case SemCmdResult.PackageList(header, pkgs, total) =>
+      println(header)
+      pkgs.foreach(p => println(s"  $p"))
+      if total > pkgs.size then println(s"... and ${total - pkgs.size} more")
+
+    case SemCmdResult.SummaryList(header, entries, total) =>
+      println(header)
+      entries.foreach { (pkg, count) => println(f"  $count%5d  $pkg") }
+      if total > entries.size then println(s"... and ${total - entries.size} more")
+
+    case SemCmdResult.FileList(header, files, total) =>
+      println(header)
+      files.foreach(f => println(s"  $f"))
+      if total > files.size then println(s"... and ${total - files.size} more")
+
+    case SemCmdResult.ExplainResult(sym, members, subtypeCount, refCount, supertypes) =>
+      println(formatSymbolDetail(sym, true))
+      if supertypes.nonEmpty then
+        println(s"  supertypes: ${supertypes.size}")
+        supertypes.foreach(p => println(s"    $p"))
+      println(s"  members: ${members.size}")
+      members.foreach(m => println(s"    ${m.kind.toString.toLowerCase} ${m.displayName}"))
+      println(s"  subtypes: $subtypeCount")
+      println(s"  references: $refCount")
+
+    case SemCmdResult.CoverageResult(symbol, totalRefs, testRefs, testFiles) =>
+      println(s"$symbol: $totalRefs total refs, $testRefs in test files")
+      testFiles.foreach(f => println(s"  $f"))
+
+    case SemCmdResult.ContextResult(header, scopes) =>
+      println(header)
+      scopes.zipWithIndex.foreach { (s, i) =>
+        val indent = "  " * (i + 1)
+        println(s"$indent${s.kind.toString.toLowerCase} ${s.displayName} (${s.sourceUri})")
+      }
+
     case SemCmdResult.NotFound(msg) =>
       println(s"Not found: $msg")
 
@@ -140,6 +176,29 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
 
     case SemCmdResult.Stats(fc, sc, oc, dc, ms, cached) =>
       println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"diagnostics":$dc,"buildTimeMs":$ms,"cached":$cached}""")
+
+    case SemCmdResult.PackageList(header, pkgs, total) =>
+      println(s"""{"header":${jsonStr(header)},"total":$total,"packages":[${pkgs.map(jsonStr).mkString(",")}]}""")
+
+    case SemCmdResult.SummaryList(header, entries, total) =>
+      val items = entries.map { (pkg, count) => s"""{"package":${jsonStr(pkg)},"count":$count}""" }
+      println(s"""{"header":${jsonStr(header)},"total":$total,"summary":[${items.mkString(",")}]}""")
+
+    case SemCmdResult.FileList(header, files, total) =>
+      println(s"""{"header":${jsonStr(header)},"total":$total,"files":[${files.map(jsonStr).mkString(",")}]}""")
+
+    case SemCmdResult.ExplainResult(sym, members, subtypeCount, refCount, supertypes) =>
+      val ms = members.map(symbolToJson).mkString(",")
+      val sp = supertypes.map(jsonStr).mkString(",")
+      println(s"""{"symbol":${symbolToJson(sym)},"members":[${ms}],"subtypeCount":$subtypeCount,"refCount":$refCount,"supertypes":[$sp]}""")
+
+    case SemCmdResult.CoverageResult(symbol, totalRefs, testRefs, testFiles) =>
+      val fs = testFiles.map(jsonStr).mkString(",")
+      println(s"""{"symbol":${jsonStr(symbol)},"totalRefs":$totalRefs,"testRefs":$testRefs,"testFiles":[$fs]}""")
+
+    case SemCmdResult.ContextResult(header, scopes) =>
+      val ss = scopes.map(symbolToJson).mkString(",")
+      println(s"""{"header":${jsonStr(header)},"scopes":[$ss]}""")
 
     case SemCmdResult.NotFound(msg) =>
       println(s"""{"error":"not_found","message":${jsonStr(msg)}}""")

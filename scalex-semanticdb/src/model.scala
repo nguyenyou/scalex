@@ -148,6 +148,12 @@ enum SemCmdResult:
   case FlowTree(header: String, lines: List[String])
   case RelatedList(header: String, entries: List[(SemSymbol, Int)], total: Int)
   case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, diagnosticCount: Int, buildTimeMs: Long, cached: Boolean)
+  case PackageList(header: String, packages: List[String], total: Int)
+  case SummaryList(header: String, entries: List[(String, Int)], total: Int)
+  case FileList(header: String, files: List[String], total: Int)
+  case ExplainResult(sym: SemSymbol, members: List[SemSymbol], subtypeCount: Int, refCount: Int, supertypes: List[String])
+  case CoverageResult(symbol: String, totalRefs: Int, testRefs: Int, testFiles: List[String])
+  case ContextResult(header: String, scopes: List[SemSymbol])
   case NotFound(message: String)
   case UsageError(message: String)
 

@@ -31,6 +31,19 @@ object Discovery:
             val classesDir = dest.resolve("classes").resolve("META-INF").resolve("semanticdb")
             if Files.isDirectory(classesDir) then
               walkSemanticdbDir(classesDir, results)
+        if results.nonEmpty then
+          return deduplicateByRelativePath(results.toList)
+
+      // Direct META-INF/semanticdb/ under out/ (e.g. scalac -semanticdb-target)
+      val directDir = outDir.resolve("META-INF").resolve("semanticdb")
+      if Files.isDirectory(directDir) then
+        walkSemanticdbDir(directDir, results)
+        if results.nonEmpty then
+          return deduplicateByRelativePath(results.toList)
+
+      // No Mill structure found — fall through to generic walk of out/
+      walkForSemanticdb(outDir, results)
+      if results.nonEmpty then
         return deduplicateByRelativePath(results.toList)
 
     // sbt / Bloop: walk target/ and .bloop/ looking for META-INF/semanticdb

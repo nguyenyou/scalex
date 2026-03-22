@@ -290,6 +290,39 @@ class SemIndex(val workspace: Path):
       m.toMap
     }
 
+  /** Reverse override index: overridden symbol FQN → list of symbols that override it. */
+  lazy val overrideIndex: Map[String, List[SemSymbol]] =
+    SemTimings.phase("build-overrideIndex") {
+      val idx = mutable.HashMap.empty[String, mutable.ListBuffer[SemSymbol]]
+      allSymbols.foreach { sym =>
+        sym.overriddenSymbols.foreach { overridden =>
+          idx.getOrElseUpdate(overridden, mutable.ListBuffer.empty) += sym
+        }
+      }
+      idx.map((k, v) => k -> v.toList).toMap
+    }
+
+  /** All unique package FQNs (extracted from symbol owners). */
+  lazy val packages: Set[String] =
+    SemTimings.phase("build-packages") {
+      allSymbols.iterator
+        .map(_.owner)
+        .filter(o => o.nonEmpty && o.endsWith("/"))
+        .toSet
+    }
+
+  /** Package FQN → symbols directly owned by that package. */
+  lazy val symbolsByPackage: Map[String, List[SemSymbol]] =
+    SemTimings.phase("build-symbolsByPackage") {
+      allSymbols
+        .filter(s => s.owner.nonEmpty && s.owner.endsWith("/"))
+        .groupBy(_.owner)
+    }
+
+  /** All document URIs. */
+  lazy val allUris: List[String] =
+    documents.map(_.uri)
+
   // ── Query helpers ──────────────────────────────────────────────────────
 
   /** Resolve a user query to a symbol FQN. Tries: exact FQN, suffix match, display name.
