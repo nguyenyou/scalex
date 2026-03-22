@@ -162,18 +162,27 @@ class CliSuite extends ScalexTestBase:
     assert(!hasRegexHint("simple"))
   }
 
-  test("fixPosixRegex leaves valid Java regex with backslash-pipe alone") {
-    // "class\|trait" is valid Java regex (\| = literal |), so not corrected
+  test("fixPosixRegex converts backslash-pipe to alternation") {
+    // "class\|trait" is valid Java regex (\| = literal |) but users intend
+    // POSIX alternation — must convert to "class|trait"
     val (fixed, changed) = fixPosixRegex("class\\|trait")
-    assertEquals(fixed, "class\\|trait")
-    assert(!changed)
+    assertEquals(fixed, "class|trait")
+    assert(changed)
   }
 
-  test("fixPosixRegex leaves valid Java regex with backslash-parens alone") {
-    // \( and \) are valid Java regex (literal parens), so not corrected
+  test("fixPosixRegex converts backslash-parens to grouping") {
+    // \( \) \| are valid Java regex (literal parens/pipe) but users intend
+    // POSIX grouping+alternation — must convert to "(foo|bar)"
     val (fixed, changed) = fixPosixRegex("\\(foo\\|bar\\)")
-    assertEquals(fixed, "\\(foo\\|bar\\)")
-    assert(!changed)
+    assertEquals(fixed, "(foo|bar)")
+    assert(changed)
+  }
+
+  test("fixPosixRegex converts multi-alternative backslash-pipe patterns") {
+    // Real-world agent pattern: optimizer\|Optimizer\|IncOptimizer
+    val (fixed, changed) = fixPosixRegex("optimizer\\|Optimizer\\|IncOptimizer")
+    assertEquals(fixed, "optimizer|Optimizer|IncOptimizer")
+    assert(changed)
   }
 
   test("fixPosixRegex auto-quotes unfixable patterns as literal") {

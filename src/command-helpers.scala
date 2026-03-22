@@ -7,20 +7,24 @@ def hasRegexHint(pattern: String): Boolean =
   pattern.contains("\\|") || pattern.contains("\\(") || pattern.contains("\\)")
 
 def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
-  // Only auto-correct if the original pattern is invalid Java regex
-  try
-    java.util.regex.Pattern.compile(pattern)
-    (pattern, false)
-  catch
-    case _: java.util.regex.PatternSyntaxException =>
-      val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
-      try
-        java.util.regex.Pattern.compile(fixed)
-        (fixed, true)
-      catch
-        case _: java.util.regex.PatternSyntaxException =>
-          // Pattern is invalid even after POSIX fix — treat as literal string
-          (java.util.regex.Pattern.quote(pattern), true)
+  // If the pattern contains POSIX regex syntax (\|, \(, \)), always convert —
+  // these are valid Java regex (matching literal |, (, )) but almost certainly
+  // intended as POSIX alternation/grouping by grep-trained users.
+  if hasRegexHint(pattern) then
+    val fixed = pattern.replace("\\|", "|").replace("\\(", "(").replace("\\)", ")")
+    try
+      java.util.regex.Pattern.compile(fixed)
+      (fixed, true)
+    catch
+      case _: java.util.regex.PatternSyntaxException =>
+        (java.util.regex.Pattern.quote(pattern), true)
+  else
+    try
+      java.util.regex.Pattern.compile(pattern)
+      (pattern, false)
+    catch
+      case _: java.util.regex.PatternSyntaxException =>
+        (java.util.regex.Pattern.quote(pattern), true)
 
 // ── Suggestions for not-found ────────────────────────────────────────────────
 
