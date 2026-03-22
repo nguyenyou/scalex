@@ -130,7 +130,7 @@ scalex-sdb callees main -w /project
 scalex-sdb callees createOrder --kind method --smart -w /project
 
 # Fine-tune manually:
-scalex-sdb callees createOrder --no-accessors --exclude "protobuf,radixFactories" -w /project
+scalex-sdb callees createOrder --no-accessors --exclude "protobuf,generatedFactories" -w /project
 ```
 ```
 5 callees of 'main'

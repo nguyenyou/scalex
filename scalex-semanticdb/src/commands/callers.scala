@@ -27,9 +27,10 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
       }
 
       val callerSymbols = callerFqns.toList.flatMap(ctx.index.symbolByFqn.get)
-      val filtered = filterByExclude(filterByKind(callerSymbols, ctx.kindFilter), ctx.excludePatterns)
+      // --kind is used for symbol resolution above, not for filtering callers output
+      val filtered = filterByExclude(callerSymbols, ctx.excludePatterns)
       val limited = filtered.take(ctx.limit)
-      val name = symbols.head.displayName
+      val name = candidates.head.displayName
 
       SemCmdResult.SymbolList(
         s"${filtered.size} callers of '$name'",

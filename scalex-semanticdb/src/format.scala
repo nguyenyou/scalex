@@ -19,14 +19,18 @@ private val smartFunctionalMethods = Set(
   "map", "flatMap", "traverse", "fold", "foldLeft", "foldRight", "foreach",
 )
 
+private def isGeneratedSource(uri: String): Boolean =
+  uri.startsWith("out/") || uri.contains("compileScalaPB.dest") || uri.contains("compilePB.dest")
+
 def isInfraNoise(s: SemSymbol): Boolean =
   val uri = s.sourceUri
   // Generated code (protobuf, codegen)
-  (uri.startsWith("out/") || uri.contains("compileScalaPB.dest") || uri.contains("compilePB.dest")) ||
+  isGeneratedSource(uri) ||
   // Protobuf boilerplate methods in generated files
   (smartProtobufMethods.contains(s.displayName) && uri.contains("compileScalaPB")) ||
-  // Functional plumbing
-  smartFunctionalMethods.contains(s.displayName)
+  // Functional plumbing — only in non-application code (stdlib, platform, framework).
+  // A user-defined method named `map` in application source should not be filtered.
+  (smartFunctionalMethods.contains(s.displayName) && !uri.contains("/src/"))
 
 def filterByExclude(symbols: List[SemSymbol], patterns: List[String]): List[SemSymbol] =
   if patterns.isEmpty then symbols
