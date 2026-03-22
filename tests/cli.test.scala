@@ -184,6 +184,21 @@ class CliSuite extends ScalexTestBase:
     assert(changed)
   }
 
+  test("fixPosixRegex auto-quotes various invalid regex metacharacters") {
+    // Unclosed character class
+    val (f1, c1) = fixPosixRegex("Foo[Bar")
+    assertEquals(f1, java.util.regex.Pattern.quote("Foo[Bar"))
+    assert(c1)
+    // Unclosed quantifier
+    val (f2, c2) = fixPosixRegex("a{3")
+    assertEquals(f2, java.util.regex.Pattern.quote("a{3"))
+    assert(c2)
+    // Multiple unbalanced parens
+    val (f3, c3) = fixPosixRegex("func(arg1, arg2")
+    assertEquals(f3, java.util.regex.Pattern.quote("func(arg1, arg2"))
+    assert(c3)
+  }
+
   test("fixPosixRegex is no-op for valid Java regex") {
     val (fixed, changed) = fixPosixRegex("class|trait")
     assertEquals(fixed, "class|trait")
@@ -2251,6 +2266,53 @@ class CliSuite extends ScalexTestBase:
     // Without --in, eachMethod is ignored; should work as normal grep
     assert(output.contains("processPayment"), s"Should find results globally: $output")
     assert(!output.contains("Methods in"), s"Should NOT use per-method format: $output")
+  }
+
+  // ── grep auto-literal fallback ────────────────────────────────────────
+
+  test("grep with invalid regex finds matches via auto-literal fallback") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    // "UserServiceLive(" contains an unbalanced paren — invalid Java regex
+    val output = captureOut {
+      runCommand("grep", List("UserServiceLive("),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("UserServiceLive("), s"Should find literal match: $output")
+    assert(!output.contains("Invalid regex"), s"Should NOT error: $output")
+  }
+
+  test("grep with valid regex still works as regex (not quoted)") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    // "findUser|createUser" is valid Java regex — should match both methods
+    val output = captureOut {
+      runCommand("grep", List("findUser|createUser"),
+        CommandContext(idx = idx, workspace = workspace))
+    }
+    assert(output.contains("findUser"), s"Should match findUser via alternation: $output")
+    assert(output.contains("createUser"), s"Should match createUser via alternation: $output")
+  }
+
+  test("grep auto-literal JSON omits corrected field") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("findUser("),
+        CommandContext(idx = idx, workspace = workspace, jsonOutput = true))
+    }
+    assert(!output.contains("corrected"), s"JSON should NOT contain corrected field for literal fallback: $output")
+    assert(output.contains("findUser("), s"JSON should contain matches: $output")
+  }
+
+  test("grep --in with invalid regex finds matches via auto-literal fallback") {
+    val idx = WorkspaceIndex(workspace, needBlooms = false)
+    idx.index()
+    val output = captureOut {
+      runCommand("grep", List("findUser("),
+        CommandContext(idx = idx, workspace = workspace, inOwner = Some("UserServiceLive")))
+    }
+    assert(output.contains("findUser("), s"Should find literal match in scoped grep: $output")
   }
 
   // ── #180: extractImportLines ──────────────────────────────────────────
