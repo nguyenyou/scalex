@@ -165,6 +165,15 @@
 - ~~`scalex sealed <trait>`~~ — `hierarchy --down --depth 1` already serves this use case; marginal
 - ~~Smarter default limits~~ — auto-summarize is hard to get right universally; better to give users explicit flags (`--members-limit`, `--definitions-only`)
 
+### scalex-sdb: noise filtering for flow/callees/callers
+
+- [x] `--no-accessors` flag — filter val/var field accessors from flow/callees
+- [x] `--exclude "p1,p2,..."` flag — filter symbols by FQN or file path from flow/callees/callers
+- [x] `--smart` flag — auto-filter infrastructure noise (accessors, generated code, protobuf boilerplate, functional plumbing); in flow, only recurses into same-module callees
+- [x] `--kind` narrows symbol resolution in flow/callees/callers (not just output filtering)
+- [x] `resolveSymbol` prefers source over generated code in ranking
+- [x] `batch` command — run multiple queries in one invocation
+
 ## Completed
 
 ### JavaParser-based Java extraction (#167)

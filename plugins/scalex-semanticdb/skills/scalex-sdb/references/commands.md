@@ -51,9 +51,12 @@
 | `--limit` | — | 50 | Max results (0=unlimited) |
 | `--json` | — | off | JSON output for all commands |
 | `--verbose` | `-v` | off | Show full signatures, properties, overrides |
-| `--kind` | — | all | Filter by symbol kind |
+| `--kind` | — | all | Filter by symbol kind AND narrow resolution in flow/callees/callers |
 | `--role` | — | all | Filter occurrences by role (def/ref) |
 | `--depth` | — | 3 | Max recursion depth for `flow` and `subtypes` |
+| `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
+| `--smart` | — | off | Auto-filter infrastructure noise (accessors, generated, protobuf, plumbing) |
+| `--exclude` | — | — | Exclude symbols matching FQN or file path (comma-separated) |
 | `--timings` | — | off | Print timing breakdown to stderr |
 | `--version` | — | — | Print version |
 
@@ -66,7 +69,7 @@ When you pass a symbol name, scalex-sdb resolves it in this order:
 3. **Display name** — `MyService` matches by case-insensitive display name
 4. **Partial name** — `Service` matches any symbol containing "Service"
 
-Results are ranked: classes/traits first, then methods/fields, locals last.
+Results are ranked: non-local before local, source before generated (protobuf/codegen), classes/traits first, then methods/fields, locals last.
 
 SemanticDB fully-qualified names use `/` for packages, `#` for types, `.` for terms:
 - `scala/collection/List#` — type (class/trait)

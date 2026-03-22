@@ -13,7 +13,8 @@ def cmdCallees(args: List[String], ctx: SemCommandContext): SemCmdResult =
       val callees = findCallees(sym.fqn, ctx.index)
       val withoutAccessors = if ctx.noAccessors || ctx.smart then callees.filterNot(isAccessor) else callees
       val withoutInfra = if ctx.smart then withoutAccessors.filterNot(isInfraNoise) else withoutAccessors
-      val filtered = filterByExclude(filterByKind(withoutInfra, ctx.kindFilter), ctx.excludePatterns)
+      // --kind is used for symbol resolution above, not for filtering callees output
+      val filtered = filterByExclude(withoutInfra, ctx.excludePatterns)
       val limited = filtered.take(ctx.limit)
 
       SemCmdResult.SymbolList(

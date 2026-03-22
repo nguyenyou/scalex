@@ -260,7 +260,8 @@ class SemIndex(val workspace: Path):
   // ── Query helpers ──────────────────────────────────────────────────────
 
   /** Resolve a user query to a symbol FQN. Tries: exact FQN, suffix match, display name.
-    * Results are sorted by kind (classes first) then FQN length for deterministic output. */
+    * Results are sorted: non-local before local, source before generated, by kind rank
+    * (classes first), then shorter FQN first, then alphabetically. */
   def resolveSymbol(query: String): List[SemSymbol] =
     val raw =
       // 1. Exact FQN match
@@ -277,7 +278,7 @@ class SemIndex(val workspace: Path):
             allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
       }
     // Deterministic ordering: non-local before local, source before generated, then by kind rank, then shorter FQN first
-    raw.sortBy(s => (if s.kind == SemKind.Local then 1 else 0, if isGenerated(s.sourceUri) then 1 else 0, kindRank(s.kind), s.fqn.length, s.fqn))
+    raw.sortBy(s => (isLocal = if s.kind == SemKind.Local then 1 else 0, isGenerated = if isGenerated(s.sourceUri) then 1 else 0, kindRank = kindRank(s.kind), fqnLen = s.fqn.length, fqn = s.fqn))
 
   private def isGenerated(uri: String): Boolean =
     uri.startsWith("out/") || uri.contains("compileScalaPB.dest") || uri.contains("compilePB.dest")
