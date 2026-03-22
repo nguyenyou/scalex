@@ -38,7 +38,7 @@ For everything else — grep, body extraction, scaladoc, AST patterns, test disc
   └──────────────┘  └────────────────┘  └────────────────┘
 ```
 
-- **scalex-sdb CLI** — 14 commands focused on compiler-unique capabilities
+- **scalex-sdb CLI** — 15 commands focused on compiler-unique capabilities
 - **SemIndex** — lazy indexes: symbolByFqn, occurrencesBySymbol, subtypeIndex, memberIndex, definitionRanges
 - **Discovery** — targeted scan of Mill's `semanticDbDataDetailed.dest` directories (fast), with fallback walk for sbt/Bloop
 - **.semanticdb protobuf** — compiler output: symbols with resolved types, every occurrence with DEFINITION/REFERENCE role

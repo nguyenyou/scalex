@@ -137,7 +137,7 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
       val items = results.map { entry =>
         val buf = java.io.ByteArrayOutputStream()
         Console.withOut(buf) { Console.withErr(java.io.ByteArrayOutputStream()) { renderJson(entry.result, ctx) } }
-        s"""{"command":${jsonStr(entry.command)},"result":${buf.toString.trim}}"""
+        s"""{"command":${jsonStr(entry.command)},"result":${buf.toString("UTF-8").trim}}"""
       }
       println(s"""{"batch":[${items.mkString(",")}]}""")
 

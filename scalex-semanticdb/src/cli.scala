@@ -52,7 +52,7 @@ import java.nio.file.{Files, Path}
 // ── Command dispatch ───────────────────────────────────────────────────────
 
 val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = Map(
-  // 13 commands (index handled separately above)
+  // 13 commands (index and batch handled separately above)
   "lookup"      -> cmdLookup,
   "refs"        -> cmdRefs,
   "supertypes"  -> cmdSupertypes,
@@ -72,23 +72,27 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
   if args.isEmpty then return SemCmdResult.UsageError("batch requires at least one sub-command argument.\nUsage: batch \"lookup Dog\" \"members Animal\" ...")
 
   val results = args.map { subCmdStr =>
-    val parts = subCmdStr.trim.split("\\s+").toList
-    val subCmd  = parts.head
-    val subRest = parts.tail
-    val subFlags = parseFlags(subRest)
-    val hasExplicitDepth = subRest.contains("--depth")
-    val subCtx = ctx.copy(
-      limit = if subFlags.limit == 0 then Int.MaxValue else subFlags.limit,
-      verbose = subFlags.verbose || ctx.verbose,
-      jsonOutput = ctx.jsonOutput,
-      kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
-      roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
-      depth = if hasExplicitDepth then subFlags.depth else ctx.depth,
-    )
-    val result = commands.get(subCmd) match
-      case Some(handler) => handler(subFlags.cleanArgs, subCtx)
-      case None => SemCmdResult.UsageError(s"Unknown command: $subCmd")
-    (command = subCmdStr, result = result)
+    val parts = subCmdStr.trim.split("\\s+").toList.filter(_.nonEmpty)
+    if parts.isEmpty then (command = subCmdStr, result = SemCmdResult.UsageError("Empty sub-command"))
+    else {
+      val subCmd  = parts.head
+      val subRest = parts.tail
+      val subFlags = parseFlags(subRest)
+      val hasExplicitDepth = subRest.contains("--depth")
+      val hasExplicitLimit = subRest.contains("--limit")
+      val subCtx = ctx.copy(
+        limit = if hasExplicitLimit then (if subFlags.limit == 0 then Int.MaxValue else subFlags.limit) else ctx.limit,
+        verbose = subFlags.verbose || ctx.verbose,
+        jsonOutput = ctx.jsonOutput,
+        kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
+        roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
+        depth = if hasExplicitDepth then subFlags.depth else ctx.depth,
+      )
+      val result = commands.get(subCmd) match
+        case Some(handler) => handler(subFlags.cleanArgs, subCtx)
+        case None => SemCmdResult.UsageError(s"Unknown command: $subCmd")
+      (command = subCmdStr, result = result)
+    }
   }
   SemCmdResult.Batch(results)
 

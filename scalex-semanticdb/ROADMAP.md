@@ -26,7 +26,7 @@ On a production monorepo: 3,008 generated files (26% of index), 600K symbols fro
 ## Missing features (possible with SemanticDB)
 
 - [ ] **`search` with fuzzy/camelCase matching** — scalex's `search hms` finds `HttpMessageService`. sdb's `lookup` only does exact/partial name match.
-- [ ] **`batch` mode** — multiple queries in one invocation, amortize index load
+- [x] **`batch` mode** — multiple queries in one invocation, amortize index load
 - [ ] **`exists` command**
 - [ ] **`--fields-only` on `members`**
 - [ ] **`diff <git-ref>`** — compare two index snapshots to show symbol-level changes
