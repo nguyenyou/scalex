@@ -333,9 +333,8 @@ class SemIndex(val workspace: Path):
       buildTimeMs = System.currentTimeMillis() - start
       return
 
-    val roots = Discovery.semanticdbRoots(files)
     documents = SemTimings.phase("parse-semanticdb") {
-      Parser.loadDocuments(roots)
+      Parser.loadDocuments(files)
     }
 
     // Persist
@@ -358,9 +357,8 @@ class SemIndex(val workspace: Path):
       buildTimeMs = System.currentTimeMillis() - start
       return
 
-    val roots = Discovery.semanticdbRoots(files)
     documents = SemTimings.phase("parse-semanticdb") {
-      Parser.loadDocuments(roots)
+      Parser.loadDocuments(files)
     }
 
     SemTimings.phase("save-index") {
