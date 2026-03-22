@@ -7,13 +7,13 @@ if [ -z "${BASH_VERSION:-}" ] && [ -f "$0" ]; then
 fi
 set -euo pipefail
 
-EXPECTED_VERSION="1.36.0"
+EXPECTED_VERSION="1.37.0"
 REPO="nguyenyou/scalex"
 
 # Expected SHA-256 checksums for each artifact (updated each release alongside EXPECTED_VERSION)
-CHECKSUM_scalex_macos_arm64="b3aea25bdd24f5e08c559d83402e154337f6d5e9e2845dc509aa2c9877a71e12"
-CHECKSUM_scalex_macos_x64="6390b442ff7ab2f88bd5a42435e41b10ef22363eb89934acb04da53643d3f312"
-CHECKSUM_scalex_linux_x64="c2dbe562ae19a633443035252459390a2adf9fb9dd7e37aa4fd8c4341739356d"
+CHECKSUM_scalex_macos_arm64="96bb4b907710a2d4d465d7d7e5f1bc083d4d97c8ebc99a7d4a4f5fd218fdffd2"
+CHECKSUM_scalex_macos_x64="08893eec461a83b370efd07d86b0ca0a410006915ef7a39aece1003bb2eb9fd3"
+CHECKSUM_scalex_linux_x64="9b3550456f48166df3c79a9be82f51a455f478983486c227fcdc681a625d848d"
 
 # Cache location: follow XDG spec (like Mill uses ~/.cache/mill/download/)
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/scalex"
