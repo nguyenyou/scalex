@@ -186,7 +186,7 @@ scalex search process --takes String     # methods named "process" taking String
 
 Regex search inside `.scala` and `.java` file contents. This is the scalex equivalent of grep, but with integrated `--path` and `--no-tests` filtering — use it instead of the Grep tool when searching inside Scala/Java files. Has a 20-second timeout for large codebases.
 
-The pattern is a **Java regex** — `\(` matches a literal paren, `|` is alternation. If a pattern is invalid Java regex but looks like POSIX (e.g. `\|` for alternation), scalex auto-corrects it and prints a hint.
+The pattern is a **Java regex** — `\(` matches a literal paren, `|` is alternation. If a pattern is invalid Java regex, scalex auto-corrects it: POSIX-style patterns (e.g. `\|` for alternation) are converted to Java regex; otherwise the pattern is treated as a literal string. Either way, a hint is printed.
 
 Use `-e` to search multiple patterns in one call — they're combined with `|`. Use `--count` to get match/file counts without full output (great for triaging before reading all results). Use `-C N` to show context lines around each match. Use `--in <symbol>` to scope the grep to a specific class or method body — supports `Owner.member` dot syntax. Use `--each-method` with `--in` to grep each method body independently and report which methods matched — answers "which methods in this class contain X?" in one call.
 
