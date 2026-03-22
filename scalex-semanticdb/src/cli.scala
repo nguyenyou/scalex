@@ -73,15 +73,17 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
 
   val results = args.map { subCmdStr =>
     val parts = subCmdStr.trim.split("\\s+").toList
-    val (subCmd, subRest) = (parts.head, parts.tail)
+    val subCmd  = parts.head
+    val subRest = parts.tail
     val subFlags = parseFlags(subRest)
+    val hasExplicitDepth = subRest.contains("--depth")
     val subCtx = ctx.copy(
       limit = if subFlags.limit == 0 then Int.MaxValue else subFlags.limit,
       verbose = subFlags.verbose || ctx.verbose,
       jsonOutput = ctx.jsonOutput,
       kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
       roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
-      depth = subFlags.depth,
+      depth = if hasExplicitDepth then subFlags.depth else ctx.depth,
     )
     val result = commands.get(subCmd) match
       case Some(handler) => handler(subFlags.cleanArgs, subCtx)
