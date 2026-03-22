@@ -462,7 +462,7 @@ Use both together: scalex for fast exploration, scalex-sdb for precision queries
 
 | Project | Files | Symbols | Occurrences | Cold Index | Warm Index |
 |---|---|---|---|---|---|
-| Production monorepo | 16,718 | 3,003,764 | 14,916,074 | 52s | 1.8s |
+| Production monorepo | 15,268 | 2,058,266 | 10,436,047 | 10s | 1.6s |
 
 See the full [scalex-semanticdb README](scalex-semanticdb/README.md) for command reference and detailed comparison.
 
