@@ -8,26 +8,16 @@ Initial release.
 
 ### Added
 
-- SemanticDB file discovery from Mill (`out/`), sbt (`target/`), and Bloop (`.bloop/`) build output directories
-- Protobuf parsing via scalameta's `Locator` and `semanticdb-shared` library
-- Binary index persistence at `.scalex/semanticdb.bin` with string interning and md5-based cache invalidation
-- 15 commands:
-  - `lookup` — find symbol by FQN or display name
-  - `refs` — compiler-precise references with `--role` filter (def/ref)
-  - `supertypes` — parent type chain from ClassSignature
-  - `subtypes` — subtype tree from parent index
-  - `members` — declarations of a class/trait/object
-  - `type` — resolved type signature
-  - `callers` — reverse call graph (who calls this method)
-  - `callees` — forward call graph (what does this method call)
-  - `flow` — recursive call tree with `--depth` control
-  - `related` — co-occurring symbols ranked by frequency
-  - `diagnostics` — compiler warnings/errors
-  - `symbols` — list symbols in file or entire index
-  - `occurrences` — all occurrences in a file with roles
-  - `index` — force rebuild
-  - `stats` — index statistics
+- SemanticDB file discovery — optimized for Mill (`out/`), with fallback for sbt (`target/`) and Bloop (`.bloop/`)
+- Parallel protobuf parsing via `parallelStream()` and `TextDocuments.parseFrom`
+- Binary index persistence at `.scalex/semanticdb.bin` with string interning
+- Deduplication of Mill `jsSharedSources` generated copies
+- 14 commands focused on compiler-unique capabilities:
+  - **Call graph:** `flow`, `callers`, `callees`
+  - **Compiler-precise queries:** `refs`, `type`, `related`, `occurrences`
+  - **Navigation:** `lookup`, `supertypes`, `subtypes`, `members`, `symbols`
+  - **Index:** `index`, `stats`
 - JSON output (`--json`) for all commands
 - Kind filter (`--kind`) and role filter (`--role`)
 - Timing instrumentation (`--timings`)
-- GraalVM native image build via `build-native-semanticdb.sh`
+- Assembly JAR build via `build-native-semanticdb.sh` (JVM JIT is 11x faster than GraalVM native for this workload)

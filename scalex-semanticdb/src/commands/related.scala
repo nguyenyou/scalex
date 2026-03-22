@@ -31,13 +31,13 @@ def cmdRelated(args: List[String], ctx: SemCommandContext): SemCmdResult =
       val entries = cooccurrences.toList
         .filterNot((fqn, _) => isTrivial(fqn))
         .flatMap { (fqn, count) =>
-          ctx.index.symbolByFqn.get(fqn).map(s => (s, count))
+          ctx.index.symbolByFqn.get(fqn).map(s => (sym = s, count = count))
         }
-        .filter { (s, _) =>
-          s.kind != SemKind.Parameter && s.kind != SemKind.TypeParam &&
-          s.kind != SemKind.Local && s.kind != SemKind.Constructor
+        .filter { (sym, _) =>
+          sym.kind != SemKind.Parameter && sym.kind != SemKind.TypeParam &&
+          sym.kind != SemKind.Local && sym.kind != SemKind.Constructor
         }
-        .sortBy(-_._2)
+        .sortBy(-_.count)
 
       val limited = entries.take(ctx.limit)
       SemCmdResult.RelatedList(

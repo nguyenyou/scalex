@@ -128,8 +128,6 @@ object Discovery:
     files.filter { f =>
       val str = f.toString
       val idx = str.indexOf(marker)
-      if idx >= 0 then
-        val relPath = str.substring(idx + marker.length)
-        seen.add(relPath) // true if new, false if duplicate
-      else true
+      val key = if idx >= 0 then str.substring(idx + marker.length) else str
+      seen.add(key) // true if new, false if duplicate
     }.sortBy(_.toString)

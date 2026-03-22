@@ -62,5 +62,8 @@ chmod +x "$TMP"
 mv "$TMP" "$BINARY"
 trap - EXIT
 
+# macOS: remove quarantine
+[ "$(uname -s)" = "Darwin" ] && xattr -d com.apple.quarantine "$BINARY" 2>/dev/null || true
+
 echo "scalex-sdb: installed v${EXPECTED_VERSION}" >&2
 exec "$BINARY" "$@"

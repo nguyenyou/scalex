@@ -70,6 +70,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: VirtusLab/scala-cli-setup@59e308800210b0414d2d7190068c80021e1b3e5d # v1
+        with:
+          power: true
 
       - name: Build assembly JAR
         run: ./build-native-semanticdb.sh scalex-sdb

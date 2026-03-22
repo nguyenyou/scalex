@@ -166,9 +166,9 @@ class CommandsTest extends SemTestBase:
     val result = cmdRelated(List("Dog"), ctx)
     result match
       case SemCmdResult.RelatedList(_, entries, _) =>
-        val names = entries.map(_._1.displayName).toSet
-        assert(names.contains("Animal") || entries.exists(_._1.fqn.contains("Animal")),
-          s"Animal should be related to Dog: ${entries.map(e => e._1.displayName -> e._2)}")
+        val names = entries.map(_.sym.displayName).toSet
+        assert(names.contains("Animal") || entries.exists(_.sym.fqn.contains("Animal")),
+          s"Animal should be related to Dog: ${entries.map(e => e.sym.displayName -> e.count)}")
       case other =>
         fail(s"unexpected result: $other")
   }

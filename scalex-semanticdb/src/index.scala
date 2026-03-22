@@ -119,11 +119,11 @@ object SemPersistence:
             val owner = strings(in.readInt())
             val sourceUri = strings(in.readInt())
             val signature = strings(in.readInt())
-            val parentCount = in.readShort()
+            val parentCount = in.readUnsignedShort()
             val parents = (0 until parentCount).map(_ => strings(in.readInt())).toList
-            val overriddenCount = in.readShort()
+            val overriddenCount = in.readUnsignedShort()
             val overridden = (0 until overriddenCount).map(_ => strings(in.readInt())).toList
-            val annotCount = in.readShort()
+            val annotCount = in.readUnsignedShort()
             val annots = (0 until annotCount).map(_ => strings(in.readInt())).toList
             syms += SemSymbol(fqn, displayName, kind, properties, owner, sourceUri, signature, parents, overridden, annots)
             si += 1
@@ -155,7 +155,7 @@ object SemPersistence:
 
 object SemTimings:
   private var enabled: Boolean = false
-  private val phases = mutable.ListBuffer.empty[(String, Long)]
+  private val phases = mutable.ListBuffer.empty[(name: String, ms: Long)]
 
   def enable(): Unit = enabled = true
 
@@ -165,7 +165,7 @@ object SemTimings:
       val start = System.nanoTime()
       val result = body
       val elapsed = (System.nanoTime() - start) / 1_000_000
-      phases += ((name, elapsed))
+      phases += ((name = name, ms = elapsed))
       result
 
   def report(): Unit =
@@ -247,12 +247,12 @@ class SemIndex(val workspace: Path):
     }
 
   /** Map from symbol FQN → (file, definition range). Built from DEFINITION occurrences. */
-  lazy val definitionRanges: Map[String, (String, SemRange)] =
+  lazy val definitionRanges: Map[String, (file: String, range: SemRange)] =
     SemTimings.phase("build-definitionRanges") {
-      val m = mutable.HashMap.empty[String, (String, SemRange)]
+      val m = mutable.HashMap.empty[String, (file: String, range: SemRange)]
       allOccurrences.foreach { occ =>
         if occ.role == OccRole.Definition && !m.contains(occ.symbol) then
-          m(occ.symbol) = (occ.file, occ.range)
+          m(occ.symbol) = (file = occ.file, range = occ.range)
       }
       m.toMap
     }

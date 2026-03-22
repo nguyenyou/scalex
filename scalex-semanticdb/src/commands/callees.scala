@@ -46,7 +46,7 @@ def findCallees(fqn: String, index: SemIndex): List[SemSymbol] =
       // Collect all references within the body range
       val refsInBody = fileOccs.filter { o =>
         o.role == OccRole.Reference &&
-        o.range.startLine >= defRange.startLine &&
+        o.range.startLine > defRange.startLine &&
         o.range.startLine < bodyEndLine &&
         o.symbol != fqn // exclude self-references
       }

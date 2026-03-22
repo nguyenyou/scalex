@@ -46,12 +46,24 @@ private def findEnclosingSymbol(file: String, line: Int, index: SemIndex): Optio
   val candidates = fileOccs
     .filter(o => o.range.startLine <= line)
     .flatMap { o =>
-      index.symbolByFqn.get(o.symbol).map(s => (s, o.range.startLine))
+      index.symbolByFqn.get(o.symbol).map(s => (sym = s, occ = o))
     }
-    .filter { (s, _) =>
-      s.kind == SemKind.Method || s.kind == SemKind.Constructor ||
-      s.kind == SemKind.Field
+    .filter { (sym, _) =>
+      sym.kind == SemKind.Method || sym.kind == SemKind.Constructor ||
+      sym.kind == SemKind.Field
     }
-    .sortBy(-_._2) // closest definition first
+    .sortBy(-_.occ.range.startLine) // closest definition first
 
-  candidates.headOption.map(_._1.fqn)
+  candidates.headOption.flatMap { (sym, occ) =>
+    // Find the next sibling definition (same owner) to approximate body end
+    val owner = sym.owner
+    val siblingDefs = fileOccs
+      .filter(o => o.role == OccRole.Definition && o.range.startLine > occ.range.startLine)
+      .sortBy(_.range.startLine)
+      .filter { o =>
+        !o.symbol.startsWith("local") &&
+        index.symbolByFqn.get(o.symbol).exists(s => s.owner == owner)
+      }
+    val bodyEndLine = siblingDefs.headOption.map(_.range.startLine).getOrElse(Int.MaxValue)
+    if line < bodyEndLine then Some(sym.fqn) else None
+  }

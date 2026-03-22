@@ -137,7 +137,7 @@ enum SemCmdResult:
   case TypeResult(symbol: String, typeString: String)
   case Tree(header: String, lines: List[String])
   case FlowTree(header: String, lines: List[String])
-  case RelatedList(header: String, entries: List[(SemSymbol, Int)], total: Int)
+  case RelatedList(header: String, entries: List[(sym: SemSymbol, count: Int)], total: Int)
   case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, buildTimeMs: Long, cached: Boolean)
   case NotFound(message: String)
   case UsageError(message: String)

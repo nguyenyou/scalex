@@ -50,8 +50,8 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
 
     case SemCmdResult.RelatedList(header, entries, total) =>
       println(header)
-      entries.foreach { (s, count) =>
-        println(s"  [$count] ${s.kind.toString.toLowerCase} ${s.displayName} (${s.fqn})")
+      entries.foreach { entry =>
+        println(s"  [${entry.count}] ${entry.sym.kind.toString.toLowerCase} ${entry.sym.displayName} (${entry.sym.fqn})")
       }
       if total > entries.size then
         println(s"... and ${total - entries.size} more")
@@ -118,8 +118,8 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
       println(s"""{"header":${jsonStr(header)},"lines":[${lines.map(jsonStr).mkString(",")}]}""")
 
     case SemCmdResult.RelatedList(header, entries, total) =>
-      val items = entries.map { (s, count) =>
-        s"""{"symbol":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)},"count":$count}"""
+      val items = entries.map { entry =>
+        s"""{"symbol":${jsonStr(entry.sym.fqn)},"name":${jsonStr(entry.sym.displayName)},"kind":${jsonStr(entry.sym.kind.toString)},"count":${entry.count}}"""
       }
       println(s"""{"header":${jsonStr(header)},"total":$total,"related":[${items.mkString(",")}]}""")
 
