@@ -8,7 +8,9 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
       if symbols.isEmpty then
         return SemCmdResult.NotFound(s"No symbol found matching '$query'")
 
-      val fqns = symbols.map(_.fqn).toSet
+      val resolved = filterByKind(symbols, ctx.kindFilter)
+      val candidates = if resolved.nonEmpty then resolved else symbols
+      val fqns = candidates.map(_.fqn).toSet
       // Find all REFERENCE occurrences of the target symbol
       val refs = fqns.toList.flatMap(fqn =>
         ctx.index.occurrencesBySymbol.getOrElse(fqn, Nil)

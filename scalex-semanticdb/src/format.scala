@@ -10,9 +10,27 @@ def filterByKind(symbols: List[SemSymbol], kindFilter: Option[String]): List[Sem
 def isAccessor(s: SemSymbol): Boolean =
   (s.isVal || s.isVar) && (s.kind == SemKind.Field || s.kind == SemKind.Method)
 
+private val smartProtobufMethods = Set(
+  "copy", "toByteArray", "writeTo", "serializedSize",
+  "parseFrom", "mergeFrom", "of", "defaultInstance",
+)
+
+private val smartFunctionalMethods = Set(
+  "map", "flatMap", "traverse", "fold", "foldLeft", "foldRight", "foreach",
+)
+
+def isInfraNoise(s: SemSymbol): Boolean =
+  val uri = s.sourceUri
+  // Generated code (protobuf, codegen)
+  (uri.startsWith("out/") || uri.contains("compileScalaPB.dest") || uri.contains("compilePB.dest")) ||
+  // Protobuf boilerplate methods in generated files
+  (smartProtobufMethods.contains(s.displayName) && uri.contains("compileScalaPB")) ||
+  // Functional plumbing
+  smartFunctionalMethods.contains(s.displayName)
+
 def filterByExclude(symbols: List[SemSymbol], patterns: List[String]): List[SemSymbol] =
   if patterns.isEmpty then symbols
-  else symbols.filterNot(s => patterns.exists(p => s.fqn.contains(p)))
+  else symbols.filterNot(s => patterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
 
 // ── Output rendering ───────────────────────────────────────────────────────
 

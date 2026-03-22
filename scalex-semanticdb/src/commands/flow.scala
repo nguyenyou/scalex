@@ -17,7 +17,8 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
       if symbols.isEmpty then
         return SemCmdResult.NotFound(s"No symbol found matching '$query'")
 
-      val sym = symbols.head
+      val resolved = filterByKind(symbols, ctx.kindFilter)
+      val sym = (if resolved.nonEmpty then resolved else symbols).head
       val lines = scala.collection.mutable.ListBuffer.empty[String]
       val visited = scala.collection.mutable.Set.empty[String]
       val maxDepth = ctx.depth
@@ -28,8 +29,9 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
 
         val callees = findCallees(fqn, ctx.index)
           .filterNot(s => isTrivial(s.fqn))
-          .filterNot(s => ctx.noAccessors && isAccessor(s))
-          .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p)))
+          .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
+          .filterNot(s => ctx.smart && isInfraNoise(s))
+          .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
 
         callees.foreach { callee =>
           val prefix = "  " * indent

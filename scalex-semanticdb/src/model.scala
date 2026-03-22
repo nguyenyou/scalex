@@ -159,4 +159,5 @@ case class SemCommandContext(
   timingsEnabled: Boolean = false,
   noAccessors: Boolean = false,
   excludePatterns: List[String] = Nil,
+  smart: Boolean = false,
 )

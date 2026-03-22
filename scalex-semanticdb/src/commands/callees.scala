@@ -8,10 +8,12 @@ def cmdCallees(args: List[String], ctx: SemCommandContext): SemCmdResult =
       if symbols.isEmpty then
         return SemCmdResult.NotFound(s"No symbol found matching '$query'")
 
-      val sym = symbols.head
+      val resolved = filterByKind(symbols, ctx.kindFilter)
+      val sym = (if resolved.nonEmpty then resolved else symbols).head
       val callees = findCallees(sym.fqn, ctx.index)
-      val withoutAccessors = if ctx.noAccessors then callees.filterNot(isAccessor) else callees
-      val filtered = filterByExclude(filterByKind(withoutAccessors, ctx.kindFilter), ctx.excludePatterns)
+      val withoutAccessors = if ctx.noAccessors || ctx.smart then callees.filterNot(isAccessor) else callees
+      val withoutInfra = if ctx.smart then withoutAccessors.filterNot(isInfraNoise) else withoutAccessors
+      val filtered = filterByExclude(filterByKind(withoutInfra, ctx.kindFilter), ctx.excludePatterns)
       val limited = filtered.take(ctx.limit)
 
       SemCmdResult.SymbolList(

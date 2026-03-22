@@ -447,6 +447,79 @@ class CommandsTest extends SemTestBase:
         fail(s"unexpected result: $other")
   }
 
+  // ── kind-aware resolution ────────────────────────────────────────────────
+
+  test("callees with --kind method resolves to method, not object") {
+    // "Main" matches both the object and the main method. With --kind method,
+    // it should resolve to the method and show its callees.
+    val ctx = makeCtx(kindFilter = Some("method"))
+    val result = cmdCallees(List("main"), ctx)
+    result match
+      case SemCmdResult.SymbolList(header, syms, total) =>
+        assert(total > 0, s"--kind method should resolve main to the method with callees: $header")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("flow with --kind method resolves to method") {
+    val ctx = makeCtx(depth = 1, kindFilter = Some("method"))
+    val result = cmdFlow(List("main"), ctx)
+    result match
+      case SemCmdResult.FlowTree(_, lines) =>
+        assert(lines.size > 1, s"--kind method should resolve to the method with callees: $lines")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("callers with --kind method narrows resolution") {
+    val ctx = makeCtx(kindFilter = Some("method"))
+    val result = cmdCallers(List("register"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val names = syms.map(_.displayName)
+        assert(names.contains("main"), s"main should call register: $names")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  // ── exclude matches file path ───────────────────────────────────────────
+
+  test("exclude matches file path, not just FQN") {
+    val ctx = makeCtx(excludePatterns = List("Animal.scala"))
+    val result = cmdCallees(List("example/Main.main()."), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val files = syms.map(_.sourceUri)
+        assert(!files.exists(_.contains("Animal.scala")),
+          s"symbols from Animal.scala should be excluded: ${syms.map(s => s.displayName -> s.sourceUri)}")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  // ── smart flag ──────────────────────────────────────────────────────────
+
+  test("flow with --smart produces fewer lines than without") {
+    val without = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2))
+    val withSmart = cmdFlow(List("example/Main.main()."), makeCtx(depth = 2, smart = true))
+    (without, withSmart) match
+      case (SemCmdResult.FlowTree(_, linesA), SemCmdResult.FlowTree(_, linesB)) =>
+        assert(linesB.size <= linesA.size,
+          s"--smart should not increase lines: ${linesB.size} vs ${linesA.size}")
+      case other =>
+        fail(s"unexpected results: $other")
+  }
+
+  test("callees with --smart filters accessors and plumbing") {
+    val without = cmdCallees(List("example/Main.main()."), makeCtx())
+    val withSmart = cmdCallees(List("example/Main.main()."), makeCtx(smart = true))
+    (without, withSmart) match
+      case (SemCmdResult.SymbolList(_, _, totalA), SemCmdResult.SymbolList(_, _, totalB)) =>
+        assert(totalB <= totalA,
+          s"--smart should not increase callees: $totalB vs $totalA")
+      case other =>
+        fail(s"unexpected results: $other")
+  }
+
   // ── resolveSymbol generated disambiguation ──────────────────────────────
 
   test("resolveSymbol prefers source over generated URIs") {
