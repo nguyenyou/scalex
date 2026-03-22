@@ -38,19 +38,19 @@ Replace `/absolute/path/to/skills/scalex-sdb` with the absolute path to the dire
 
 scalex-sdb requires `.semanticdb` files in build output directories. Generate them:
 
-**Mill** (easiest):
+**Mill** (best supported):
 ```bash
 ./mill __.semanticDbData
 ```
 
-**sbt**:
+**sbt / scala-cli / other build tools**: Discovery and indexing should work but is not fully tested. Use `--semanticdb-path` to point to the directory containing your `.semanticdb` files if auto-discovery doesn't find them. If you run into issues, please [file an issue](https://github.com/nguyenyou/scalex/issues) — we're happy to add support.
+
 ```scala
-// build.sbt — SemanticdbPlugin is auto-triggered, just enable it
+// sbt: build.sbt
 ThisBuild / semanticdbEnabled := true
 ```
-Then compile: `sbt compile`
 
-scalex-sdb auto-discovers `.semanticdb` files — targeted search in Mill's `out/` (finds `semanticDbDataDetailed.dest` directories directly), and generic walk in sbt's `target/` and Bloop's `.bloop/`. Use `--semanticdb-path` to point to a specific location.
+scalex-sdb auto-discovers `.semanticdb` files. For Mill projects, it finds `semanticDbDataDetailed.dest` directories directly (fast targeted search). For other build tools, it falls back to walking `target/` and `.bloop/`. Use `--semanticdb-path` to override.
 
 ## When to use scalex-sdb vs scalex
 
