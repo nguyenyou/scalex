@@ -144,6 +144,36 @@ class CommandsTest extends SemTestBase:
         fail(s"unexpected result: $other")
   }
 
+  test("callees of single-line method finds body references") {
+    val ctx = makeCtx()
+    // greet() is: def greet(): String = s"I'm $name and I say $sound"
+    // Single-line method — body refs are on the same line as def
+    val result = cmdCallees(List("greet"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, total) =>
+        assert(total > 0, "greet should have callees (name, sound)")
+        val names = syms.map(_.displayName).toSet
+        assert(names.contains("name") || names.contains("sound"),
+          s"greet should call name or sound: $names")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("callees excludes def signature types") {
+    val ctx = makeCtx()
+    // fetch is: def fetch(item: String): String = s"$name fetches $item"
+    // String appears in the signature — should NOT be a callee
+    val result = cmdCallees(List("fetch"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val fqns = syms.map(_.fqn).toSet
+        // String# should not appear as a callee (it's in the signature, not the body)
+        assert(!fqns.contains("scala/Predef.String#"),
+          s"String should not be a callee of fetch: $fqns")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
   // ── flow ─────────────────────────────────────────────────────────────────
 
   test("flow from main shows call tree") {
