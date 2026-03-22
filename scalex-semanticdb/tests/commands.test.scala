@@ -263,6 +263,93 @@ class CommandsTest extends SemTestBase:
     assert(output.contains("\"symbols\""), s"json should have symbols key: $output")
   }
 
+  // ── batch ────────────────────────────────────────────────────────────────
+
+  test("batch runs multiple commands") {
+    val ctx = makeCtx()
+    val result = runBatch(List("lookup Dog", "lookup Cat"), ctx)
+    result match
+      case SemCmdResult.Batch(results) =>
+        assertEquals(results.size, 2)
+        // Both should find symbols, not NotFound
+        results.foreach { entry =>
+          assert(!entry.result.isInstanceOf[SemCmdResult.NotFound], s"${entry.command} should find symbol")
+        }
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("batch with mixed commands") {
+    val ctx = makeCtx()
+    val result = runBatch(List("lookup Dog", "members Animal", "subtypes Shape"), ctx)
+    result match
+      case SemCmdResult.Batch(results) =>
+        assertEquals(results.size, 3)
+        // lookup Dog -> SymbolList or SymbolDetail
+        assert(!results(0).result.isInstanceOf[SemCmdResult.NotFound])
+        // members Animal -> SymbolList
+        assert(results(1).result.isInstanceOf[SemCmdResult.SymbolList])
+        // subtypes Shape -> Tree
+        assert(results(2).result.isInstanceOf[SemCmdResult.Tree])
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("batch with unknown sub-command returns UsageError for that entry") {
+    val ctx = makeCtx()
+    val result = runBatch(List("lookup Dog", "nosuchcmd Foo", "lookup Cat"), ctx)
+    result match
+      case SemCmdResult.Batch(results) =>
+        assertEquals(results.size, 3)
+        assert(!results(0).result.isInstanceOf[SemCmdResult.UsageError])
+        assert(results(1).result.isInstanceOf[SemCmdResult.UsageError])
+        assert(!results(2).result.isInstanceOf[SemCmdResult.UsageError])
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("batch with no args returns UsageError") {
+    val ctx = makeCtx()
+    val result = runBatch(Nil, ctx)
+    assert(result.isInstanceOf[SemCmdResult.UsageError])
+  }
+
+  test("batch with per-sub-command flags") {
+    val ctx = makeCtx()
+    val result = runBatch(List("members --kind method Animal"), ctx)
+    result match
+      case SemCmdResult.Batch(results) =>
+        assertEquals(results.size, 1)
+        results.head.result match
+          case SemCmdResult.SymbolList(_, syms, _) =>
+            assert(syms.forall(_.kind == SemKind.Method), s"all should be methods: ${syms.map(s => s.displayName -> s.kind)}")
+          case other =>
+            fail(s"unexpected sub-result: $other")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
+  test("batch text output has delimiters") {
+    val ctx = makeCtx()
+    val output = captureOut {
+      val result = runBatch(List("lookup Dog", "stats"), ctx)
+      render(result, ctx)
+    }
+    assert(output.contains("--- lookup Dog ---"), s"missing delimiter: $output")
+    assert(output.contains("--- stats ---"), s"missing delimiter: $output")
+  }
+
+  test("batch json output wraps results") {
+    val ctx = makeCtx(json = true)
+    val output = captureOut {
+      val result = runBatch(List("lookup Dog", "stats"), ctx)
+      render(result, ctx)
+    }
+    assert(output.contains("\"batch\""), s"json should have batch key: $output")
+    assert(output.contains("\"command\""), s"json should have command key: $output")
+    assert(output.contains("lookup Dog"), s"json should include command string: $output")
+  }
+
   // ── stats ────────────────────────────────────────────────────────────────
 
   test("stats shows counts") {

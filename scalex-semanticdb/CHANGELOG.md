@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `batch` command — run multiple queries in one invocation, amortizing index load time. Each positional arg is a sub-command string with its own flags. Results delimited in text mode, wrapped in `{"batch":[...]}` in JSON mode. ([#284](https://github.com/nguyenyou/scalex/issues/284))
+
 ## [0.1.0] - 2026-03-22
 
 Initial release.

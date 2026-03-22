@@ -141,6 +141,7 @@ enum SemCmdResult:
   case FlowTree(header: String, lines: List[String])
   case RelatedList(header: String, entries: List[(sym: SemSymbol, count: Int)], total: Int)
   case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, buildTimeMs: Long, cached: Boolean)
+  case Batch(results: List[(command: String, result: SemCmdResult)])
   case NotFound(message: String)
   case UsageError(message: String)
 

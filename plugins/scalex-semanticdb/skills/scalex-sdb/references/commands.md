@@ -29,6 +29,12 @@
 | `members` | `<symbol>` | Declarations with resolved types |
 | `symbols` | `[file]` | List symbols (all or per-file) |
 
+**Batch:**
+
+| Command | Arguments | Description |
+|---|---|---|
+| `batch` | `"cmd1" "cmd2" ...` | Run multiple queries in one invocation |
+
 **Index:**
 
 | Command | Arguments | Description |
@@ -81,4 +87,5 @@ All commands support `--json`. Output is a single JSON object per invocation:
 - `flow`: `{"header", "lines": [...]}`
 - `related`: `{"header", "total", "related": [...]}`
 - `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached"}`
+- `batch`: `{"batch": [{"command": "...", "result": {...}}, ...]}`
 - Errors: `{"error": "not_found"|"usage", "message": "..."}`

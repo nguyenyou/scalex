@@ -27,6 +27,8 @@ On a production monorepo: 3,008 generated files (26% of index), 600K symbols fro
 
 - [ ] **`search` with fuzzy/camelCase matching** — scalex's `search hms` finds `HttpMessageService`. sdb's `lookup` only does exact/partial name match.
 - [ ] **`batch` mode** — multiple queries in one invocation, amortize index load
+- [ ] **`exists` command**
+- [ ] **`--fields-only` on `members`**
 - [ ] **`diff <git-ref>`** — compare two index snapshots to show symbol-level changes
 - [ ] **`hierarchy` composite** — combine supertypes + subtypes into one tree view like scalex's `hierarchy`
 - [ ] **Wildcard import resolution** — scalex finds 28 importers vs sdb's 8 because scalex resolves `import pkg.*`
@@ -59,8 +61,13 @@ These require reading source files from disk. Could add as optional feature if s
 - [ ] **`--count` flag for refs** — show category counts without listing all occurrences
 - [ ] **`--top N` flag for refs** — rank files by reference count
 - [ ] **`--no-stdlib` flag** — filter out `scala/`, `java/` symbols from results globally
+- [ ] **`--expect` on `members`**
 - [ ] **`--max-output N`** — truncate output at N characters like scalex's budget system
 - [ ] **`--path` / `--exclude-path`** — filter results by file path prefix
+
+## Feature requests
+
+- [#284](https://github.com/nguyenyou/scalex/issues/284) — `batch` mode (other requests — `exists`, `--fields-only`, `--expect`, string literals — either agent-side or handled by scalex)
 
 ## Future ideas
 
