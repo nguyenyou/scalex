@@ -148,13 +148,13 @@ class CommandsTest extends SemTestBase:
 
   test("flow from main shows call tree") {
     val ctx = makeCtx(depth = 2)
-    val result = cmdFlow(List("main"), ctx)
+    // Use the method, not the ambiguous "main" which also matches the Main object
+    val result = cmdFlow(List("example/Main.main()."), ctx)
     result match
       case SemCmdResult.FlowTree(_, lines) =>
         assert(lines.size > 1, s"flow tree should have multiple lines: $lines")
-        // Should show indented callees
         val text = lines.mkString("\n")
-        assert(text.contains("main"), s"should start with main: $text")
+        assert(text.contains("main"), s"should contain main: $text")
       case other =>
         fail(s"unexpected result: $other")
   }

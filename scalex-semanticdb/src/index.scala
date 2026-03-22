@@ -292,21 +292,36 @@ class SemIndex(val workspace: Path):
 
   // ── Query helpers ──────────────────────────────────────────────────────
 
-  /** Resolve a user query to a symbol FQN. Tries: exact FQN, suffix match, display name. */
+  /** Resolve a user query to a symbol FQN. Tries: exact FQN, suffix match, display name.
+    * Results are sorted by kind (classes first) then FQN length for deterministic output. */
   def resolveSymbol(query: String): List[SemSymbol] =
-    // 1. Exact FQN match
-    symbolByFqn.get(query).map(List(_)).getOrElse {
-      // 2. Suffix match on FQN (e.g. "List#map()." matches "scala/collection/immutable/List#map().")
-      val suffixMatches = allSymbols.filter(_.fqn.endsWith(query))
-      if suffixMatches.nonEmpty then suffixMatches
-      else
-        // 3. Display name match (case-insensitive)
-        val nameMatches = symbolsByName.getOrElse(query.toLowerCase, Nil)
-        if nameMatches.nonEmpty then nameMatches
+    val raw =
+      // 1. Exact FQN match
+      symbolByFqn.get(query).map(List(_)).getOrElse {
+        // 2. Suffix match on FQN (e.g. "List#map()." matches "scala/collection/immutable/List#map().")
+        val suffixMatches = allSymbols.filter(_.fqn.endsWith(query))
+        if suffixMatches.nonEmpty then suffixMatches
         else
-          // 4. Partial display name match
-          allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
-    }
+          // 3. Display name match (case-insensitive)
+          val nameMatches = symbolsByName.getOrElse(query.toLowerCase, Nil)
+          if nameMatches.nonEmpty then nameMatches
+          else
+            // 4. Partial display name match
+            allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
+      }
+    // Deterministic ordering: non-local before local, then by kind rank, then shorter FQN first
+    raw.sortBy(s => (if s.kind == SemKind.Local then 1 else 0, kindRank(s.kind), s.fqn.length, s.fqn))
+
+  private def kindRank(k: SemKind): Int = k match
+    case SemKind.Class       => 0
+    case SemKind.Trait       => 1
+    case SemKind.Object      => 2
+    case SemKind.Interface   => 3
+    case SemKind.Type        => 4
+    case SemKind.Method      => 5
+    case SemKind.Field       => 6
+    case SemKind.Constructor => 7
+    case _                   => 8
 
   // ── Build ──────────────────────────────────────────────────────────────
 

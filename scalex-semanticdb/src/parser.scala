@@ -35,7 +35,7 @@ object Parser:
       catch
         case _: Exception => () // skip unparseable files
     }
-    results.asScala.toList.sortBy(_.uri)
+    results.asScala.toList
 
   /** Convert a single TextDocument to our IndexedDocument model. */
   def convertDocument(doc: TextDocument): IndexedDocument =
