@@ -1,13 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0] - 2026-03-23
 
 ### Added
 
 - `batch` command — run multiple queries in one invocation, amortizing index load time. Each positional arg is a sub-command string with its own flags. Results delimited in text mode, wrapped in `{"batch":[...]}` in JSON mode. ([#284](https://github.com/nguyenyou/scalex/issues/284))
 - `--no-accessors` flag for `flow` and `callees` — filters out val/var field accessors (e.g., `.userId`, `.entityId`, `.config`) that add noise without insight. Reduced callees from 77 to 43 on a real-world service method. ([#284](https://github.com/nguyenyou/scalex/issues/284))
 - `--exclude "p1,p2,..."` flag for `flow`, `callees`, and `callers` — filters symbols whose FQN or file path contains any of the given comma-separated patterns. In `flow`, also prevents recursion into excluded symbols. ([#284](https://github.com/nguyenyou/scalex/issues/284))
-- `--smart` flag for `flow` and `callees` — auto-filters infrastructure noise: val/var accessors, generated code, protobuf boilerplate, and functional plumbing. In `flow`, only recurses into same-module callees (cross-module calls appear as leaves). ([#284](https://github.com/nguyenyou/scalex/issues/284))
+- `--smart` flag for `flow` and `callees` — auto-filters infrastructure noise: val/var accessors and generated code (protobuf, codegen). In `flow`, only recurses into same-module callees (cross-module calls appear as leaves). ([#284](https://github.com/nguyenyou/scalex/issues/284))
 
 ### Changed
 
