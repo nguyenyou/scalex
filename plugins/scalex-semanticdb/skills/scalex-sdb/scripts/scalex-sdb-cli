@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# If executed by a non-bash shell, re-exec with bash.
+# When eval'd (e.g. zsh eval), $0 is the shell binary — fall through
+# since the script is POSIX-compatible.
+if [ -z "${BASH_VERSION:-}" ] && [ -f "$0" ]; then
+  exec bash "$0" "$@"
+fi
+set -euo pipefail
+
+EXPECTED_VERSION="0.1.0"
+REPO="nguyenyou/scalex"
+
+# Expected SHA-256 checksums for each artifact (updated each release alongside EXPECTED_VERSION)
+CHECKSUM_scalex_semanticdb_macos_arm64=""
+CHECKSUM_scalex_semanticdb_macos_x64=""
+CHECKSUM_scalex_semanticdb_linux_x64=""
+
+# Cache location: follow XDG spec (like Mill uses ~/.cache/mill/download/)
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/scalex-semanticdb"
+
+# Detect platform → artifact name
+OS=$(uname -s); ARCH=$(uname -m)
+case "$OS-$ARCH" in
+  Darwin-arm64)  ARTIFACT="scalex-semanticdb-macos-arm64" ;;
+  Darwin-x86_64) ARTIFACT="scalex-semanticdb-macos-x64" ;;
+  Linux-x86_64)  ARTIFACT="scalex-semanticdb-linux-x64" ;;
+  *) echo "scalex-sdb: unsupported platform $OS-$ARCH" >&2; exit 1 ;;
+esac
+
+# Binary path includes version (like Mill's ~/.cache/mill/download/1.1.3-native-mac-aarch64)
+BINARY="$CACHE_DIR/$EXPECTED_VERSION-$ARTIFACT"
+
+# Fast path: binary exists, non-empty, executable → exec immediately
+if [ -s "$BINARY" ] && [ -x "$BINARY" ]; then
+  exec "$BINARY" "$@"
+fi
+
+# Download
+echo "scalex-sdb: downloading v${EXPECTED_VERSION} for ${OS}-${ARCH}..." >&2
+mkdir -p "$CACHE_DIR"
+TMP=$(mktemp "$CACHE_DIR/scalex-sdb-temp.XXXXXX")
+trap 'rm -f "$TMP"' EXIT
+
+BASE_URL="https://github.com/${REPO}/releases/download/v${EXPECTED_VERSION}"
+
+curl -f -L -o "$TMP" "${BASE_URL}/${ARTIFACT}" || {
+  echo "scalex-sdb: download failed. Visit https://github.com/${REPO}/releases" >&2
+  exit 1
+}
+
+# Verify checksum
+CHECKSUM_VAR="CHECKSUM_${ARTIFACT//-/_}"
+EXPECTED_HASH="${!CHECKSUM_VAR}"
+if [ -n "$EXPECTED_HASH" ]; then
+  ACTUAL_HASH=$(shasum -a 256 "$TMP" | awk '{print $1}')
+  if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+    echo "scalex-sdb: checksum verification FAILED" >&2
+    echo "  expected: $EXPECTED_HASH" >&2
+    echo "  actual:   $ACTUAL_HASH" >&2
+    echo "  The downloaded binary may have been tampered with." >&2
+    exit 1
+  fi
+fi
+
+# Install atomically
+chmod +x "$TMP"
+mv "$TMP" "$BINARY"
+trap - EXIT
+
+# macOS: remove quarantine
+[ "$OS" = "Darwin" ] && xattr -d com.apple.quarantine "$BINARY" 2>/dev/null || true
+
+echo "scalex-sdb: installed v${EXPECTED_VERSION}" >&2
+exec "$BINARY" "$@"

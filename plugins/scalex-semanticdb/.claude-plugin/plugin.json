@@ -1,0 +1,10 @@
+{
+  "name": "scalex-semanticdb",
+  "description": "Compiler-precise Scala code intelligence from SemanticDB — call graphs, precise references, type info, flow analysis",
+  "author": {
+    "name": "Tu Nguyen"
+  },
+  "repository": "https://github.com/nguyenyou/scalex",
+  "license": "MIT",
+  "keywords": ["scala", "semanticdb", "call-graph", "code-intelligence", "type-info"]
+}
