@@ -18,6 +18,8 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
         val callerSymbols = fqns.toList.flatMap(fqn => findCallers(fqn, ctx.index))
           .distinctBy(_.fqn)
           .filterNot(s => fqns.contains(s.fqn))
+          .filterNot(s => ctx.smart && isInfraNoise(s))
+          .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
         val filtered = filterByExclude(callerSymbols, ctx.excludePatterns)
         val limited = filtered.take(ctx.limit)
         val name = candidates.head.displayName
@@ -28,8 +30,10 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
           filtered.size,
         )
       else
-        // Transitive tree mode: recursive caller traversal
-        val sym = candidates.head
+        // Transitive tree mode: recursive caller traversal (single root)
+        val sym = resolveOne(query, ctx.index, ctx.kindFilter) match
+          case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
+          case Some(s) => s
         val lines = scala.collection.mutable.ListBuffer.empty[String]
         val visited = scala.collection.mutable.Set.empty[String]
         val rootModule = if ctx.smart then Some(modulePrefix(sym.sourceUri)) else None

@@ -149,7 +149,7 @@ def parseFlags(args: List[String]): SemParsedFlags =
         flags = flags.copy(roleFilter = Some(arr(i + 1)))
         i += 2
       case "--depth" if i + 1 < arr.length =>
-        flags = flags.copy(depth = arr(i + 1).toIntOption.orElse(Some(3)))
+        flags = flags.copy(depth = arr(i + 1).toIntOption)
         i += 2
       case "--verbose" | "-v" =>
         flags = flags.copy(verbose = true)

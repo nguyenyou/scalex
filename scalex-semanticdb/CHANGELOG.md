@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `path <source> <target>` command — BFS shortest call path between two symbols. Default max depth 5. Supports `--smart`, `--exclude`. ([#297](https://github.com/nguyenyou/scalex/issues/297))
+- `explain <symbol>` command — one-shot summary combining type signature, definition location, callers, callees, parents, and members. ([#297](https://github.com/nguyenyou/scalex/issues/297))
+- `callers --depth N` — transitive caller tree with cycle detection. Default depth 1 (flat list, backward compatible). Depth > 1 produces indented FlowTree. Supports `--smart`, `--exclude`. ([#297](https://github.com/nguyenyou/scalex/issues/297))
+- Disambiguation hints — when multiple symbols match a query, prints candidates with FQN + kind to stderr. Applied to all single-symbol commands (`flow`, `callees`, `callers`, `type`, `subtypes`, `supertypes`, `members`, `related`). ([#297](https://github.com/nguyenyou/scalex/issues/297))
+
+### Changed
+
+- `depth` parameter changed from `Int = 3` to `Option[Int] = None` — each command now supplies its own default (callers: 1, flow/subtypes: 3, path: 5).
+- Shared helpers (`isTrivial`, `modulePrefix`) moved from `flow.scala` to `format.scala` for reuse by `callers` and `path`.
+- `callers` flat mode now respects `--smart` and `--no-accessors` flags (previously only applied in tree mode).
+
 ## [0.2.0] - 2026-03-23
 
 ### Added
