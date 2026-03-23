@@ -398,11 +398,9 @@ class SemIndex(val workspace: Path):
     }.toList
 
   /** Build the index: load cache, check staleness cheaply, rebuild incrementally if needed.
-    *
     * Staleness check uses a saved manifest of semanticdb directories (~5ms) instead of
-    * a full file walk (~1s on large projects). Full discovery only runs when stale or on first build. */
-  /** Build the index. When needOccurrences=false, skip loading occurrence data (~70% faster).
-    * Symbol-only commands (lookup, members, subtypes, etc.) pass false. */
+    * a full file walk (~1s on large projects). Full discovery only runs when stale or on first build.
+    * When needOccurrences=false, skip loading occurrence data (~70% faster for symbol-only commands). */
   def build(semanticdbPath: Option[String] = None, needOccurrences: Boolean = true): Unit =
     val start = System.currentTimeMillis()
     cachedLoad = false
@@ -446,6 +444,7 @@ class SemIndex(val workspace: Path):
         if files.isEmpty then
           documents = Nil
           SemPersistence.save(workspace, Nil)
+          SemPersistence.saveDirsManifest(workspace, semanticdbDirs)
           buildTimeMs = System.currentTimeMillis() - start
           return
 
@@ -473,6 +472,7 @@ class SemIndex(val workspace: Path):
 
         if files.isEmpty then
           documents = Nil
+          SemPersistence.saveDirsManifest(workspace, semanticdbDirs)
           buildTimeMs = System.currentTimeMillis() - start
           return
 
