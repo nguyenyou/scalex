@@ -8,7 +8,7 @@
 ## Performance
 
 - [ ] **Faster warm load** — 1.5s for 2M symbols. Investigate memory-mapped I/O for `semanticdb.bin` instead of `DataInputStream`
-- [ ] **Incremental index updates** — use `TextDocument.md5` to skip unchanged files on rebuild instead of full re-index
+- [x] **Incremental index updates** — use `TextDocument.md5` to skip unchanged files on rebuild instead of full re-index
 - [ ] **Parallel index save** — save phase is 3.5s, could be improved with buffered writes or parallel serialization
 - [ ] **Lazy index maps** — some maps (overrideIndex, symbolsByPackage) are only needed for specific commands. Already lazy, but could defer even more.
 
@@ -36,7 +36,7 @@
   - [x] **Transitive callers (`callers --depth N`)** — recursive caller traversal reusing `flow`'s depth/cycle infrastructure. Default depth=1 (flat, backward compatible), depth>1 produces FlowTree.
   - [x] **`path` command** — BFS on call graph to find shortest call path between two symbols. Supports `--depth N`, `--smart`, `--exclude`.
   - [x] **`explain` command** — composite of `type` + `callers` + `callees --smart` in one output. Saves agent round-trips.
-  - [ ] **Incremental index updates** — use `TextDocument.md5` to skip unchanged `.semanticdb` files on rebuild. Store per-file hashes alongside cache. *(overlaps with Performance section)*
+  - [x] **Incremental index updates** — use `TextDocument.md5` to skip unchanged `.semanticdb` files on rebuild. Auto-staleness via file mtime comparison. *(overlaps with Performance section)*
 
 ## Future ideas
 

@@ -182,6 +182,8 @@ class SemIndex(val workspace: Path):
   private var documents: List[IndexedDocument] = Nil
   var buildTimeMs: Long = 0
   var cachedLoad: Boolean = false
+  var parsedCount: Int = 0
+  var skippedCount: Int = 0
 
   // ── Stats ──────────────────────────────────────────────────────────────
 
@@ -328,51 +330,85 @@ class SemIndex(val workspace: Path):
           .getOrElse(group.head)
     }.toList
 
-  /** Build the index: discover .semanticdb files, parse, and persist. */
+  /** Build the index: discover .semanticdb files, check staleness, rebuild incrementally if needed. */
   def build(semanticdbPath: Option[String] = None): Unit =
     val start = System.currentTimeMillis()
+    cachedLoad = false
+    parsedCount = 0
+    skippedCount = 0
 
-    // Try loading from cache first
-    SemPersistence.load(workspace) match
-      case Some(cached) =>
-        documents = cached
-        cachedLoad = true
-        buildTimeMs = System.currentTimeMillis() - start
-        return
-      case None => ()
-
-    // Discover and parse
-    val files = SemTimings.phase("discover") {
+    // 1. Discover files + track max mtime
+    val (files, maxMtimeMs) = SemTimings.phase("discover") {
       semanticdbPath match
         case Some(p) => Discovery.discoverFromExplicitPath(Path.of(p))
         case None    => Discovery.discoverSemanticdbFiles(workspace)
     }
 
-    if files.isEmpty then
-      documents = Nil
-      buildTimeMs = System.currentTimeMillis() - start
-      return
+    // 2. Try loading from cache — read cache mtime before loading
+    val cachePath = SemPersistence.indexPath(workspace)
+    val cacheMtime = if Files.exists(cachePath) then Files.getLastModifiedTime(cachePath).toMillis else 0L
 
-    val parsed = SemTimings.phase("parse-semanticdb") {
-      Parser.loadDocuments(files)
+    val cached = SemTimings.phase("cache-load") {
+      SemPersistence.load(workspace)
     }
 
-    documents = SemTimings.phase("dedup-documents") {
-      deduplicateDocuments(parsed)
-    }
+    cached match
+      case Some(cachedDocs) =>
+        // If all .semanticdb files are gone (e.g. build output cleaned), clear the index
+        // and save empty cache so we don't keep loading the stale one
+        if files.isEmpty then
+          documents = Nil
+          SemPersistence.save(workspace, Nil)
+          buildTimeMs = System.currentTimeMillis() - start
+          return
 
-    // Persist
-    SemTimings.phase("save-index") {
-      SemPersistence.save(workspace, documents)
-    }
+        // 3. Check staleness: if any .semanticdb file is newer than the cache, rebuild.
+        // Mtime covers: file modified, file added (new mtime), file deleted + recompiled
+        // (surviving files get new mtimes). We don't compare file counts because
+        // files.size (path-deduplicated .semanticdb paths) differs from cachedDocs.size
+        // (semantically-deduplicated IndexedDocuments) in multi-platform builds.
+        val stale = maxMtimeMs > cacheMtime
+
+        if !stale then
+          // Cache is fresh — use as-is
+          documents = cachedDocs
+          cachedLoad = true
+          buildTimeMs = System.currentTimeMillis() - start
+          return
+
+        // 4. Stale — incremental rebuild via MD5 comparison
+        incrementalRebuild(files, cachedDocs)
+
+      case None =>
+        // Cache miss — full rebuild
+        if files.isEmpty then
+          documents = Nil
+          buildTimeMs = System.currentTimeMillis() - start
+          return
+
+        val parsed = SemTimings.phase("parse-semanticdb") {
+          Parser.loadDocuments(files)
+        }
+        parsedCount = parsed.size
+
+        documents = SemTimings.phase("dedup-documents") {
+          deduplicateDocuments(parsed)
+        }
+
+        SemTimings.phase("save-index") {
+          SemPersistence.save(workspace, documents)
+        }
 
     buildTimeMs = System.currentTimeMillis() - start
 
-  /** Force rebuild (ignores cache). */
+  /** Force rebuild (ignores mtime staleness check, but still uses incremental MD5 comparison). */
   def rebuild(semanticdbPath: Option[String] = None): Unit =
     val start = System.currentTimeMillis()
+    cachedLoad = false
+    parsedCount = 0
+    skippedCount = 0
 
-    val files = SemTimings.phase("discover") {
+    val (files, _) = SemTimings.phase("discover") {
       semanticdbPath match
         case Some(p) => Discovery.discoverFromExplicitPath(Path.of(p))
         case None    => Discovery.discoverSemanticdbFiles(workspace)
@@ -383,17 +419,57 @@ class SemIndex(val workspace: Path):
       buildTimeMs = System.currentTimeMillis() - start
       return
 
-    val parsed = SemTimings.phase("parse-semanticdb") {
-      Parser.loadDocuments(files)
+    // Try incremental rebuild using cached data if available
+    val cached = SemTimings.phase("cache-load") {
+      SemPersistence.load(workspace)
+    }
+
+    cached match
+      case Some(cachedDocs) =>
+        incrementalRebuild(files, cachedDocs)
+      case None =>
+        val parsed = SemTimings.phase("parse-semanticdb") {
+          Parser.loadDocuments(files)
+        }
+        parsedCount = parsed.size
+        documents = SemTimings.phase("dedup-documents") {
+          deduplicateDocuments(parsed)
+        }
+        SemTimings.phase("save-index") {
+          SemPersistence.save(workspace, documents)
+        }
+
+    buildTimeMs = System.currentTimeMillis() - start
+
+  /** Incremental rebuild: decode raw protobuf, compare MD5s against cache, only convert changed docs. */
+  private def incrementalRebuild(files: List[Path], cachedDocs: List[IndexedDocument]): Unit =
+    // Build lookup from cached documents by URI → IndexedDocument
+    val cachedByUri = SemTimings.phase("build-cache-map") {
+      cachedDocs.map(d => d.uri -> d).toMap
+    }
+
+    // Decode raw protobuf (cheap — no signature printing)
+    val rawDocs = SemTimings.phase("decode-semanticdb") {
+      Parser.loadRawDocuments(files)
+    }
+
+    // Compare MD5s: reuse cached or convert new
+    val merged = SemTimings.phase("md5-compare") {
+      rawDocs.map { raw =>
+        cachedByUri.get(raw.uri) match
+          case Some(cached) if cached.md5 == raw.md5 =>
+            skippedCount += 1
+            cached
+          case _ =>
+            parsedCount += 1
+            Parser.convertDocument(raw)
+      }
     }
 
     documents = SemTimings.phase("dedup-documents") {
-      deduplicateDocuments(parsed)
+      deduplicateDocuments(merged)
     }
 
     SemTimings.phase("save-index") {
       SemPersistence.save(workspace, documents)
     }
-
-    cachedLoad = false
-    buildTimeMs = System.currentTimeMillis() - start

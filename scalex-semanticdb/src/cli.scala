@@ -27,7 +27,7 @@ import java.nio.file.{Files, Path}
     index.rebuild(flags.semanticdbPath)
     val result = SemCmdResult.Stats(
       index.fileCount, index.symbolCount, index.occurrenceCount,
-      index.buildTimeMs, index.cachedLoad,
+      index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
     )
     val ctx = flagsToContext(flags, index, workspace)
     render(result, ctx)
@@ -104,7 +104,7 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
 def cmdStats(args: List[String], ctx: SemCommandContext): SemCmdResult =
   SemCmdResult.Stats(
     ctx.index.fileCount, ctx.index.symbolCount, ctx.index.occurrenceCount,
-    ctx.index.buildTimeMs, ctx.index.cachedLoad,
+    ctx.index.buildTimeMs, ctx.index.cachedLoad, ctx.index.parsedCount, ctx.index.skippedCount,
   )
 
 // ── Flag parsing ───────────────────────────────────────────────────────────

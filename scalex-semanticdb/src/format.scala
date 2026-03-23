@@ -126,11 +126,15 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
         val more = if totalCallees > callees.size then s" ($totalCallees total)" else ""
         println(s"  Calls: $names$more")
 
-    case SemCmdResult.Stats(fc, sc, oc, ms, cached) =>
+    case SemCmdResult.Stats(fc, sc, oc, ms, cached, parsed, skipped) =>
       println(s"Files:        $fc")
       println(s"Symbols:      $sc")
       println(s"Occurrences:  $oc")
-      println(s"Build time:   ${ms}ms${if cached then " (cached)" else ""}")
+      val detail =
+        if cached then " (cached)"
+        else if skipped > 0 then s" (incremental: $parsed parsed, $skipped reused)"
+        else ""
+      println(s"Build time:   ${ms}ms$detail")
 
     case SemCmdResult.Batch(results) =>
       results.foreach { entry =>
@@ -208,8 +212,8 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
       val parentsJson = parents.map(jsonStr).mkString(",")
       println(s"""{"symbol":${symbolToJson(sym)}$locJson,"callers":[$callerJson],"totalCallers":$totalCallers,"callees":[$calleeJson],"totalCallees":$totalCallees,"parents":[$parentsJson],"members":[$memberJson],"totalMembers":$totalMembers}""")
 
-    case SemCmdResult.Stats(fc, sc, oc, ms, cached) =>
-      println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached}""")
+    case SemCmdResult.Stats(fc, sc, oc, ms, cached, parsed, skipped) =>
+      println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached,"parsedCount":$parsed,"skippedCount":$skipped}""")
 
     case SemCmdResult.Batch(results) =>
       val items = results.map { entry =>

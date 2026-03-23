@@ -37,6 +37,22 @@ object Parser:
     }
     results.asScala.toList
 
+  /** Load raw TextDocuments from .semanticdb files in parallel (protobuf decode only, no conversion).
+    * Used for incremental indexing: caller checks MD5 before deciding to convert. */
+  def loadRawDocuments(files: List[Path]): List[TextDocument] =
+    val results = ConcurrentLinkedQueue[TextDocument]()
+    files.asJava.parallelStream().forEach { file =>
+      try
+        val stream = Files.newInputStream(file)
+        try
+          val textDocs = TextDocuments.parseFrom(stream)
+          textDocs.documents.foreach(results.add)
+        finally stream.close()
+      catch
+        case _: Exception => () // skip unparseable files
+    }
+    results.asScala.toList
+
   /** Convert a single TextDocument to our IndexedDocument model. */
   def convertDocument(doc: TextDocument): IndexedDocument =
     val symtab = PrinterSymtab.fromTextDocument(doc)

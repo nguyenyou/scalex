@@ -106,3 +106,26 @@ class IndexTest extends SemTestBase:
     assertEquals(index2.symbolCount, symCountBefore)
     assertEquals(index2.occurrenceCount, occCountBefore)
   }
+
+  // ── Incremental rebuild ─────────────────────────────────────────────────
+
+  test("incremental rebuild reuses unchanged documents") {
+    val totalFiles = index.fileCount
+
+    // Touch one .semanticdb file to trigger staleness
+    val sdbFiles = Discovery.discoverFromExplicitPath(semanticdbDir).files
+    assert(sdbFiles.nonEmpty, "should have .semanticdb files")
+    val target = sdbFiles.head
+    // Set mtime to future to guarantee staleness
+    java.nio.file.Files.setLastModifiedTime(target, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 10000))
+
+    // Build should detect staleness and do incremental rebuild
+    val index3 = SemIndex(workspace)
+    index3.build(Some(semanticdbDir.toString))
+    assert(!index3.cachedLoad, "should not be a pure cache hit after touching a file")
+    // All documents should be reused (MD5s haven't changed, only mtime)
+    assertEquals(index3.parsedCount, 0, "no docs should need re-conversion")
+    assert(index3.skippedCount > 0, "should have reused documents from cache")
+    assertEquals(index3.fileCount, totalFiles, "file count should be preserved after incremental rebuild")
+    assertEquals(index3.symbolCount, index.symbolCount, "symbol count should be preserved")
+  }

@@ -530,7 +530,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdStats(Nil, ctx)
     result match
-      case SemCmdResult.Stats(fc, sc, oc, _, _) =>
+      case SemCmdResult.Stats(fc, sc, oc, _, _, _, _) =>
         assert(fc > 0, "should have files")
         assert(sc > 0, "should have symbols")
         assert(oc > 0, "should have occurrences")

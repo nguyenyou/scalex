@@ -148,7 +148,7 @@ enum SemCmdResult:
     parents: List[String],
     members: List[SemSymbol], totalMembers: Int,
   )
-  case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, buildTimeMs: Long, cached: Boolean)
+  case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, buildTimeMs: Long, cached: Boolean, parsedCount: Int, skippedCount: Int)
   case Batch(results: List[(command: String, result: SemCmdResult)])
   case NotFound(message: String)
   case UsageError(message: String)
