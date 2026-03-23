@@ -21,6 +21,7 @@
 - [Commands](#commands)
 - [What Makes It Coding-Agent-Friendly](#what-makes-it-coding-agent-friendly)
 - [Scalex vs Grep — Honest Comparison](#scalex-vs-grep--honest-comparison)
+- [Scalex vs Metals](#scalex-vs-metals)
 - [scalex-semanticdb: Compiler-Precise Code Intelligence](#scalex-semanticdb-compiler-precise-code-intelligence)
 - [scalex-intellij: Squeeze More from Your Running IDE](#scalex-intellij-squeeze-more-from-your-running-ide)
 - [Credits](#credits)
@@ -419,6 +420,14 @@ scalex imports Compiler
 | "What does this file/package export?" | **Scalex** | `overview` and `members` commands |
 
 **Best approach: use both.** Scalex for Scala-aware navigation, Grep for text search. The skill's fallback hint even suggests this — when scalex can't find something, it tells the agent to try Grep.
+
+## Scalex vs Metals
+
+Scalex complements Metals — AST-aware grep vs full LSP. Metals gives you type-checked navigation, rename refactoring, and completions. Scalex gives you instant exploration on any git repo without a build server or compilation.
+
+- **Zero-setup** — works on unfamiliar repos, broken builds, CI environments.
+- **Agent-optimized** — composite commands minimize tool-call round trips. No daemon to manage.
+- **Use both.**
 
 ## scalex-semanticdb: Compiler-Precise Code Intelligence
 
