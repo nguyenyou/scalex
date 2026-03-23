@@ -286,7 +286,7 @@ scalex-sdb stats -w /project              # Show counts
 | `--role R` | Filter occurrences (def, ref) |
 | `--depth N` | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
 | `--no-accessors` | Exclude val/var accessors from flow/callees output |
-| `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, monadic combinators (flatMap, map, traverse, etc.). In flow, only recurses into same-module callees. |
+| `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, effect-system combinators (flatMap, traverse, pure, succeed, etc.). In flow, only recurses into same-module callees. |
 | `--exclude "p1,p2,..."` | Exclude symbols matching FQN or file path (flow/callees/callers) |
 | `--exclude-test` | Exclude symbols from test source directories (/test/, /tests/, /it/, /spec/, *Test.scala, etc.) |
 | `--exclude-pkg "p1,p2,..."` | Exclude symbols by package prefix (dots auto-converted to /). E.g. `--exclude-pkg "zio,cats.effect"` |

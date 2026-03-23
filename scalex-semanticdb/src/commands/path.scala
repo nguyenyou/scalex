@@ -37,12 +37,12 @@ def cmdPath(args: List[String], ctx: SemCommandContext): SemCmdResult =
               .filterNot(s => ctx.smart && isMonadicCombinator(s))
               .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
               .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
-              .filterNot(s => ctx.excludePkgPatterns.exists(p => s.fqn.startsWith(p)))
+            val withPkgFilter = filterByExcludePkg(callees, ctx.excludePkgPatterns)
 
             // In --smart mode, restrict BFS to same module — but always allow the target through
             val filtered = rootModule match
-              case Some(rm) => callees.filter(s => s.sourceUri.startsWith(rm) || tgtFqns.contains(s.fqn))
-              case None => callees
+              case Some(rm) => withPkgFilter.filter(s => s.sourceUri.startsWith(rm) || tgtFqns.contains(s.fqn))
+              case None => withPkgFilter
 
             filtered.foreach { callee =>
               if !visited.contains(callee.fqn) && !parentMap.contains(callee.fqn) then

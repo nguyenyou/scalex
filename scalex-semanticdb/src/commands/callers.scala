@@ -59,14 +59,16 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
           if indent > maxDepth || visited.contains(fqn) then return
           visited += fqn
 
-          val callers = findCallers(fqn, ctx.index)
-            .filterNot(s => isTrivial(s.fqn))
-            .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
-            .filterNot(s => ctx.smart && isInfraNoise(s))
-            .filterNot(s => ctx.smart && isMonadicCombinator(s))
-            .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
-            .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
-            .filterNot(s => ctx.excludePkgPatterns.exists(p => s.fqn.startsWith(p)))
+          val callers = filterByExcludePkg(
+            findCallers(fqn, ctx.index)
+              .filterNot(s => isTrivial(s.fqn))
+              .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
+              .filterNot(s => ctx.smart && isInfraNoise(s))
+              .filterNot(s => ctx.smart && isMonadicCombinator(s))
+              .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
+              .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p))),
+            ctx.excludePkgPatterns,
+          )
 
           callers.foreach { caller =>
             if !visited.contains(caller.fqn) then
