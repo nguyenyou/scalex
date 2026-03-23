@@ -22,9 +22,9 @@ def cmdMembers(args: List[String], ctx: SemCommandContext): SemCmdResult =
             if ctx.verbose then raw
             else raw.filterNot(m => isSyntheticCaseClassMember(m, ownerForSynth))
 
-          // --smart: additionally filter infrastructure noise + accessors
+          // --smart: additionally filter infrastructure noise, accessors, default param accessors
           val members =
-            if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor)
+            if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor).filterNot(isDefaultParamAccessor)
             else withoutSynthetics
 
           val filtered = filterByKind(members, ctx.kindFilter)
