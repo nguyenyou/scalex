@@ -110,7 +110,11 @@ object SemPersistence:
       }
     finally out.close()
 
-  def load(workspace: Path): Option[List[IndexedDocument]] =
+  /** Bytes per occurrence entry: 4(file) + 4(startLine) + 2(startChar) + 4(endLine) + 2(endChar) + 4(symbol) + 1(role) */
+  private val BYTES_PER_OCCURRENCE = 21
+
+  /** Load binary cache. When skipOccurrences=true, skip occurrence data entirely (~70% faster). */
+  def load(workspace: Path, skipOccurrences: Boolean = false): Option[List[IndexedDocument]] =
     val p = indexPath(workspace)
     if !Files.exists(p) then return None
 
@@ -156,18 +160,22 @@ object SemPersistence:
 
           // Occurrences
           val occCount = in.readInt()
-          val occs = List.newBuilder[SemOccurrence]
-          var oi = 0
-          while oi < occCount do
-            val file = strings(in.readInt())
-            val sl = in.readInt(); val sc = in.readUnsignedShort()
-            val el = in.readInt(); val ec = in.readUnsignedShort()
-            val symbol = strings(in.readInt())
-            val role = OccRole.fromId(in.readByte())
-            occs += SemOccurrence(file, SemRange(sl, sc, el, ec), symbol, role)
-            oi += 1
+          if skipOccurrences then
+            in.skipBytes(occCount * BYTES_PER_OCCURRENCE)
+            docs += IndexedDocument(uri, md5, syms.result(), Nil)
+          else
+            val occs = List.newBuilder[SemOccurrence]
+            var oi = 0
+            while oi < occCount do
+              val file = strings(in.readInt())
+              val sl = in.readInt(); val sc = in.readUnsignedShort()
+              val el = in.readInt(); val ec = in.readUnsignedShort()
+              val symbol = strings(in.readInt())
+              val role = OccRole.fromId(in.readByte())
+              occs += SemOccurrence(file, SemRange(sl, sc, el, ec), symbol, role)
+              oi += 1
+            docs += IndexedDocument(uri, md5, syms.result(), occs.result())
 
-          docs += IndexedDocument(uri, md5, syms.result(), occs.result())
           di += 1
 
         Some(docs.result())
@@ -234,10 +242,11 @@ class SemIndex(val workspace: Path):
   var definitionRanges: collection.Map[String, (file: String, range: SemRange)] = Map.empty
 
 
-  /** Build all index maps in a single pass over documents. Replaces 6+ lazy iterations. */
+  /** Build all index maps in a single pass over documents.
+    * When occurrences were skipped during load (empty lists), occurrence maps are left as Map.empty. */
   private def buildIndexMaps(docs: List[IndexedDocument]): Unit =
     SemTimings.phase("build-indexes") {
-      // Pre-compute sizes for HashMap pre-allocation (avoids ~21 resizes for 2M entries)
+      // Pre-compute sizes for HashMap pre-allocation
       var estSymbols = 0
       var estOccs = 0
       docs.foreach { d => estSymbols += d.symbols.size; estOccs += d.occurrences.size }
@@ -245,13 +254,16 @@ class SemIndex(val workspace: Path):
       val symByFqn = new java.util.HashMap[String, SemSymbol](estSymbols * 2)
       val symsByName = new java.util.HashMap[String, mutable.ListBuffer[SemSymbol]](estSymbols)
       val symsByFile = new java.util.HashMap[String, mutable.ListBuffer[SemSymbol]](docs.size * 2)
-      val occsBySym = new java.util.HashMap[String, mutable.ListBuffer[SemOccurrence]](estSymbols)
-      val occsByFile = new java.util.HashMap[String, mutable.ListBuffer[SemOccurrence]](docs.size * 2)
       val subIdx = new java.util.HashMap[String, mutable.ListBuffer[String]](estSymbols / 4)
       val memIdx = new java.util.HashMap[String, mutable.ListBuffer[SemSymbol]](estSymbols / 4)
-      val defRanges = new java.util.HashMap[String, (file: String, range: SemRange)](estSymbols)
       val allSyms = List.newBuilder[SemSymbol]
       var symCount = 0
+
+      // Occurrence maps — only allocated when occurrences are present
+      val hasOccs = estOccs > 0
+      val occsBySym = if hasOccs then new java.util.HashMap[String, mutable.ListBuffer[SemOccurrence]](estSymbols) else null
+      val occsByFile = if hasOccs then new java.util.HashMap[String, mutable.ListBuffer[SemOccurrence]](docs.size * 2) else null
+      val defRanges = if hasOccs then new java.util.HashMap[String, (file: String, range: SemRange)](estSymbols) else null
       var occCount = 0
 
       docs.foreach { doc =>
@@ -267,27 +279,28 @@ class SemIndex(val workspace: Path):
           if s.owner.nonEmpty && s.kind != SemKind.Parameter && s.kind != SemKind.TypeParam then
             memIdx.computeIfAbsent(s.owner, _ => mutable.ListBuffer.empty) += s
         }
-        doc.occurrences.foreach { o =>
-          occCount += 1
-          occsBySym.computeIfAbsent(o.symbol, _ => mutable.ListBuffer.empty) += o
-          occsByFile.computeIfAbsent(o.file, _ => mutable.ListBuffer.empty) += o
-          if o.role == OccRole.Definition && !defRanges.containsKey(o.symbol) then
-            defRanges.put(o.symbol, (file = o.file, range = o.range))
-        }
+        if hasOccs then
+          doc.occurrences.foreach { o =>
+            occCount += 1
+            occsBySym.computeIfAbsent(o.symbol, _ => mutable.ListBuffer.empty) += o
+            occsByFile.computeIfAbsent(o.file, _ => mutable.ListBuffer.empty) += o
+            if o.role == OccRole.Definition && !defRanges.containsKey(o.symbol) then
+              defRanges.put(o.symbol, (file = o.file, range = o.range))
+          }
       }
 
       _allSymbols = allSyms.result()
       _symbolCount = symCount
       _occurrenceCount = occCount
-      // Wrap Java maps as Scala maps (zero-copy view). Convert ListBuffers to Lists in-place.
       symbolByFqn = symByFqn.asScala
       symbolsByName = convertListBufferMap(symsByName)
       symbolsByFile = convertListBufferMap(symsByFile)
-      occurrencesBySymbol = convertListBufferMap(occsBySym)
-      occurrencesByFile = convertListBufferMap(occsByFile)
       subtypeIndex = convertListBufferMapDistinct(subIdx)
       memberIndex = convertListBufferMap(memIdx)
-      definitionRanges = defRanges.asScala
+      if hasOccs then
+        occurrencesBySymbol = convertListBufferMap(occsBySym)
+        occurrencesByFile = convertListBufferMap(occsByFile)
+        definitionRanges = defRanges.asScala
     }
 
   /** Convert a Java HashMap[String, ListBuffer[A]] to a Scala Map[String, List[A]] by
@@ -383,7 +396,9 @@ class SemIndex(val workspace: Path):
     *
     * Staleness check uses a saved manifest of semanticdb directories (~5ms) instead of
     * a full file walk (~1s on large projects). Full discovery only runs when stale or on first build. */
-  def build(semanticdbPath: Option[String] = None): Unit =
+  /** Build the index. When needOccurrences=false, skip loading occurrence data (~70% faster).
+    * Symbol-only commands (lookup, members, subtypes, etc.) pass false. */
+  def build(semanticdbPath: Option[String] = None, needOccurrences: Boolean = true): Unit =
     val start = System.currentTimeMillis()
     cachedLoad = false
     parsedCount = 0
@@ -394,7 +409,7 @@ class SemIndex(val workspace: Path):
     val cacheMtime = if Files.exists(cachePath) then Files.getLastModifiedTime(cachePath).toMillis else 0L
 
     val cached = SemTimings.phase("cache-load") {
-      SemPersistence.load(workspace)
+      SemPersistence.load(workspace, skipOccurrences = !needOccurrences)
     }
 
     cached match
