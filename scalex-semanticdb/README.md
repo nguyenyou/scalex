@@ -40,17 +40,16 @@ For everything else — grep, body extraction, scaladoc, AST patterns, test disc
 
 - **scalex-sdb CLI** — 15 commands focused on compiler-unique capabilities
 - **SemIndex** — lazy indexes: symbolByFqn, occurrencesBySymbol, subtypeIndex, memberIndex, definitionRanges
-- **Discovery** — targeted scan of Mill's `semanticDbDataDetailed.dest` directories (fast), with fallback walk for sbt/Bloop
+- **Discovery** — targeted scan of Mill's `out/` for `semanticDbDataDetailed.dest` directories (fast, Mill-only for now)
 - **.semanticdb protobuf** — compiler output: symbols with resolved types, every occurrence with DEFINITION/REFERENCE role
 - **.scalex/semanticdb.bin** — binary cache with string interning
 
 ### Pipeline
 
 ```
-  1. Discover .semanticdb files
-     │  Mill: find semanticDbDataDetailed.dest dirs, walk only data/META-INF/semanticdb/
-     │  sbt/Bloop: walk target/ or .bloop/ for META-INF/semanticdb/*.semanticdb
-     │  ~2s for 15k files (Mill targeted), ~25s without optimization.
+  1. Discover .semanticdb files (Mill only)
+     │  Find semanticDbDataDetailed.dest dirs under out/, walk only data/META-INF/semanticdb/
+     │  ~2s for 15k files (parallel across modules).
      │
   2. Parse protobuf (parallel)
      │  TextDocuments.parseFrom() via Java parallelStream().
@@ -113,16 +112,16 @@ This is why it needs compiler data: step 3 requires knowing which exact symbol e
 
 ## Getting .semanticdb files
 
-**Mill** (easiest):
+Currently optimized for **Mill projects only**. Other build tools (sbt, scala-cli) will be supported once the Mill workflow is rock-solid.
+
+**Mill**:
 ```bash
 ./mill __.semanticDbData
 ```
 
-**sbt**:
-```scala
-// build.sbt
-ThisBuild / semanticdbEnabled := true
-```
+This produces `.semanticdb` files under `out/` in each module's `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directory. Auto-discovery finds them — no configuration needed.
+
+**Other build tools**: Not yet supported. See [issue tracker](https://github.com/nguyenyou/scalex/issues) for sbt/Gradle/scala-cli requests.
 
 ## Usage
 
@@ -187,8 +186,7 @@ scalex-sdb related UserService
 ### Options
 
 ```
--w, --workspace PATH         Set workspace (default: cwd)
---semanticdb-path PATH       Explicit path to .semanticdb files
+-w, --workspace PATH         Set workspace (default: cwd, must be Mill project root)
 --limit N                    Max results (default: 50, 0=unlimited)
 --json                       JSON output
 --verbose, -v                Full signatures and properties

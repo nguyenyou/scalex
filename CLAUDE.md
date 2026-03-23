@@ -90,6 +90,7 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 ### Code style
 
 - **Named tuples**: Never use unnamed tuples. Whenever a tuple is needed — return types, local variables, collection elements — always use named tuples. E.g. `(results: List[Reference], timedOut: Boolean)` not `(List[Reference], Boolean)`.
+- **No `return` statements**: Never use `return` anywhere — not in methods, not in lambdas, not in `for`/`foreach`. Use `scala.util.boundary` + `boundary.break` for early exit, or restructure with `match`/`if-else`. The `return` keyword is deprecated in Scala 3 inside lambdas and is a footgun everywhere else. Existing `return` statements in the codebase are legacy — do not add new ones, and remove them when touching nearby code.
 
 ### Key design choices
 
@@ -118,10 +119,25 @@ scala-cli run scalex-semanticdb/src/ -- <command> [args...]
 scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
 ```
 
+### Mill-only discovery
+scalex-sdb auto-discovers `.semanticdb` files from Mill's `out/` directory only. It finds `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directories and walks them in parallel. No sbt/Bloop/generic fallback — other build tools are not supported yet. See `docs/MILL-SEMANTICDB.md` for the full `out/` layout.
+
+### Daemon mode
+The `daemon` command keeps the index hot in memory so queries take <10ms instead of ~3.2s. Coding agents launch it as a subprocess and communicate via stdin/stdout JSON-lines.
+
+**The daemon MUST be treated as hostile to long-running processes.** It is designed to self-terminate aggressively — we never want zombie JVM processes consuming memory after the agent session ends. Five defensive layers enforce this:
+1. **Stdin EOF** (primary): parent dies → pipe closes → daemon exits immediately
+2. **Idle timeout**: no query for 5 min → exit (configurable, default 300s)
+3. **Max lifetime**: 30 min hard cap regardless of activity (configurable, default 1800s)
+4. **Shutdown command**: explicit `{"command":"shutdown"}` message
+5. **Shutdown hook**: SIGTERM/SIGINT triggers cleanup
+
+When adding features to the daemon, never weaken these guarantees. Every code path must lead to eventual termination. Never add "keep-alive" logic, reconnection attempts, or retry loops. If something goes wrong, the correct behavior is to die.
+
 ### Gotchas
 - **`semanticdb-shared` has no `_3` artifact on Maven Central** — use `org.scalameta:semanticdb-shared_2.13:4.15.2` (single `:`, Java-style dep). The `_2.13` jar works fine with Scala 3.
 - **SemanticDB generation**: Scala 3 uses `-Xsemanticdb` (built-in). Scala 2 needs the `semanticdb-scalac` plugin + `-Yrangepos`.
-- **`.semanticdb` file location**: Always under `META-INF/semanticdb/` inside a classes directory (Mill: `out/**/compile.dest/classes/`, sbt: `target/scala-*/classes/`).
+- **`.semanticdb` file location**: Mill produces them at `out/**/semanticDbDataDetailed.dest/data/META-INF/semanticdb/`. The `classes/` copy is ignored.
 - **Callees body range**: When finding callees, skip local definitions (`local0`, etc.) for end-boundary detection — use next sibling definition (same owner) instead.
 - **Ship as assembly JAR, not GraalVM native image**: JVM JIT is ~11x faster on warm loads for this protobuf-heavy workload (1.8s vs 20s). Use `./build-native-semanticdb.sh` which runs `scala-cli package --assembly`.
 

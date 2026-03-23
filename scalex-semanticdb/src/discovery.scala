@@ -4,67 +4,51 @@ import java.nio.file.SimpleFileVisitor
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters.*
 
-// ── SemanticDB file discovery ──────────────────────────────────────────────
+// ── SemanticDB file discovery (Mill only) ─────────────────────────────────
 
 object Discovery:
 
-  /** Directories to always skip */
-  private val skipDirs = Set(".git", "node_modules", ".idea", ".metals", ".bsp")
-
-  /** Find all .semanticdb files under workspace build output directories.
-    * Uses targeted discovery for Mill (semanticDbDataDetailed.dest) and sbt (target/).
-    * Returns files, max mtime, and the semanticdb parent directories walked (for manifest caching). */
+  /** Find all .semanticdb files under Mill's out/ directory.
+    * Scans for semanticDbDataDetailed.dest dirs, walks data/META-INF/semanticdb/
+    * in each (parallel across modules). Falls back to direct out/META-INF/semanticdb/
+    * for scalac -semanticdb-target usage (e.g. tests). */
   def discoverSemanticdbFiles(workspace: Path): (files: List[Path], maxMtimeMs: Long, semanticdbDirs: List[Path]) =
-    val results = ListBuffer.empty[Path]
-    val walkedDirs = ListBuffer.empty[Path]
-    var maxMtime = 0L
-
-    // Mill: find semanticDbDataDetailed.dest dirs, then walk only data/META-INF/semanticdb/
     val outDir = workspace.resolve("out")
-    if Files.isDirectory(outDir) then
-      val destDirs = findMillSemanticdbDests(outDir)
-      if destDirs.nonEmpty then
-        for dest <- destDirs do
-          // Prefer data/ over classes/ (both contain the same files)
-          val dataDir = dest.resolve("data").resolve("META-INF").resolve("semanticdb")
-          if Files.isDirectory(dataDir) then
-            walkedDirs += dataDir
-            maxMtime = math.max(maxMtime, walkSemanticdbDir(dataDir, results))
-          else
-            // Fallback: check classes/
-            val classesDir = dest.resolve("classes").resolve("META-INF").resolve("semanticdb")
-            if Files.isDirectory(classesDir) then
-              walkedDirs += classesDir
-              maxMtime = math.max(maxMtime, walkSemanticdbDir(classesDir, results))
-        if results.nonEmpty then
-          val deduped = deduplicateByRelativePath(results.toList)
-          return (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
+    if !Files.isDirectory(outDir) then
+      return (files = Nil, maxMtimeMs = 0L, semanticdbDirs = Nil)
 
-      // Direct META-INF/semanticdb/ under out/ (e.g. scalac -semanticdb-target)
-      val directDir = outDir.resolve("META-INF").resolve("semanticdb")
-      if Files.isDirectory(directDir) then
-        walkedDirs += directDir
-        maxMtime = math.max(maxMtime, walkSemanticdbDir(directDir, results))
-        if results.nonEmpty then
-          val deduped = deduplicateByRelativePath(results.toList)
-          return (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
+    // Mill: find semanticDbDataDetailed.dest dirs, walk data/META-INF/semanticdb/ in parallel
+    val destDirs = findMillSemanticdbDests(outDir)
+    if destDirs.nonEmpty then
+      val (files, maxMtime, walkedDirs) = walkMillDestDirsParallel(destDirs)
+      if files.nonEmpty then
+        return (files = files, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs)
 
-      // No Mill structure found — fall through to generic walk of out/
-      walkedDirs += outDir
-      maxMtime = math.max(maxMtime, walkForSemanticdb(outDir, results))
-      if results.nonEmpty then
-        val deduped = deduplicateByRelativePath(results.toList)
-        return (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
+    // Fallback: direct META-INF/semanticdb/ under out/ (e.g. scalac -semanticdb-target)
+    val directDir = outDir.resolve("META-INF").resolve("semanticdb")
+    if Files.isDirectory(directDir) then
+      val (files, maxMtime) = walkSemanticdbDir(directDir)
+      if files.nonEmpty then
+        return (files = files, maxMtimeMs = maxMtime, semanticdbDirs = List(directDir))
 
-    // sbt / Bloop: walk target/ and .bloop/ looking for META-INF/semanticdb
-    for dirName <- List("target", ".bloop") do
-      val dir = workspace.resolve(dirName)
-      if Files.isDirectory(dir) then
-        walkedDirs += dir
-        maxMtime = math.max(maxMtime, walkForSemanticdb(dir, results))
+    (files = Nil, maxMtimeMs = 0L, semanticdbDirs = Nil)
 
-    val deduped = deduplicateByRelativePath(results.toList)
-    (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
+  /** Walk Mill dest directories in parallel, collecting .semanticdb files from data/META-INF/semanticdb/.
+    * Each module's directory is walked on a separate thread via parallelStream(). */
+  private def walkMillDestDirsParallel(destDirs: List[Path]): (files: List[Path], maxMtimeMs: Long, semanticdbDirs: List[Path]) =
+    val fileQueue = java.util.concurrent.ConcurrentLinkedQueue[Path]()
+    val dirQueue = java.util.concurrent.ConcurrentLinkedQueue[Path]()
+    val maxMtimeAtomic = java.util.concurrent.atomic.AtomicLong(0L)
+
+    destDirs.asJava.parallelStream().forEach { dest =>
+      val dataDir = dest.resolve("data").resolve("META-INF").resolve("semanticdb")
+      if Files.isDirectory(dataDir) then
+        dirQueue.add(dataDir)
+        val (_, mt) = walkSemanticdbDir(dataDir, Some(fileQueue))
+        maxMtimeAtomic.accumulateAndGet(mt, Math.max)
+    }
+
+    (files = fileQueue.asScala.toList, maxMtimeMs = maxMtimeAtomic.get(), semanticdbDirs = dirQueue.asScala.toList)
 
   /** Find Mill's semanticDbDataDetailed.dest directories under out/.
     * Walks only directory entries looking for the target name — skips file content entirely. */
@@ -76,7 +60,7 @@ object Discovery:
         override def preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
           if dir.getFileName.toString == targetName then
             dests += dir
-            FileVisitResult.SKIP_SUBTREE // don't descend into dest dirs
+            FileVisitResult.SKIP_SUBTREE
           else FileVisitResult.CONTINUE
         override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
           FileVisitResult.CONTINUE
@@ -85,72 +69,20 @@ object Discovery:
     )
     dests.toList
 
-  /** Find .semanticdb files under an explicit path (e.g. from --semanticdb-path).
-    * Returns files and the max mtime (ms since epoch) across all discovered files. */
-  def discoverFromExplicitPath(path: Path): (files: List[Path], maxMtimeMs: Long) =
-    val abs = path.toAbsolutePath.normalize
-    if !Files.exists(abs) then return (files = Nil, maxMtimeMs = 0L)
-
-    if Files.isRegularFile(abs) && abs.toString.endsWith(".semanticdb") then
-      val mtime = Files.getLastModifiedTime(abs).toMillis
-      return (files = List(abs), maxMtimeMs = mtime)
-
-    val results = ListBuffer.empty[Path]
-    val maxMtime = walkForSemanticdb(abs, results)
-    val deduped = deduplicateByRelativePath(results.toList)
-    (files = deduped, maxMtimeMs = maxMtime)
-
   /** Walk a known META-INF/semanticdb/ directory and collect all .semanticdb files.
-    * Returns the max mtime (ms since epoch) across visited .semanticdb files. */
-  private def walkSemanticdbDir(sdbDir: Path, results: ListBuffer[Path]): Long =
+    * Returns (files, maxMtime). Optionally appends files to an external concurrent queue
+    * for parallel aggregation. */
+  private def walkSemanticdbDir(sdbDir: Path, externalQueue: Option[java.util.concurrent.ConcurrentLinkedQueue[Path]] = None): (files: List[Path], maxMtime: Long) =
+    val localResults = ListBuffer.empty[Path]
     var maxMtime = 0L
     Files.walkFileTree(sdbDir, new SimpleFileVisitor[Path]:
       override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
         if file.toString.endsWith(".semanticdb") then
-          results += file
+          localResults += file
+          externalQueue.foreach(_.add(file))
           maxMtime = math.max(maxMtime, attrs.lastModifiedTime().toMillis)
         FileVisitResult.CONTINUE
       override def visitFileFailed(file: Path, exc: java.io.IOException): FileVisitResult =
         FileVisitResult.CONTINUE
     )
-    maxMtime
-
-  /** Walk a directory tree collecting .semanticdb files (sbt/Bloop fallback).
-    * Skips known non-build directories and caps depth at 20.
-    * Returns the max mtime (ms since epoch) across visited .semanticdb files. */
-  private def walkForSemanticdb(root: Path, results: ListBuffer[Path]): Long =
-    if !Files.isDirectory(root) then return 0L
-
-    var maxMtime = 0L
-    val maxDepth = 20
-    Files.walkFileTree(root, java.util.EnumSet.noneOf(classOf[java.nio.file.FileVisitOption]), maxDepth,
-      new SimpleFileVisitor[Path]:
-        override def preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-          val name = dir.getFileName.toString
-          if skipDirs.contains(name) then FileVisitResult.SKIP_SUBTREE
-          else FileVisitResult.CONTINUE
-
-        override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult =
-          if file.toString.endsWith(".semanticdb") &&
-             file.toString.contains("META-INF" + java.io.File.separator + "semanticdb") then
-            results += file
-            maxMtime = math.max(maxMtime, attrs.lastModifiedTime().toMillis)
-          FileVisitResult.CONTINUE
-
-        override def visitFileFailed(file: Path, exc: java.io.IOException): FileVisitResult =
-          FileVisitResult.CONTINUE
-    )
-    maxMtime
-
-  /** Deduplicate .semanticdb files by their relative path after META-INF/semanticdb/.
-    * Mill produces duplicates in classes/ and data/ directories — keep only one. */
-  private def deduplicateByRelativePath(files: List[Path]): List[Path] =
-    val sep = java.io.File.separator
-    val marker = "META-INF" + sep + "semanticdb" + sep
-    val seen = scala.collection.mutable.HashSet.empty[String]
-    files.filter { f =>
-      val str = f.toString
-      val idx = str.indexOf(marker)
-      val key = if idx >= 0 then str.substring(idx + marker.length) else str
-      seen.add(key) // true if new, false if duplicate
-    }.sortBy(_.toString)
+    (files = localResults.toList, maxMtime = maxMtime)

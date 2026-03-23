@@ -101,7 +101,7 @@ class IndexTest extends SemTestBase:
 
     // Load from cache
     val index2 = SemIndex(workspace)
-    index2.build(Some(semanticdbDir.toString))
+    index2.build()
     assert(index2.cachedLoad, "second load should come from cache")
     assertEquals(index2.symbolCount, symCountBefore)
     assertEquals(index2.occurrenceCount, occCountBefore)
@@ -112,13 +112,13 @@ class IndexTest extends SemTestBase:
   test("incremental rebuild reuses unchanged documents") {
     val totalFiles = index.fileCount
 
-    // Touch the semanticdb directory itself to trigger staleness detection.
+    // Touch the discovered semanticdb directory to trigger staleness detection.
     // The staleness check stats directories (from the saved manifest), not individual files.
-    java.nio.file.Files.setLastModifiedTime(semanticdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 10000))
+    java.nio.file.Files.setLastModifiedTime(discoveredSdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 10000))
 
     // Build should detect staleness and do incremental rebuild
     val index3 = SemIndex(workspace)
-    index3.build(Some(semanticdbDir.toString))
+    index3.build()
     assert(!index3.cachedLoad, "should not be a pure cache hit after touching a file")
     // All documents should be reused (MD5s haven't changed, only mtime)
     assertEquals(index3.parsedCount, 0, "no docs should need re-conversion")
@@ -130,12 +130,16 @@ class IndexTest extends SemTestBase:
   // ── Regression tests for bugs fixed in #301 ────────────────────────────
   // Each test ensures a known-good cache state first to avoid cross-test contamination.
 
+  // The actual directory that discovery saves in the manifest (out/META-INF/semanticdb/)
+  private lazy val discoveredSdbDir: java.nio.file.Path =
+    semanticdbDir.resolve("META-INF").resolve("semanticdb")
+
   private def ensureFreshCache(): Unit =
     val fresh = SemIndex(workspace)
-    fresh.rebuild(Some(semanticdbDir.toString))
+    fresh.rebuild()
     // Ensure dir mtime is before cache mtime so staleness check returns fresh
     val cacheTime = java.nio.file.Files.getLastModifiedTime(SemPersistence.indexPath(workspace))
-    java.nio.file.Files.setLastModifiedTime(semanticdbDir,
+    java.nio.file.Files.setLastModifiedTime(discoveredSdbDir,
       java.nio.file.attribute.FileTime.fromMillis(cacheTime.toMillis - 1000))
 
   test("counts reset on each build call") {
@@ -144,15 +148,15 @@ class IndexTest extends SemTestBase:
     val idx = SemIndex(workspace)
 
     // First build: trigger stale rebuild so parsedCount/skippedCount are non-zero
-    java.nio.file.Files.setLastModifiedTime(semanticdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 40000))
-    idx.build(Some(semanticdbDir.toString))
+    java.nio.file.Files.setLastModifiedTime(discoveredSdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 40000))
+    idx.build()
     val firstSkipped = idx.skippedCount
     assert(firstSkipped > 0 || idx.parsedCount > 0, "first build should have done work (stale rebuild)")
 
     val firstParsed = idx.parsedCount
 
     // Second build on same instance: counts must be reset, not accumulated
-    idx.build(Some(semanticdbDir.toString))
+    idx.build()
     assert(idx.parsedCount <= firstParsed,
       s"parsedCount should not accumulate: first=$firstParsed, second=${idx.parsedCount}")
     assert(idx.skippedCount <= firstSkipped,
@@ -160,26 +164,16 @@ class IndexTest extends SemTestBase:
     ensureFreshCache()
   }
 
-  test("build clears index when all semanticdb files are deleted") {
-    // Bug: build() returned stale cached data when files.isEmpty (maxMtimeMs=0 < cacheMtime)
-    ensureFreshCache()
-
-    // Touch dir to trigger staleness, then point to an empty directory
-    java.nio.file.Files.setLastModifiedTime(semanticdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 30000))
-    val emptyDir = workspace.resolve("empty-out")
-    java.nio.file.Files.createDirectories(emptyDir)
-    val idx = SemIndex(workspace)
-    idx.build(Some(emptyDir.toString))
-    assertEquals(idx.fileCount, 0, "should have zero files when semanticdb dir is empty")
-
-    // Verify no perpetual staleness loop: second build should be a cache hit, not a re-walk
-    val idx2 = SemIndex(workspace)
-    idx2.build(Some(emptyDir.toString))
-    assertEquals(idx2.fileCount, 0, "should still be empty on second build")
-    assert(idx2.cachedLoad, "second build on empty dir should be a cache hit, not a re-walk")
-
-    // Restore cache for subsequent tests
-    ensureFreshCache()
+  test("rebuild on workspace without out/ produces empty index") {
+    val emptyWorkspace = java.nio.file.Files.createTempDirectory("scalex-sdb-empty")
+    val idx = SemIndex(emptyWorkspace)
+    idx.rebuild()
+    assertEquals(idx.fileCount, 0, "should have zero files when no out/ exists")
+    // Cleanup
+    java.nio.file.Files.deleteIfExists(emptyWorkspace.resolve(".scalex").resolve("semanticdb.bin"))
+    java.nio.file.Files.deleteIfExists(emptyWorkspace.resolve(".scalex").resolve("semanticdb-dirs.txt"))
+    java.nio.file.Files.deleteIfExists(emptyWorkspace.resolve(".scalex"))
+    java.nio.file.Files.deleteIfExists(emptyWorkspace)
   }
 
   test("symbol-only load preserves occurrences in cache after incremental rebuild") {
@@ -190,15 +184,15 @@ class IndexTest extends SemTestBase:
     assert(origOccCount > 0, "should have occurrences initially")
 
     // Touch dir to trigger staleness
-    java.nio.file.Files.setLastModifiedTime(semanticdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 20000))
+    java.nio.file.Files.setLastModifiedTime(discoveredSdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 20000))
 
     // Build with needOccurrences=false (symbol-only command) — triggers incremental rebuild
     val idx = SemIndex(workspace)
-    idx.build(Some(semanticdbDir.toString), needOccurrences = false)
+    idx.build(needOccurrences = false)
 
     // Now load again WITH occurrences — they should still be in the cache
     val idx2 = SemIndex(workspace)
-    idx2.build(Some(semanticdbDir.toString), needOccurrences = true)
+    idx2.build(needOccurrences = true)
     assertEquals(idx2.occurrenceCount, origOccCount,
       s"occurrences should be preserved in cache after symbol-only incremental rebuild (expected $origOccCount, got ${idx2.occurrenceCount})")
   }
@@ -207,7 +201,7 @@ class IndexTest extends SemTestBase:
     // Bug: DataInputStream.skipBytes may skip fewer bytes than requested, corrupting stream
     ensureFreshCache()
     val idx = SemIndex(workspace)
-    idx.build(Some(semanticdbDir.toString), needOccurrences = false)
+    idx.build(needOccurrences = false)
 
     // Symbol data should be intact even though occurrences were skipped
     assertEquals(idx.symbolCount, index.symbolCount, "symbol count should match full load")
@@ -225,7 +219,7 @@ class IndexTest extends SemTestBase:
     java.nio.file.Files.writeString(manifestPath, "") // empty manifest
 
     val idx = SemIndex(workspace)
-    idx.build(Some(semanticdbDir.toString))
+    idx.build()
     // Should NOT be a cache hit — empty manifest should trigger full discovery
     assert(!idx.cachedLoad, "empty manifest should trigger full discovery, not cache hit")
     assert(idx.fileCount > 0, "should discover files even with empty manifest")

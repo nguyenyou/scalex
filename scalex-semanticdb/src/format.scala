@@ -289,7 +289,7 @@ private def symbolToJson(s: SemSymbol): String =
   val annots = s.annotations.map(jsonStr).mkString(",")
   s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)},"file":${jsonStr(s.sourceUri)},"signature":${jsonStr(s.signature)},"parents":[$parents],"overriddenSymbols":[$overridden],"annotations":[$annots]}"""
 
-private def jsonStr(s: String): String =
+def jsonStr(s: String): String =
   val sb = StringBuilder("\"")
   s.foreach {
     case '"'  => sb.append("\\\"")

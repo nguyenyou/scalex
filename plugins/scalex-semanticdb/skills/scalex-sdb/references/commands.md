@@ -54,7 +54,6 @@
 | Flag | Short | Default | Description |
 |---|---|---|---|
 | `--workspace` | `-w` | cwd | Set workspace root |
-| `--semanticdb-path` | — | auto | Explicit path to `.semanticdb` files |
 | `--limit` | — | 50 | Max results (0=unlimited) |
 | `--json` | — | off | JSON output for all commands |
 | `--verbose` | `-v` | off | Show full signatures, properties, overrides |

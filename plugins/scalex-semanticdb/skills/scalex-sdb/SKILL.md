@@ -38,21 +38,16 @@ Replace `/absolute/path/to/skills/scalex-sdb` with the absolute path to the dire
 
 ## Prerequisites
 
-scalex-sdb requires `.semanticdb` files in build output directories. Generate them:
+scalex-sdb requires `.semanticdb` files produced by the Scala compiler. Currently optimized for **Mill projects only** — other build tools (sbt, scala-cli) will be supported once the Mill workflow is rock-solid.
 
-**Mill** (best supported):
+**Mill** — generate SemanticDB data:
 ```bash
 ./mill __.semanticDbData
 ```
 
-**sbt / scala-cli / other build tools**: Discovery and indexing should work but is not fully tested. Use `--semanticdb-path` to point to the directory containing your `.semanticdb` files if auto-discovery doesn't find them. If you run into issues, please [file an issue](https://github.com/nguyenyou/scalex/issues) — we're happy to add support.
+This produces `.semanticdb` files under `out/` in each module's `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directory. scalex-sdb auto-discovers these via a fast targeted search of `out/` — no configuration needed.
 
-```scala
-// sbt: build.sbt
-ThisBuild / semanticdbEnabled := true
-```
-
-scalex-sdb auto-discovers `.semanticdb` files. For Mill projects, it finds `semanticDbDataDetailed.dest` directories directly (fast targeted search). For other build tools, it falls back to walking `target/` and `.bloop/`. Use `--semanticdb-path` to override.
+**Other build tools**: Not yet supported. If you're interested in sbt/Gradle/scala-cli support, please [file an issue](https://github.com/nguyenyou/scalex/issues).
 
 ## When to use scalex-sdb vs scalex
 
@@ -278,7 +273,6 @@ scalex-sdb stats -w /project              # Show counts
 | Flag | Description |
 |---|---|
 | `-w`, `--workspace PATH` | Set workspace (default: cwd) |
-| `--semanticdb-path PATH` | Explicit path to `.semanticdb` files |
 | `--limit N` | Max results (default: 50, 0=unlimited) |
 | `--json` | JSON output |
 | `--verbose`, `-v` | Full signatures and properties |
