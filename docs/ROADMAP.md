@@ -174,6 +174,16 @@
 - [x] `resolveSymbol` prefers source over generated code in ranking
 - [x] `batch` command — run multiple queries in one invocation
 
+### scalex-sdb: agent UX improvements (#303)
+
+- [x] Fix `batch` FQN quoting — strip surrounding quotes in `runBatch()`
+- [x] `--in <scope>` flag — scope symbol resolution by owner, FQN, or file without full FQN
+- [x] `--exclude-test` flag — filter out test source directories
+- [x] `--exclude-pkg "p1,p2,..."` flag — exclude symbols by package prefix
+- [x] `--smart` filters monadic combinators (flatMap, map, traverse, etc.)
+- [x] `lookup` shows `[object]`/`[class/trait]` annotations for method/field members
+- [x] FQN resolution `#`↔`.` fallback with stderr hint
+
 ## Completed
 
 ### JavaParser-based Java extraction (#167)

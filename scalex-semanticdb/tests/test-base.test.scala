@@ -66,6 +66,9 @@ abstract class SemTestBase extends FunSuite:
     noAccessors: Boolean = false,
     excludePatterns: List[String] = Nil,
     smart: Boolean = false,
+    inScope: Option[String] = None,
+    excludeTest: Boolean = false,
+    excludePkgPatterns: List[String] = Nil,
   ): SemCommandContext =
     SemCommandContext(
       index = index,
@@ -79,6 +82,9 @@ abstract class SemTestBase extends FunSuite:
       noAccessors = noAccessors,
       excludePatterns = excludePatterns,
       smart = smart,
+      inScope = inScope,
+      excludeTest = excludeTest,
+      excludePkgPatterns = excludePkgPatterns,
     )
 
   private def deleteRecursive(path: Path): Unit =
@@ -242,6 +248,17 @@ abstract class SemTestBase extends FunSuite:
         |
         |object MathHelpers:
         |  def clamp(v: Int, lo: Int, hi: Int): Int = math.max(lo, math.min(hi, v))
+        |""".stripMargin)
+
+    // Test file for --exclude-test testing
+    writeFile(srcDir, "example/test/DogTest.scala",
+      """package example.test
+        |
+        |class DogTest:
+        |  def testBark(): Unit =
+        |    val d = example.Dog("Rex")
+        |    println(d.sound)
+        |    println(d.fetch("ball"))
         |""".stripMargin)
 
     // Companion + extension for related tests

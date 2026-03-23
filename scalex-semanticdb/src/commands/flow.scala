@@ -4,7 +4,7 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
     case Nil => SemCmdResult.UsageError("Usage: flow <method> [--depth N]")
     case query :: _ =>
-      val sym = resolveOne(query, ctx.index, ctx.kindFilter) match
+      val sym = resolveOne(query, ctx.index, ctx.kindFilter, ctx.inScope) match
         case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
         case Some(s) => s
       val lines = scala.collection.mutable.ListBuffer.empty[String]
@@ -23,7 +23,10 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
           .filterNot(s => isTrivial(s.fqn))
           .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
           .filterNot(s => ctx.smart && isInfraNoise(s))
+          .filterNot(s => ctx.smart && isMonadicCombinator(s))
+          .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
           .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
+          .filterNot(s => ctx.excludePkgPatterns.exists(p => s.fqn.startsWith(p)))
 
         callees.foreach { callee =>
           if !visited.contains(callee.fqn) then

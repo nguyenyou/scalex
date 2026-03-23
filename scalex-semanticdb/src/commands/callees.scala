@@ -4,14 +4,16 @@ def cmdCallees(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
     case Nil => SemCmdResult.UsageError("Usage: callees <symbol>")
     case query :: _ =>
-      val sym = resolveOne(query, ctx.index, ctx.kindFilter) match
+      val sym = resolveOne(query, ctx.index, ctx.kindFilter, ctx.inScope) match
         case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
         case Some(s) => s
       val callees = findCallees(sym.fqn, ctx.index)
       val withoutAccessors = if ctx.noAccessors || ctx.smart then callees.filterNot(isAccessor) else callees
       val withoutInfra = if ctx.smart then withoutAccessors.filterNot(isInfraNoise) else withoutAccessors
+      val withoutCombinators = if ctx.smart then withoutInfra.filterNot(isMonadicCombinator) else withoutInfra
+      val withoutTest = if ctx.excludeTest then withoutCombinators.filterNot(s => isTestSource(s.sourceUri)) else withoutCombinators
       // --kind is used for symbol resolution above, not for filtering callees output
-      val filtered = filterByExclude(withoutInfra, ctx.excludePatterns)
+      val filtered = filterByExcludePkg(filterByExclude(withoutTest, ctx.excludePatterns), ctx.excludePkgPatterns)
       val limited = filtered.take(ctx.limit)
 
       SemCmdResult.SymbolList(

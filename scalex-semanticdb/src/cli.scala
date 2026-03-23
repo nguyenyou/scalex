@@ -79,6 +79,7 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
 
   val results = args.map { subCmdStr =>
     val parts = subCmdStr.trim.split("\\s+").toList.filter(_.nonEmpty)
+      .map(t => if (t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'")) then t.substring(1, t.length - 1) else t)
     if parts.isEmpty then (command = subCmdStr, result = SemCmdResult.UsageError("Empty sub-command"))
     else {
       val subCmd  = parts.head
@@ -96,6 +97,9 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
         noAccessors = subFlags.noAccessors || ctx.noAccessors,
         excludePatterns = if subFlags.excludePatterns.nonEmpty then subFlags.excludePatterns else ctx.excludePatterns,
         smart = subFlags.smart || ctx.smart,
+        inScope = subFlags.inScope.orElse(ctx.inScope),
+        excludeTest = subFlags.excludeTest || ctx.excludeTest,
+        excludePkgPatterns = if subFlags.excludePkgPatterns.nonEmpty then subFlags.excludePkgPatterns else ctx.excludePkgPatterns,
       )
       val result = commands.get(subCmd) match
         case Some(handler) => handler(subFlags.cleanArgs, subCtx)
@@ -126,6 +130,9 @@ case class SemParsedFlags(
   noAccessors: Boolean = false,
   excludePatterns: List[String] = Nil,
   smart: Boolean = false,
+  inScope: Option[String] = None,
+  excludeTest: Boolean = false,
+  excludePkgPatterns: List[String] = Nil,
   cleanArgs: List[String] = Nil,
 )
 
@@ -173,6 +180,15 @@ def parseFlags(args: List[String]): SemParsedFlags =
       case "--smart" =>
         flags = flags.copy(smart = true)
         i += 1
+      case "--in" if i + 1 < arr.length =>
+        flags = flags.copy(inScope = Some(arr(i + 1)))
+        i += 2
+      case "--exclude-test" =>
+        flags = flags.copy(excludeTest = true)
+        i += 1
+      case "--exclude-pkg" if i + 1 < arr.length =>
+        flags = flags.copy(excludePkgPatterns = arr(i + 1).split(",").map(_.trim.replace(".", "/")).filter(_.nonEmpty).toList)
+        i += 2
       case arg if arg.startsWith("--") =>
         // Unknown flag, skip (and its arg if it looks like a flag-with-arg)
         i += 1
@@ -196,6 +212,9 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
     noAccessors = flags.noAccessors,
     excludePatterns = flags.excludePatterns,
     smart = flags.smart,
+    inScope = flags.inScope,
+    excludeTest = flags.excludeTest,
+    excludePkgPatterns = flags.excludePkgPatterns,
   )
 
 // ── Usage ──────────────────────────────────────────────────────────────────
@@ -245,7 +264,10 @@ def printUsage(): Unit =
     |  --depth N                    Max depth for recursive commands (callers: 1, flow/subtypes: 3, path: 5)
     |  --no-accessors               Exclude val/var accessors from flow/callees
     |  --exclude "p1,p2,..."        Exclude symbols matching FQN or file path
-    |  --smart                       Auto-filter infrastructure noise (accessors, protobuf, plumbing)
+    |  --exclude-test               Exclude symbols from test source directories
+    |  --exclude-pkg "p1,p2,..."    Exclude symbols by package prefix (dots auto-converted to /)
+    |  --in <scope>                 Scope symbol resolution by owner class, file, or package
+    |  --smart                       Auto-filter noise (accessors, protobuf, monadic combinators)
     |  --timings                    Print timing info to stderr
     |  --version                    Print version
     |""".stripMargin)

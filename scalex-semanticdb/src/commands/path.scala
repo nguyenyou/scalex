@@ -3,7 +3,7 @@
 def cmdPath(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
     case source :: target :: _ =>
-      val srcSym = resolveOne(source, ctx.index, ctx.kindFilter) match
+      val srcSym = resolveOne(source, ctx.index, ctx.kindFilter, ctx.inScope) match
         case None => return SemCmdResult.NotFound(s"No symbol found matching '$source'")
         case Some(s) => s
 
@@ -34,7 +34,10 @@ def cmdPath(args: List[String], ctx: SemCommandContext): SemCmdResult =
               .filterNot(s => isTrivial(s.fqn))
               .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
               .filterNot(s => ctx.smart && isInfraNoise(s))
+              .filterNot(s => ctx.smart && isMonadicCombinator(s))
+              .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
               .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
+              .filterNot(s => ctx.excludePkgPatterns.exists(p => s.fqn.startsWith(p)))
 
             // In --smart mode, restrict BFS to same module — but always allow the target through
             val filtered = rootModule match

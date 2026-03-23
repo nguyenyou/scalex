@@ -5,7 +5,7 @@ def cmdMembers(args: List[String], ctx: SemCommandContext): SemCmdResult =
     case Nil => SemCmdResult.UsageError("Usage: members <symbol>")
     case query :: _ =>
       // --kind filters members, not the parent symbol resolution
-      val sym = resolveOne(query, ctx.index, kindFilter = None) match
+      val sym = resolveOne(query, ctx.index, kindFilter = None, ctx.inScope) match
         case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
         case Some(s) => s
       val members = ctx.index.memberIndex.getOrElse(sym.fqn, Nil)

@@ -5,7 +5,19 @@ def cmdLookup(args: List[String], ctx: SemCommandContext): SemCmdResult =
     case Nil => SemCmdResult.UsageError("Usage: lookup <symbol>")
     case query :: _ =>
       val matches = ctx.index.resolveSymbol(query)
-      val filtered = filterByKind(matches, ctx.kindFilter)
+      val byKind = filterByKind(matches, ctx.kindFilter)
+      // Apply --in scope filter
+      val filtered = ctx.inScope match
+        case Some(scope) =>
+          val scopeLower = scope.toLowerCase
+          val scopeFqn = scope.replace(".", "/")
+          val scoped = byKind.filter { s =>
+            s.owner.toLowerCase.contains(scopeLower) ||
+            s.fqn.contains(scopeFqn) ||
+            s.sourceUri.contains(scope)
+          }
+          if scoped.nonEmpty then scoped else byKind
+        case None => byKind
       if filtered.isEmpty then
         SemCmdResult.NotFound(s"No symbol found matching '$query'")
       else if filtered.size == 1 then

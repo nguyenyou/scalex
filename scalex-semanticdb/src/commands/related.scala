@@ -4,7 +4,7 @@ def cmdRelated(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
     case Nil => SemCmdResult.UsageError("Usage: related <symbol>")
     case query :: _ =>
-      val sym = resolveOne(query, ctx.index, ctx.kindFilter) match
+      val sym = resolveOne(query, ctx.index, ctx.kindFilter, ctx.inScope) match
         case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
         case Some(s) => s
       val targetFqn = sym.fqn

@@ -9,7 +9,22 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
         return SemCmdResult.NotFound(s"No symbol found matching '$query'")
 
       val resolved = filterByKind(symbols, ctx.kindFilter)
-      val candidates = if resolved.nonEmpty then resolved else symbols
+      val afterKind = if resolved.nonEmpty then resolved else symbols
+      // Apply --in scope filter
+      val candidates = ctx.inScope match
+        case Some(scope) =>
+          val scopeLower = scope.toLowerCase
+          val scopeFqn = scope.replace(".", "/")
+          val scoped = afterKind.filter { s =>
+            s.owner.toLowerCase.contains(scopeLower) ||
+            s.fqn.contains(scopeFqn) ||
+            s.sourceUri.contains(scope)
+          }
+          if scoped.nonEmpty then scoped
+          else
+            System.err.println(s"Warning: --in '$scope' matched no candidates, falling back to unscoped resolution")
+            afterKind
+        case None => afterKind
       val maxDepth = ctx.depth.getOrElse(1)
 
       if maxDepth <= 1 then
@@ -20,7 +35,9 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
           .filterNot(s => fqns.contains(s.fqn))
           .filterNot(s => ctx.smart && isInfraNoise(s))
           .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
-        val filtered = filterByExclude(callerSymbols, ctx.excludePatterns)
+          .filterNot(s => ctx.smart && isMonadicCombinator(s))
+          .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
+        val filtered = filterByExcludePkg(filterByExclude(callerSymbols, ctx.excludePatterns), ctx.excludePkgPatterns)
         val limited = filtered.take(ctx.limit)
         val name = candidates.head.displayName
 
@@ -31,7 +48,7 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
         )
       else
         // Transitive tree mode: recursive caller traversal (single root)
-        val sym = resolveOne(query, ctx.index, ctx.kindFilter) match
+        val sym = resolveOne(query, ctx.index, ctx.kindFilter, ctx.inScope) match
           case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
           case Some(s) => s
         val lines = scala.collection.mutable.ListBuffer.empty[String]
@@ -46,7 +63,10 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
             .filterNot(s => isTrivial(s.fqn))
             .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
             .filterNot(s => ctx.smart && isInfraNoise(s))
+            .filterNot(s => ctx.smart && isMonadicCombinator(s))
+            .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
             .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
+            .filterNot(s => ctx.excludePkgPatterns.exists(p => s.fqn.startsWith(p)))
 
           callers.foreach { caller =>
             if !visited.contains(caller.fqn) then

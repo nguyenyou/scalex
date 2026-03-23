@@ -333,16 +333,22 @@ class SemIndex(val workspace: Path):
     val raw =
       // 1. Exact FQN match
       symbolByFqn.get(query).map(List(_)).getOrElse {
-        // 2. Suffix match on FQN (e.g. "List#map()." matches "scala/collection/immutable/List#map().")
-        val suffixMatches = _allSymbols.filter(_.fqn.endsWith(query))
-        if suffixMatches.nonEmpty then suffixMatches
-        else
-          // 3. Display name match (case-insensitive)
-          val nameMatches = symbolsByName.getOrElse(query.toLowerCase, Nil)
-          if nameMatches.nonEmpty then nameMatches
-          else
-            // 4. Partial display name match
-            _allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
+        // 1b. Try swapping # ↔ . separator (object vs class member confusion)
+        swapFqnSeparator(query).flatMap(symbolByFqn.get) match
+          case Some(swapped) =>
+            System.err.println(s"Hint: '$query' resolved as '${swapped.fqn}' (# ↔ . separator swapped)")
+            List(swapped)
+          case None =>
+            // 2. Suffix match on FQN (e.g. "List#map()." matches "scala/collection/immutable/List#map().")
+            val suffixMatches = _allSymbols.filter(_.fqn.endsWith(query))
+            if suffixMatches.nonEmpty then suffixMatches
+            else
+              // 3. Display name match (case-insensitive)
+              val nameMatches = symbolsByName.getOrElse(query.toLowerCase, Nil)
+              if nameMatches.nonEmpty then nameMatches
+              else
+                // 4. Partial display name match
+                _allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
       }
     // Deterministic ordering: non-local before local, source before generated, then by kind rank, then shorter FQN first
     raw.sortBy(s => (isLocal = if s.kind == SemKind.Local then 1 else 0, isGenerated = if isGeneratedSource(s.sourceUri) then 1 else 0, kindRank = kindRank(s.kind), fqnLen = s.fqn.length, fqn = s.fqn))
@@ -357,6 +363,20 @@ class SemIndex(val workspace: Path):
     case SemKind.Field       => 6
     case SemKind.Constructor => 7
     case _                   => 8
+
+  /** Try swapping the type separator in a FQN: # (class/trait) ↔ . (object).
+    * E.g. "com/example/Foo#bar()." → "com/example/Foo.bar()." and vice versa. */
+  private def swapFqnSeparator(fqn: String): Option[String] =
+    val lastSlash = fqn.lastIndexOf('/')
+    val rest = if lastSlash >= 0 then fqn.substring(lastSlash + 1) else fqn
+    val prefix = if lastSlash >= 0 then fqn.substring(0, lastSlash + 1) else ""
+    val hashIdx = rest.indexOf('#')
+    val dotIdx = rest.indexOf('.')
+    if hashIdx > 0 then
+      Some(prefix + rest.substring(0, hashIdx) + "." + rest.substring(hashIdx + 1))
+    else if dotIdx > 0 then
+      Some(prefix + rest.substring(0, dotIdx) + "#" + rest.substring(dotIdx + 1))
+    else None
 
   // ── Build ──────────────────────────────────────────────────────────────
 

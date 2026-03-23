@@ -17,9 +17,32 @@ def isInfraNoise(s: SemSymbol): Boolean =
   // Generated code (protobuf, codegen) — any symbol from a generated file
   isGeneratedSource(s.sourceUri)
 
+def isTestSource(uri: String): Boolean =
+  val lower = uri.toLowerCase
+  lower.contains("/test/") || lower.contains("/tests/") ||
+  lower.contains("/it/") || lower.contains("/spec/") ||
+  lower.endsWith("test.scala") || lower.endsWith("spec.scala") ||
+  lower.endsWith("suite.scala") || lower.endsWith("integ.scala")
+
+/** Well-known monadic/functional combinator names that are plumbing noise. */
+private val monadicCombinatorNames = Set(
+  "flatMap", "map", "traverse", "unit", "pure", "succeed", "attempt",
+  "fold", "fromOption", "foreach", "filter", "collect",
+  "getOrElse", "orElse", "toOption", "as", "when", "unless",
+  "catchAll", "catchSome", "mapError", "tapError",
+  "zip", "zipWith", "zipLeft", "zipRight",
+)
+
+def isMonadicCombinator(s: SemSymbol): Boolean =
+  monadicCombinatorNames.contains(s.displayName)
+
 def filterByExclude(symbols: List[SemSymbol], patterns: List[String]): List[SemSymbol] =
   if patterns.isEmpty then symbols
   else symbols.filterNot(s => patterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
+
+def filterByExcludePkg(symbols: List[SemSymbol], patterns: List[String]): List[SemSymbol] =
+  if patterns.isEmpty then symbols
+  else symbols.filterNot(s => patterns.exists(p => s.fqn.startsWith(p)))
 
 /** Stdlib/trivial prefixes to filter out of call trees. */
 private val trivialPrefixes = Set(
@@ -39,21 +62,37 @@ def modulePrefix(uri: String): String =
 
 /** Resolve a user query to a single symbol. When multiple match, prints a
   * disambiguation hint to stderr showing up to 5 candidates with FQN + kind.
-  * Returns None only when no symbols match at all. */
-def resolveOne(query: String, index: SemIndex, kindFilter: Option[String]): Option[SemSymbol] =
+  * Returns None only when no symbols match at all.
+  * @param inScope optional scope to narrow by owner class, FQN, or source file */
+def resolveOne(query: String, index: SemIndex, kindFilter: Option[String], inScope: Option[String] = None): Option[SemSymbol] =
   val symbols = index.resolveSymbol(query)
   if symbols.isEmpty then return None
   val filtered = filterByKind(symbols, kindFilter)
   val candidates = if filtered.nonEmpty then filtered else symbols
-  if candidates.size > 1 then
-    System.err.println(s"Ambiguous: ${candidates.size} symbols match '$query'. Using ${candidates.head.fqn}")
+  // Apply --in scope filter
+  val scoped = inScope match
+    case Some(scope) =>
+      val scopeLower = scope.toLowerCase
+      val scopeFqn = scope.replace(".", "/")
+      val matched = candidates.filter { s =>
+        s.owner.toLowerCase.contains(scopeLower) ||
+        s.fqn.contains(scopeFqn) ||
+        s.sourceUri.contains(scope)
+      }
+      if matched.nonEmpty then matched
+      else
+        System.err.println(s"Warning: --in '$scope' matched no candidates, falling back to unscoped resolution")
+        candidates
+    case None => candidates
+  if scoped.size > 1 then
+    System.err.println(s"Ambiguous: ${scoped.size} symbols match '$query'. Using ${scoped.head.fqn}")
     System.err.println(s"  Disambiguate with FQN or --kind. Candidates:")
-    candidates.take(5).foreach { s =>
+    scoped.take(5).foreach { s =>
       System.err.println(s"    ${s.kind.toString.toLowerCase} ${s.fqn}")
     }
-    if candidates.size > 5 then
-      System.err.println(s"    ... and ${candidates.size - 5} more")
-  Some(candidates.head)
+    if scoped.size > 5 then
+      System.err.println(s"    ... and ${scoped.size - 5} more")
+  Some(scoped.head)
 
 // ── Output rendering ───────────────────────────────────────────────────────
 
@@ -152,7 +191,18 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
 def formatSymbolLine(s: SemSymbol): String =
   val props = s.propertyNames
   val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
-  s"  ${s.kind.toString.toLowerCase} ${s.displayName}$propsStr (${s.sourceUri})"
+  // For method/field/constructor members, show [object] vs [class/trait] based on FQN convention
+  val memberOf =
+    if s.kind == SemKind.Method || s.kind == SemKind.Field || s.kind == SemKind.Constructor then
+      val nameStart = s.fqn.indexOf(s.displayName)
+      if nameStart > 0 then
+        s.fqn.charAt(nameStart - 1) match
+          case '#' => " [class/trait]"
+          case '.' => " [object]"
+          case _   => ""
+      else ""
+    else ""
+  s"  ${s.kind.toString.toLowerCase} ${s.displayName}$propsStr$memberOf (${s.sourceUri})"
 
 def formatSymbolDetail(s: SemSymbol, verbose: Boolean): String =
   val sb = StringBuilder()

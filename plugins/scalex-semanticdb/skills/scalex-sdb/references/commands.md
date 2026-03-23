@@ -62,8 +62,11 @@
 | `--role` | — | all | Filter occurrences by role (def/ref) |
 | `--depth` | — | varies | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
 | `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
-| `--smart` | — | off | Auto-filter infrastructure noise (accessors, generated, protobuf, plumbing) |
+| `--smart` | — | off | Auto-filter infrastructure noise (accessors, generated, protobuf, monadic combinators) |
 | `--exclude` | — | — | Exclude symbols matching FQN or file path (comma-separated) |
+| `--exclude-test` | — | off | Exclude symbols from test source directories |
+| `--exclude-pkg` | — | — | Exclude symbols by package prefix (comma-separated, dots auto-converted to /) |
+| `--in` | — | — | Scope symbol resolution by owner class, file, or package |
 | `--timings` | — | off | Print timing breakdown to stderr |
 | `--version` | — | — | Print version |
 
@@ -72,9 +75,10 @@
 When you pass a symbol name, scalex-sdb resolves it in this order:
 
 1. **Exact FQN** — `com/example/MyService#` matches directly
-2. **Suffix match** — `MyService#` matches `com/example/MyService#`
-3. **Display name** — `MyService` matches by case-insensitive display name
-4. **Partial name** — `Service` matches any symbol containing "Service"
+2. **FQN separator swap** — if exact FQN fails, tries `#` ↔ `.` swap (class member ↔ object member) with a hint
+3. **Suffix match** — `MyService#` matches `com/example/MyService#`
+4. **Display name** — `MyService` matches by case-insensitive display name
+5. **Partial name** — `Service` matches any symbol containing "Service"
 
 Results are ranked: non-local before local, source before generated (protobuf/codegen), classes/traits first, then methods/fields, locals last.
 

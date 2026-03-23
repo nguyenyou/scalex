@@ -445,6 +445,28 @@ class CommandsTest extends SemTestBase:
         fail(s"unexpected result: $other")
   }
 
+  test("batch with quoted FQN resolves correctly") {
+    // Bug #303: batch sub-commands with quoted FQNs should strip surrounding quotes
+    // before resolving. Without the fix, literal " chars break FQN lookup.
+    val ctx = makeCtx()
+    val result = runBatch(List("""lookup "example/Dog#" """), ctx)
+    result match
+      case SemCmdResult.Batch(results) =>
+        assertEquals(results.size, 1)
+        results.head.result match
+          case SemCmdResult.SymbolDetail(sym) =>
+            assertEquals(sym.fqn, "example/Dog#")
+          case SemCmdResult.SymbolList(_, syms, _) =>
+            assert(syms.exists(_.fqn == "example/Dog#"),
+              s"should find Dog via quoted FQN: ${syms.map(_.fqn)}")
+          case SemCmdResult.NotFound(msg) =>
+            fail(s"quoted FQN should resolve but got NotFound: $msg")
+          case other =>
+            fail(s"unexpected sub-result: $other")
+      case other =>
+        fail(s"unexpected result: $other")
+  }
+
   // ── kind-aware resolution ────────────────────────────────────────────────
 
   test("callees with --kind method resolves to method, not object") {
@@ -1007,4 +1029,123 @@ class CommandsTest extends SemTestBase:
     assert(output.contains("\"symbol\""), s"JSON should contain symbol field: $output")
     assert(output.contains("\"totalCallers\""), s"JSON should contain totalCallers: $output")
     assert(output.contains("\"totalCallees\""), s"JSON should contain totalCallees: $output")
+  }
+
+  // ── --in flag (#303) ──────────────────────────────────────────────────────
+
+  test("--in scopes resolution to owner class") {
+    // "sound" exists on Animal (trait), Dog (class), Cat (class).
+    // With --in Dog, should pick Dog's sound.
+    val ctx = makeCtx(inScope = Some("Dog"))
+    val result = cmdLookup(List("sound"), ctx)
+    result match
+      case SemCmdResult.SymbolDetail(sym) =>
+        assert(sym.owner.contains("Dog"), s"expected Dog owner, got ${sym.owner}")
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        assert(syms.head.owner.contains("Dog"), s"expected Dog owner first, got ${syms.head.owner}")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("--in scopes by file path") {
+    val ctx = makeCtx(inScope = Some("Cat.scala"))
+    val result = cmdLookup(List("sound"), ctx)
+    result match
+      case SemCmdResult.SymbolDetail(sym) =>
+        assert(sym.sourceUri.contains("Cat.scala"), s"expected Cat.scala, got ${sym.sourceUri}")
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        assert(syms.head.sourceUri.contains("Cat.scala"), s"expected Cat.scala first, got ${syms.head.sourceUri}")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("--in with no match falls back to unscoped") {
+    val ctx = makeCtx(inScope = Some("NonExistentOwner"))
+    val result = cmdLookup(List("Dog"), ctx)
+    // Should fall back to unscoped resolution and still find Dog
+    assert(!result.isInstanceOf[SemCmdResult.NotFound], s"should fall back, not NotFound: $result")
+  }
+
+  test("--in works with callers") {
+    // "register" exists on both AnimalService (trait) and AnimalServiceImpl (class).
+    // With --in AnimalServiceImpl, callers should resolve to the impl's register.
+    val ctx = makeCtx(inScope = Some("AnimalServiceImpl"))
+    val result = cmdCallers(List("register"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val names = syms.map(_.displayName)
+        assert(names.contains("main"), s"main should call register: $names")
+      case other => fail(s"unexpected: $other")
+  }
+
+  // ── --exclude-test (#303) ─────────────────────────────────────────────────
+
+  test("--exclude-test filters callers from test sources") {
+    // DogTest.testBark calls Dog.sound and Dog.fetch.
+    // Check all callers of "sound" — should include testBark from test source.
+    val ctxAll = makeCtx()
+    val resultAll = cmdCallers(List("sound"), ctxAll)
+    val allCallers = resultAll match
+      case SemCmdResult.SymbolList(_, syms, _) => syms
+      case _ => Nil
+
+    val hasTestCaller = allCallers.exists(s => isTestSource(s.sourceUri))
+
+    // With --exclude-test, test callers should be filtered out.
+    val ctxNoTest = makeCtx(excludeTest = true)
+    val resultNoTest = cmdCallers(List("sound"), ctxNoTest)
+    val filteredCallers = resultNoTest match
+      case SemCmdResult.SymbolList(_, syms, _) => syms
+      case _ => Nil
+
+    if hasTestCaller then
+      assert(!filteredCallers.exists(s => isTestSource(s.sourceUri)),
+        s"with --exclude-test, should have no test callers: ${filteredCallers.map(s => s.displayName -> s.sourceUri)}")
+    // If no test callers found at all, at least verify the flag doesn't break anything
+    assert(filteredCallers.size <= allCallers.size,
+      s"--exclude-test should not increase callers: ${filteredCallers.size} vs ${allCallers.size}")
+  }
+
+  test("--exclude-test filters callees from test sources") {
+    val ctxNoTest = makeCtx(excludeTest = true)
+    val result = cmdCallees(List("example/Main.main()."), ctxNoTest)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        assert(!syms.exists(s => isTestSource(s.sourceUri)),
+          s"should have no test callees: ${syms.map(s => s.displayName -> s.sourceUri)}")
+      case other => fail(s"unexpected: $other")
+  }
+
+  // ── --exclude-pkg (#303) ──────────────────────────────────────────────────
+
+  test("--exclude-pkg filters by package prefix") {
+    val ctx = makeCtx(excludePkgPatterns = List("example/"))
+    val result = cmdCallees(List("example/Main.main()."), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        assert(!syms.exists(_.fqn.startsWith("example/")),
+          s"example/ package should be excluded: ${syms.map(_.fqn)}")
+      case other => fail(s"unexpected: $other")
+  }
+
+  // ── lookup annotations (#303) ─────────────────────────────────────────────
+
+  test("formatSymbolLine shows [object] vs [class/trait] annotation") {
+    // Main.main is an object member, Dog#sound is a class member
+    val mainMethod = index.resolveSymbol("example/Main.main().").head
+    val dogSound = index.resolveSymbol("example/Dog#sound().").head
+
+    val mainLine = formatSymbolLine(mainMethod)
+    val dogLine = formatSymbolLine(dogSound)
+
+    assert(mainLine.contains("[object]"), s"Main.main should be [object]: $mainLine")
+    assert(dogLine.contains("[class/trait]"), s"Dog#sound should be [class/trait]: $dogLine")
+  }
+
+  // ── FQN #/. fallback (#303) ───────────────────────────────────────────────
+
+  test("resolveSymbol with wrong separator falls back via swap") {
+    // Main is an object, so main is at "example/Main.main()."
+    // Using # instead of . should still resolve via the swap fallback.
+    val syms = index.resolveSymbol("example/Main#main().")
+    assert(syms.nonEmpty, "should resolve via # -> . swap")
+    assertEquals(syms.head.fqn, "example/Main.main().")
   }

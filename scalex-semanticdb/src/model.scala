@@ -168,4 +168,7 @@ case class SemCommandContext(
   noAccessors: Boolean = false,
   excludePatterns: List[String] = Nil,
   smart: Boolean = false,
+  inScope: Option[String] = None,
+  excludeTest: Boolean = false,
+  excludePkgPatterns: List[String] = Nil,
 )
