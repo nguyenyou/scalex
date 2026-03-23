@@ -1,6 +1,6 @@
 ---
 name: scalex-sdb
-description: "Compiler-precise Scala code intelligence from SemanticDB data. Call graph analysis (callers, callees, flow), precise references with zero false positives, resolved type signatures, related symbol discovery. Requires compiled .semanticdb files (Scala 2/3). Triggers: \"who calls X\", \"what does X call\", \"trace the call flow from X\", \"what calls this method\", \"precise references of X\", \"what type does X return\", \"show callers of X\", \"call graph of X\", \"what symbols are related to X\", \"what methods does this class have with types\", \"trace execution flow\", \"trace the service layers\", or when you need compiler-precise (not text-based) code intelligence. Use this over scalex when you need call graphs, type information, or zero-false-positive references. Use scalex for zero-setup exploration; use scalex-sdb when the project has been compiled with SemanticDB enabled."
+description: "Compiler-precise Scala code intelligence from SemanticDB data. Call graph analysis (callers, callees, flow), precise references with zero false positives, resolved type signatures, related symbol discovery. Requires compiled .semanticdb files (Scala 2/3). Triggers: \"who calls X\", \"what does X call\", \"trace the call flow from X\", \"what calls this method\", \"precise references of X\", \"what type does X return\", \"show callers of X\", \"call graph of X\", \"what symbols are related to X\", \"what methods does this class have with types\", \"trace execution flow\", \"trace the service layers\", \"how does A reach B\", \"find call path from X to Y\", \"explain this method\", \"summarize this symbol\", or when you need compiler-precise (not text-based) code intelligence. Use this over scalex when you need call graphs, type information, or zero-false-positive references. Use scalex for zero-setup exploration; use scalex-sdb when the project has been compiled with SemanticDB enabled."
 ---
 
 You have access to `scalex-sdb`, a compiler-precise Scala code intelligence CLI. It reads `.semanticdb` files produced by the Scala compiler and provides capabilities that source-text parsing fundamentally cannot:
@@ -62,6 +62,9 @@ scalex-sdb auto-discovers `.semanticdb` files. For Mill projects, it finds `sema
 | Source body extraction, scaladoc, grep | `scalex` |
 | AST patterns, test discovery, overview | `scalex` |
 | **"Who calls this method?"** | `scalex-sdb callers` |
+| **"Who transitively calls this?"** | `scalex-sdb callers --depth 3` |
+| **"How does A reach B?"** | `scalex-sdb path A B` |
+| **Quick method/type summary** | `scalex-sdb explain` |
 | **Precise references (zero false positives)** | `scalex-sdb refs` |
 | **Exhaustive subtypes** | `scalex-sdb subtypes` |
 | **"What does this method call?"** | `scalex-sdb callees --smart` |
@@ -72,19 +75,24 @@ scalex-sdb auto-discovers `.semanticdb` files. For Mill projects, it finds `sema
 
 ### Precision queries (the primary reason to use scalex-sdb)
 
-#### `scalex-sdb callers <symbol> [--kind K] [--exclude "p1,p2"]` — who calls this method?
+#### `scalex-sdb callers <symbol> [--depth N] [--kind K] [--exclude "p1,p2"]` — who calls this method?
 
 The most valuable command — no scalex equivalent exists. Tells you *which method* contains each call, not just which file. `--kind` narrows symbol resolution (e.g., `--kind method` picks the method over a companion object). `--exclude` filters callers matching FQN or file path patterns.
+
+With `--depth N` (N>1), shows a transitive caller tree — "which HTTP endpoints eventually reach this internal method?" Default depth is 1 (flat list). Supports `--smart` (same-module only) and cycle detection.
 
 ```bash
 scalex-sdb callers handleRequest -w /project
 scalex-sdb callers handleRequest --kind method --exclude "test,integ" -w /project
+
+# Transitive callers — trace back through service layers:
+scalex-sdb callers add --depth 3 -w /project
 ```
 ```
-9 callers of 'handleRequest'
-  method route (Router.scala)
-  method main (Main.scala)
-  method testHandler (HandlerSpec.scala)
+Caller tree of 'add' (depth=3)
+method add (EventStoreOperations.scala:42)
+  method executeEvent (FlowOperations.scala:15)
+    method createOrder (OrderFlowOperations.scala:36)
 ```
 
 #### `scalex-sdb refs <symbol> [--role def|ref]` — zero-false-positive references
@@ -113,6 +121,36 @@ scalex-sdb type configLayer -w /project
 ```
 ```
 configLayer: val method configLayer ULayer[AppConfig]
+```
+
+#### `scalex-sdb path <source> <target> [--depth N] [--smart] [--exclude "p1,p2"]` — find call path between two symbols
+
+"How does symbol A reach symbol B?" BFS on the call graph to find the shortest path. Default max depth is 5. Uses compiler-resolved FQNs — zero false positives from name collisions.
+
+```bash
+scalex-sdb path OrderServer.createOrder EventStoreOperations.add -w /project
+```
+```
+Call path from 'createOrder' to 'add' (3 hops)
+method createOrder (OrderServer.scala:80)
+  -> method createOrder (OrderFlowOperations.scala:36)
+    -> method executeEvent (FlowOperations.scala:15)
+      -> method add (EventStoreOperations.scala:42)
+```
+
+#### `scalex-sdb explain <symbol> [--kind K]` — one-shot method/type summary
+
+Combines type signature, callers, callees, and members into a single output. Saves multiple round-trips when understanding a method or type.
+
+```bash
+scalex-sdb explain createOrder --kind method -w /project
+```
+```
+method createOrder
+  Type: (request: CreateOrderRequest): Task[CreateOrderResponse]
+  Defined: OrderService.scala:123
+  Called by: OrderServer, OrderAgentService (6 total)
+  Calls: verifyMembership, validatePlan, createTeam (17 total)
 ```
 
 ### Forward call graph
@@ -246,7 +284,7 @@ scalex-sdb stats -w /project              # Show counts
 | `--verbose`, `-v` | Full signatures and properties |
 | `--kind K` | Filter by kind AND narrow symbol resolution (class, trait, object, method, field, type) |
 | `--role R` | Filter occurrences (def, ref) |
-| `--depth N` | Max depth for flow/subtypes (default: 3) |
+| `--depth N` | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
 | `--no-accessors` | Exclude val/var accessors from flow/callees output |
 | `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, functional plumbing. In flow, only recurses into same-module callees. |
 | `--exclude "p1,p2,..."` | Exclude symbols matching FQN or file path (flow/callees/callers) |
@@ -268,7 +306,7 @@ scalex is the better default — zero setup, fast, good enough for 90% of querie
 
 ### Avoiding the biggest pitfalls
 
-**Pitfall 1: Ambiguous symbol names.** If a name matches multiple symbols (e.g., `createOrder` matches both a case object and a method), scalex-sdb picks the first by rank (classes before methods). Add `--kind method` to disambiguate, or use the full FQN from `lookup`:
+**Pitfall 1: Ambiguous symbol names.** If a name matches multiple symbols (e.g., `createOrder` matches both a case object and a method), scalex-sdb picks the first by rank (classes before methods) and prints a disambiguation hint to stderr listing candidates with their FQNs. Watch for these hints — they tell you exactly how to narrow your query. Add `--kind method` to disambiguate, or use the full FQN from `lookup`:
 
 ```bash
 # Bad: might match the wrong symbol
@@ -301,8 +339,11 @@ scalex-sdb batch "callers handleRequest" "subtypes Repository" "members Config" 
 What do you need?
 │
 ├─ "Who calls X?" ──────────────── callers X
+├─ "Who transitively calls X?" ── callers X --depth 3
 ├─ "What does X call?" ─────────── callees X --kind method --smart
 ├─ "Trace X through layers" ────── flow X --kind method --smart --depth 3
+├─ "How does A reach B?" ────────── path A B
+├─ "Quick summary of X" ─────────── explain X
 ├─ "All references to X" ──────── refs X
 ├─ "Who implements trait X?" ───── subtypes X
 ├─ "What type is X?" ──────────── type X
@@ -338,6 +379,21 @@ scalex-sdb batch \
   -w /project
 ```
 
+**Tracing a call path** — "how does this endpoint reach that database method?":
+```bash
+scalex-sdb path OrderServer.createOrder EventStoreOperations.add -w /project
+```
+
+**Quick orientation on an unfamiliar method** — callers, callees, type in one shot:
+```bash
+scalex-sdb explain processPayment --kind method -w /project
+```
+
+**Transitive impact analysis** — who *eventually* calls this internal method?:
+```bash
+scalex-sdb callers add --depth 3 --exclude "test,integ" -w /project
+```
+
 **Precise references** — when the name is common (Config, Service, etc.):
 ```bash
 scalex-sdb refs MyConfig -w /project
@@ -347,15 +403,3 @@ scalex-sdb refs MyConfig -w /project
 ```bash
 scalex-sdb type computeResult -w /project
 ```
-
-## Why scalex-sdb over scalex
-
-scalex is the better default — zero setup, fast, good enough for 90% of queries. Use scalex-sdb for the things scalex fundamentally cannot do:
-
-| Capability | Why scalex can't |
-|---|---|
-| `callers` — reverse call graph | Text search finds the method name but can't identify the enclosing caller |
-| `refs` — precise references | `refs Config` in scalex matches every `Config` in every package |
-| `subtypes` — exhaustive | Text-based `impl` can miss implementations in unexpected packages |
-| `type` — inferred types | Only the compiler knows the return type of `val x = computeStuff()` |
-| `callees`/`flow` — forward call graph | Text search can't resolve which overload is being called |

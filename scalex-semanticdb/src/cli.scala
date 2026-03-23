@@ -52,7 +52,7 @@ import java.nio.file.{Files, Path}
 // ── Command dispatch ───────────────────────────────────────────────────────
 
 val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = Map(
-  // 13 commands (index and batch handled separately above)
+  // 15 commands (index and batch handled separately above)
   "lookup"      -> cmdLookup,
   "refs"        -> cmdRefs,
   "supertypes"  -> cmdSupertypes,
@@ -62,7 +62,9 @@ val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = M
   "callers"     -> cmdCallers,
   "callees"     -> cmdCallees,
   "flow"        -> cmdFlow,
+  "path"        -> cmdPath,
   "related"     -> cmdRelated,
+  "explain"     -> cmdExplain,
   "symbols"     -> cmdSymbols,
   "occurrences" -> cmdOccurrences,
   "stats"       -> cmdStats,
@@ -86,7 +88,7 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
         jsonOutput = ctx.jsonOutput,
         kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
         roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
-        depth = if hasExplicitDepth then subFlags.depth else ctx.depth,
+        depth = if hasExplicitDepth then subFlags.depth else ctx.depth,  // both are Option[Int]
         noAccessors = subFlags.noAccessors || ctx.noAccessors,
         excludePatterns = if subFlags.excludePatterns.nonEmpty then subFlags.excludePatterns else ctx.excludePatterns,
         smart = subFlags.smart || ctx.smart,
@@ -113,7 +115,7 @@ case class SemParsedFlags(
   jsonOutput: Boolean = false,
   kindFilter: Option[String] = None,
   roleFilter: Option[String] = None,
-  depth: Int = 3,
+  depth: Option[Int] = None,
   explicitWorkspace: Option[String] = None,
   semanticdbPath: Option[String] = None,
   timingsEnabled: Boolean = false,
@@ -147,7 +149,7 @@ def parseFlags(args: List[String]): SemParsedFlags =
         flags = flags.copy(roleFilter = Some(arr(i + 1)))
         i += 2
       case "--depth" if i + 1 < arr.length =>
-        flags = flags.copy(depth = arr(i + 1).toIntOption.getOrElse(3))
+        flags = flags.copy(depth = arr(i + 1).toIntOption.orElse(Some(3)))
         i += 2
       case "--verbose" | "-v" =>
         flags = flags.copy(verbose = true)
@@ -200,9 +202,13 @@ def printUsage(): Unit =
     |Usage: scalex-semanticdb <command> [args] [options]
     |
     |Call graph (compiler-only):
-    |  callers <symbol>      Who calls this method (reverse call graph)
+    |  callers <symbol>      Who calls this method (reverse call graph, --depth N for transitive)
     |  callees <symbol>      What does this method call (forward call graph)
     |  flow <method>         Recursive call tree (use --smart on large codebases)
+    |  path <src> <tgt>      Find shortest call path between two symbols
+    |
+    |Composite:
+    |  explain <symbol>      One-shot summary: type, callers, callees, members
     |
     |Compiler-precise queries:
     |  refs <symbol>         Zero-false-positive references
@@ -232,7 +238,7 @@ def printUsage(): Unit =
     |  --verbose, -v                Full signatures and properties
     |  --kind K                     Filter by kind and narrow symbol resolution
     |  --role R                     Filter occurrences (def/ref)
-    |  --depth N                    Max depth for flow/subtypes (default: 3)
+    |  --depth N                    Max depth for recursive commands (callers: 1, flow/subtypes: 3, path: 5)
     |  --no-accessors               Exclude val/var accessors from flow/callees
     |  --exclude "p1,p2,..."        Exclude symbols matching FQN or file path
     |  --smart                       Auto-filter infrastructure noise (accessors, protobuf, plumbing)

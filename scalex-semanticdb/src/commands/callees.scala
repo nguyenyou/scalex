@@ -4,12 +4,9 @@ def cmdCallees(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
     case Nil => SemCmdResult.UsageError("Usage: callees <symbol>")
     case query :: _ =>
-      val symbols = ctx.index.resolveSymbol(query)
-      if symbols.isEmpty then
-        return SemCmdResult.NotFound(s"No symbol found matching '$query'")
-
-      val resolved = filterByKind(symbols, ctx.kindFilter)
-      val sym = (if resolved.nonEmpty then resolved else symbols).head
+      val sym = resolveOne(query, ctx.index, ctx.kindFilter) match
+        case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
+        case Some(s) => s
       val callees = findCallees(sym.fqn, ctx.index)
       val withoutAccessors = if ctx.noAccessors || ctx.smart then callees.filterNot(isAccessor) else callees
       val withoutInfra = if ctx.smart then withoutAccessors.filterNot(isInfraNoise) else withoutAccessors

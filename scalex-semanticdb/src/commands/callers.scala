@@ -2,7 +2,7 @@
 
 def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
-    case Nil => SemCmdResult.UsageError("Usage: callers <symbol>")
+    case Nil => SemCmdResult.UsageError("Usage: callers <symbol> [--depth N]")
     case query :: _ =>
       val symbols = ctx.index.resolveSymbol(query)
       if symbols.isEmpty then
@@ -10,33 +10,76 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
 
       val resolved = filterByKind(symbols, ctx.kindFilter)
       val candidates = if resolved.nonEmpty then resolved else symbols
-      val fqns = candidates.map(_.fqn).toSet
-      // Find all REFERENCE occurrences of the target symbol
-      val refs = fqns.toList.flatMap(fqn =>
-        ctx.index.occurrencesBySymbol.getOrElse(fqn, Nil)
-      ).filter(_.role == OccRole.Reference)
+      val maxDepth = ctx.depth.getOrElse(1)
 
-      // For each reference, find the enclosing method by checking which
-      // symbol's definition range contains this occurrence
-      val callerFqns = scala.collection.mutable.LinkedHashSet.empty[String]
-      refs.foreach { ref =>
-        findEnclosingSymbol(ref.file, ref.range.startLine, ctx.index) match
-          case Some(enclosing) if !fqns.contains(enclosing) =>
-            callerFqns += enclosing
-          case _ => ()
-      }
+      if maxDepth <= 1 then
+        // Flat mode (default): show direct callers as a list
+        val fqns = candidates.map(_.fqn).toSet
+        val callerSymbols = fqns.toList.flatMap(fqn => findCallers(fqn, ctx.index))
+          .distinctBy(_.fqn)
+          .filterNot(s => fqns.contains(s.fqn))
+        val filtered = filterByExclude(callerSymbols, ctx.excludePatterns)
+        val limited = filtered.take(ctx.limit)
+        val name = candidates.head.displayName
 
-      val callerSymbols = callerFqns.toList.flatMap(ctx.index.symbolByFqn.get)
-      // --kind is used for symbol resolution above, not for filtering callers output
-      val filtered = filterByExclude(callerSymbols, ctx.excludePatterns)
-      val limited = filtered.take(ctx.limit)
-      val name = candidates.head.displayName
+        SemCmdResult.SymbolList(
+          s"${filtered.size} callers of '$name'",
+          limited,
+          filtered.size,
+        )
+      else
+        // Transitive tree mode: recursive caller traversal
+        val sym = candidates.head
+        val lines = scala.collection.mutable.ListBuffer.empty[String]
+        val visited = scala.collection.mutable.Set.empty[String]
+        val rootModule = if ctx.smart then Some(modulePrefix(sym.sourceUri)) else None
 
-      SemCmdResult.SymbolList(
-        s"${filtered.size} callers of '$name'",
-        limited,
-        filtered.size,
-      )
+        def walk(fqn: String, indent: Int): Unit = {
+          if indent > maxDepth || visited.contains(fqn) then return
+          visited += fqn
+
+          val callers = findCallers(fqn, ctx.index)
+            .filterNot(s => isTrivial(s.fqn))
+            .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
+            .filterNot(s => ctx.smart && isInfraNoise(s))
+            .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
+
+          callers.foreach { caller =>
+            if !visited.contains(caller.fqn) then
+              val prefix = "  " * indent
+              val loc = ctx.index.definitionRanges.get(caller.fqn) match
+                case Some((file, range)) => s" ($file:${range.startLine + 1})"
+                case None => ""
+              lines += s"$prefix${caller.kind.toString.toLowerCase} ${caller.displayName}$loc"
+              val sameModule = rootModule.forall(rm => caller.sourceUri.startsWith(rm))
+              if sameModule then walk(caller.fqn, indent + 1)
+              else visited += caller.fqn // mark cross-module leaves to prevent duplicates
+          }
+        }
+
+        val rootLoc = ctx.index.definitionRanges.get(sym.fqn) match
+          case Some((file, range)) => s" ($file:${range.startLine + 1})"
+          case None => ""
+        lines.prepend(s"${sym.kind.toString.toLowerCase} ${sym.displayName}$rootLoc")
+        walk(sym.fqn, 1)
+
+        SemCmdResult.FlowTree(s"Caller tree of '${sym.displayName}' (depth=$maxDepth)", lines.toList)
+
+// ── findCallers helper ────────────────────────────────────────────────────
+
+/** Find all methods/fields that call the given symbol (direct callers only). */
+def findCallers(fqn: String, index: SemIndex): List[SemSymbol] =
+  val refs = index.occurrencesBySymbol.getOrElse(fqn, Nil)
+    .filter(_.role == OccRole.Reference)
+
+  val callerFqns = scala.collection.mutable.LinkedHashSet.empty[String]
+  refs.foreach { ref =>
+    findEnclosingSymbol(ref.file, ref.range.startLine, index) match
+      case Some(enclosing) if enclosing != fqn =>
+        callerFqns += enclosing
+      case _ => ()
+  }
+  callerFqns.toList.flatMap(index.symbolByFqn.get)
 
 /** Find the method/field whose body contains the given line, using next-sibling heuristic. */
 private def findEnclosingSymbol(file: String, line: Int, index: SemIndex): Option[String] =

@@ -1,34 +1,15 @@
 // ── flow command ────────────────────────────────────────────────────────────
 
-/** Stdlib/trivial prefixes to filter out of flow trees. */
-private val trivialPrefixes = Set(
-  "scala/", "java/lang/", "java/util/", "scala/Predef",
-  "scala/collection/", "scala/runtime/",
-)
-
-private def isTrivial(fqn: String): Boolean =
-  trivialPrefixes.exists(fqn.startsWith)
-
-/** Extract module prefix from a source URI for same-module detection.
-  * Uses the first two path segments: "modules/billing/jvm/src/..." → "modules/billing/".
-  * URIs with fewer than 2 segments return empty string (disables same-module filtering). */
-private def modulePrefix(uri: String): String =
-  val parts = uri.split("/")
-  if parts.length >= 2 then s"${parts(0)}/${parts(1)}/" else ""
-
 def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
   args match
     case Nil => SemCmdResult.UsageError("Usage: flow <method> [--depth N]")
     case query :: _ =>
-      val symbols = ctx.index.resolveSymbol(query)
-      if symbols.isEmpty then
-        return SemCmdResult.NotFound(s"No symbol found matching '$query'")
-
-      val resolved = filterByKind(symbols, ctx.kindFilter)
-      val sym = (if resolved.nonEmpty then resolved else symbols).head
+      val sym = resolveOne(query, ctx.index, ctx.kindFilter) match
+        case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
+        case Some(s) => s
       val lines = scala.collection.mutable.ListBuffer.empty[String]
       val visited = scala.collection.mutable.Set.empty[String]
-      val maxDepth = ctx.depth
+      val maxDepth = ctx.depth.getOrElse(3)
 
       // In --smart mode, only recurse into callees from the same module as the root method.
       // Cross-module callees appear as leaves (shown but not expanded).

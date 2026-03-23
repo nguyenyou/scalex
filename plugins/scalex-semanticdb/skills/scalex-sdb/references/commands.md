@@ -7,8 +7,15 @@
 | Command | Arguments | Description |
 |---|---|---|
 | `flow` | `<method>` | Downstream call tree with `--depth N` |
-| `callers` | `<symbol>` | Reverse call graph — who calls this |
+| `callers` | `<symbol>` | Reverse call graph — who calls this (`--depth N` for transitive) |
 | `callees` | `<symbol>` | Forward call graph — what does this call |
+| `path` | `<source> <target>` | Shortest call path between two symbols (BFS) |
+
+**Composite:**
+
+| Command | Arguments | Description |
+|---|---|---|
+| `explain` | `<symbol>` | One-shot summary: type, callers, callees, members |
 
 **Compiler-precise queries:**
 
@@ -53,7 +60,7 @@
 | `--verbose` | `-v` | off | Show full signatures, properties, overrides |
 | `--kind` | — | all | Filter by symbol kind AND narrow resolution in flow/callees/callers |
 | `--role` | — | all | Filter occurrences by role (def/ref) |
-| `--depth` | — | 3 | Max recursion depth for `flow` and `subtypes` |
+| `--depth` | — | varies | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
 | `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
 | `--smart` | — | off | Auto-filter infrastructure noise (accessors, generated, protobuf, plumbing) |
 | `--exclude` | — | — | Exclude symbols matching FQN or file path (comma-separated) |
@@ -87,7 +94,8 @@ All commands support `--json`. Output is a single JSON object per invocation:
 
 - `lookup`/`members`/`symbols`: `{"header", "total", "symbols": [...]}`
 - `refs`/`occurrences`: `{"header", "total", "occurrences": [...]}`
-- `flow`: `{"header", "lines": [...]}`
+- `flow`/`path`: `{"header", "lines": [...]}`
+- `explain`: `{"symbol", "file", "line", "callers", "totalCallers", "callees", "totalCallees", "parents", "members", "totalMembers"}`
 - `related`: `{"header", "total", "related": [...]}`
 - `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached"}`
 - `batch`: `{"batch": [{"command": "...", "result": {...}}, ...]}`

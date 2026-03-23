@@ -5,42 +5,6 @@
 - [x] **Entrypoints false positives** — `extends App` check matches any parent containing "App" (ZIOApp, ScalaJSApp, etc.). Tighten to exact `scala/App#` FQN. *(Fixed: 117 → 17 results on production monorepo)*
 - [x] **Imports heuristic too conservative** — line < 15 threshold misses imports on later lines. *(Fixed: use first definition line as boundary instead of hardcoded 15. 8 → 17 results for AuthRoutes)*
 
-## Generated file / symbol noise
-
-On a production monorepo: 3,008 generated files (26% of index), 600K symbols from `out/` URIs.
-
-- [x] **Deduplicate `jsSharedSources.dest/`** — Mill copies shared sources to `out/**/jsSharedSources.dest/`. These are exact duplicates of real source files and pollute lookup results (e.g. `Page` appears twice). Keep only the source version. *(Done: 1,967 files removed, 267K fewer symbols, 35ms cost)*
-- [ ] **`--no-generated` flag** — optional filter to exclude files with `out/` URI prefix. Useful for `lookup`, `symbols`, `annotated`, `packages` where generated code inflates results (e.g. `annotated deprecated` returns 790 vs 9 because scalapb generates `@deprecated` on accessors).
-- [ ] **Filter compiler synthetics by default** — hide `$lessinit$greater`, `_1`, `_2`, `copy$default$N`, `unapply`, `$anonfun` in `lookup`/`symbols` output unless `--verbose`. These are compiler-generated methods on case classes that clutter results.
-- [ ] **Keep protobuf-generated types indexed** — `compileScalaPB.dest/` types are referenced by real Scala code. Don't exclude them, but mark them as generated so they can be filtered optionally.
-
-## Output quality
-
-- [ ] **Show line numbers in default output** — use `definitionRanges` to add `:line` to file paths (currently only shown with `--verbose`)
-- [ ] **Show signatures by default** — members/lookup should show type signatures without requiring `--verbose`
-- [ ] **Filter `java/lang/Object#` from supertypes** — always present, never useful to show
-- [ ] **Package-qualified lookup** — `lookup routing.Page` should disambiguate by package prefix, like scalex's `def routing.Page`
-- [ ] **Categorized refs** — scalex categorizes refs (Definition/ExtendedBy/ImportedBy/UsedAsType/Usage/Comment). sdb has the data to do this via occurrence context.
-- [ ] **Entrypoints categorization** — group by @main, def main, extends App, test suites like scalex does
-
-## Missing features (possible with SemanticDB)
-
-- [ ] **`search` with fuzzy/camelCase matching** — scalex's `search hms` finds `HttpMessageService`. sdb's `lookup` only does exact/partial name match.
-- [x] **`batch` mode** — multiple queries in one invocation, amortize index load
-- [ ] **`exists` command**
-- [ ] **`--fields-only` on `members`**
-- [ ] **`diff <git-ref>`** — compare two index snapshots to show symbol-level changes
-- [ ] **`hierarchy` composite** — combine supertypes + subtypes into one tree view like scalex's `hierarchy`
-- [ ] **Wildcard import resolution** — scalex finds 28 importers vs sdb's 8 because scalex resolves `import pkg.*`
-
-## Missing features (need source text — cannot do from SemanticDB alone)
-
-- [ ] `grep` — regex content search
-- [ ] `body` — extract method/class source body
-- [ ] `ast-pattern` — structural AST search
-
-These require reading source files from disk. Could add as optional feature if source files are available alongside `.semanticdb` files.
-
 ## Performance
 
 - [ ] **Faster warm load** — 1.5s for 2M symbols. Investigate memory-mapped I/O for `semanticdb.bin` instead of `DataInputStream`
@@ -57,7 +21,7 @@ These require reading source files from disk. Could add as optional feature if s
 
 ## Plugin / UX
 
-- [ ] **Disambiguation hints** — when multiple symbols match, show ready-to-run commands with FQN like scalex does
+- [ ] **Disambiguation hints** — when multiple symbols match, show ready-to-run commands with FQN like scalex does. [#297](https://github.com/nguyenyou/scalex/issues/297) requests showing numbered candidates with FQN + location instead of silently picking the first match.
 - [ ] **`--count` flag for refs** — show category counts without listing all occurrences
 - [ ] **`--top N` flag for refs** — rank files by reference count
 - [ ] **`--no-stdlib` flag** — filter out `scala/`, `java/` symbols from results globally
@@ -68,6 +32,11 @@ These require reading source files from disk. Could add as optional feature if s
 ## Feature requests
 
 - [#284](https://github.com/nguyenyou/scalex/issues/284) — `batch` mode (other requests — `exists`, `--fields-only`, `--expect`, string literals — either agent-side or handled by scalex)
+- [#297](https://github.com/nguyenyou/scalex/issues/297) — Feature suggestions from real-world usage:
+  - [x] **Transitive callers (`callers --depth N`)** — recursive caller traversal reusing `flow`'s depth/cycle infrastructure. Default depth=1 (flat, backward compatible), depth>1 produces FlowTree.
+  - [x] **`path` command** — BFS on call graph to find shortest call path between two symbols. Supports `--depth N`, `--smart`, `--exclude`.
+  - [x] **`explain` command** — composite of `type` + `callers` + `callees --smart` in one output. Saves agent round-trips.
+  - [ ] **Incremental index updates** — use `TextDocument.md5` to skip unchanged `.semanticdb` files on rebuild. Store per-file hashes alongside cache. *(overlaps with Performance section)*
 
 ## Future ideas
 

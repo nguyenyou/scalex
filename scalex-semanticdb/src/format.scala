@@ -21,6 +21,40 @@ def filterByExclude(symbols: List[SemSymbol], patterns: List[String]): List[SemS
   if patterns.isEmpty then symbols
   else symbols.filterNot(s => patterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
 
+/** Stdlib/trivial prefixes to filter out of call trees. */
+private val trivialPrefixes = Set(
+  "scala/", "java/lang/", "java/util/", "scala/Predef",
+  "scala/collection/", "scala/runtime/",
+)
+
+def isTrivial(fqn: String): Boolean =
+  trivialPrefixes.exists(fqn.startsWith)
+
+/** Extract module prefix from a source URI for same-module detection.
+  * Uses the first two path segments: "modules/billing/jvm/src/..." → "modules/billing/".
+  * URIs with fewer than 2 segments return empty string (disables same-module filtering). */
+def modulePrefix(uri: String): String =
+  val parts = uri.split("/")
+  if parts.length >= 2 then s"${parts(0)}/${parts(1)}/" else ""
+
+/** Resolve a user query to a single symbol. When multiple match, prints a
+  * disambiguation hint to stderr showing up to 5 candidates with FQN + kind.
+  * Returns None only when no symbols match at all. */
+def resolveOne(query: String, index: SemIndex, kindFilter: Option[String]): Option[SemSymbol] =
+  val symbols = index.resolveSymbol(query)
+  if symbols.isEmpty then return None
+  val filtered = filterByKind(symbols, kindFilter)
+  val candidates = if filtered.nonEmpty then filtered else symbols
+  if candidates.size > 1 then
+    System.err.println(s"Ambiguous: ${candidates.size} symbols match '$query'. Using ${candidates.head.fqn}")
+    System.err.println(s"  Disambiguate with FQN or --kind. Candidates:")
+    candidates.take(5).foreach { s =>
+      System.err.println(s"    ${s.kind.toString.toLowerCase} ${s.fqn}")
+    }
+    if candidates.size > 5 then
+      System.err.println(s"    ... and ${candidates.size - 5} more")
+  Some(candidates.head)
+
 // ── Output rendering ───────────────────────────────────────────────────────
 
 def render(result: SemCmdResult, ctx: SemCommandContext): Unit =
@@ -69,6 +103,28 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
       }
       if total > entries.size then
         println(s"... and ${total - entries.size} more")
+
+    case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, parents, members, totalMembers) =>
+      val props = sym.propertyNames
+      val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
+      println(s"${sym.kind.toString.toLowerCase} ${sym.displayName}$propsStr")
+      if sym.signature.nonEmpty then println(s"  Type: ${sym.signature}")
+      definedAt.foreach { (file, line) => println(s"  Defined: $file:$line") }
+      if parents.nonEmpty then
+        val resolved = parents.flatMap(p => ctx.index.symbolByFqn.get(p).map(_.displayName))
+        if resolved.nonEmpty then println(s"  Extends: ${resolved.mkString(", ")}")
+      if totalMembers > 0 then
+        val names = members.map(_.displayName).mkString(", ")
+        val more = if totalMembers > members.size then s" ($totalMembers total)" else ""
+        println(s"  Members: $names$more")
+      if totalCallers > 0 then
+        val names = callers.map(_.displayName).mkString(", ")
+        val more = if totalCallers > callers.size then s" ($totalCallers total)" else ""
+        println(s"  Called by: $names$more")
+      if totalCallees > 0 then
+        val names = callees.map(_.displayName).mkString(", ")
+        val more = if totalCallees > callees.size then s" ($totalCallees total)" else ""
+        println(s"  Calls: $names$more")
 
     case SemCmdResult.Stats(fc, sc, oc, ms, cached) =>
       println(s"Files:        $fc")
@@ -143,6 +199,14 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
         s"""{"symbol":${jsonStr(entry.sym.fqn)},"name":${jsonStr(entry.sym.displayName)},"kind":${jsonStr(entry.sym.kind.toString)},"count":${entry.count}}"""
       }
       println(s"""{"header":${jsonStr(header)},"total":$total,"related":[${items.mkString(",")}]}""")
+
+    case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, parents, members, totalMembers) =>
+      val locJson = definedAt.map((f, l) => s""","file":${jsonStr(f)},"line":$l""").getOrElse("")
+      val callerJson = callers.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)}}""").mkString(",")
+      val calleeJson = callees.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)}}""").mkString(",")
+      val memberJson = members.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)}}""").mkString(",")
+      val parentsJson = parents.map(jsonStr).mkString(",")
+      println(s"""{"symbol":${symbolToJson(sym)}$locJson,"callers":[$callerJson],"totalCallers":$totalCallers,"callees":[$calleeJson],"totalCallees":$totalCallees,"parents":[$parentsJson],"members":[$memberJson],"totalMembers":$totalMembers}""")
 
     case SemCmdResult.Stats(fc, sc, oc, ms, cached) =>
       println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached}""")
