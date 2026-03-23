@@ -140,6 +140,14 @@ enum SemCmdResult:
   case Tree(header: String, lines: List[String])
   case FlowTree(header: String, lines: List[String])
   case RelatedList(header: String, entries: List[(sym: SemSymbol, count: Int)], total: Int)
+  case ExplainResult(
+    sym: SemSymbol,
+    definedAt: Option[(file: String, line: Int)],
+    callers: List[SemSymbol], totalCallers: Int,
+    callees: List[SemSymbol], totalCallees: Int,
+    parents: List[String],
+    members: List[SemSymbol], totalMembers: Int,
+  )
   case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, buildTimeMs: Long, cached: Boolean)
   case Batch(results: List[(command: String, result: SemCmdResult)])
   case NotFound(message: String)
@@ -155,7 +163,7 @@ case class SemCommandContext(
   jsonOutput: Boolean = false,
   kindFilter: Option[String] = None,
   roleFilter: Option[String] = None,
-  depth: Int = 3,
+  depth: Option[Int] = None,
   timingsEnabled: Boolean = false,
   noAccessors: Boolean = false,
   excludePatterns: List[String] = Nil,

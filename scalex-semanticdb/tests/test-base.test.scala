@@ -51,13 +51,18 @@ abstract class SemTestBase extends FunSuite:
     Console.withOut(out) { Console.withErr(java.io.ByteArrayOutputStream()) { body } }
     out.toString
 
+  protected def captureErr(body: => Unit): String =
+    val err = java.io.ByteArrayOutputStream()
+    Console.withErr(err) { body }
+    err.toString
+
   protected def makeCtx(
     limit: Int = 100,
     verbose: Boolean = false,
     json: Boolean = false,
     kindFilter: Option[String] = None,
     roleFilter: Option[String] = None,
-    depth: Int = 3,
+    depth: Option[Int] = None,
     noAccessors: Boolean = false,
     excludePatterns: List[String] = Nil,
     smart: Boolean = false,
