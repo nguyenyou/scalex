@@ -164,9 +164,9 @@ method createOrder (OrderServer.scala:80)
       -> method add (EventStoreOperations.scala:42)
 ```
 
-#### `scalex-sdb explain <symbol> [--kind K]` — one-shot method/type summary
+#### `scalex-sdb explain <symbol> [--kind K] [--smart]` — one-shot method/type summary
 
-Combines type signature, callers, callees, and members into a single output. Saves multiple round-trips when understanding a method or type.
+Combines type signature, callers, callees, members, and subtypes into a single output. Saves multiple round-trips when understanding a method or type. For traits and abstract classes, shows direct subtypes (first 3 + total count). Member listing hides compiler-generated case class synthetics by default.
 
 ```bash
 scalex-sdb explain createOrder --kind method -w /project
@@ -177,6 +177,15 @@ method createOrder
   Defined: OrderService.scala:123
   Called by: OrderServer, OrderAgentService (6 total)
   Calls: verifyMembership, validatePlan, createTeam (17 total)
+```
+```bash
+scalex-sdb explain Repository --kind trait -w /project
+```
+```
+trait Repository
+  Extends: ...
+  Subtypes: UserRepository, OrderRepository, ConfigRepository (5 total)
+  Members: find, save, delete (6 total)
 ```
 
 ### Forward call graph
@@ -253,13 +262,14 @@ scalex-sdb occurrences Main.scala -w /project
 
 ### Navigation (with resolved types)
 
-#### `scalex-sdb lookup <symbol> [--verbose]` — find symbol info
+#### `scalex-sdb lookup <symbol> [--verbose] [--smart] [--source-only]` — find symbol info
 
-Resolves by exact FQN, suffix match, or display name. Results ranked: source files before generated code (e.g., protobuf), classes/traits first, locals last. When multiple symbols share a name, use the FQN to target the exact one.
+Resolves by exact FQN, suffix match, or display name. Results ranked: source files before generated code (e.g., protobuf), classes/traits first, locals last. When multiple symbols share a name, use the FQN to target the exact one. Use `--source-only` or `--smart` to exclude generated code (protobuf, codegen) from results.
 
 ```bash
 scalex-sdb lookup PaymentService --verbose -w /project
 scalex-sdb lookup "com/example/PaymentService#" -w /project
+scalex-sdb lookup MyEntity --source-only -w /project
 ```
 
 #### `scalex-sdb supertypes <symbol>` — resolved parent type chain
@@ -268,10 +278,13 @@ scalex-sdb lookup "com/example/PaymentService#" -w /project
 scalex-sdb supertypes AnimalRepository -w /project
 ```
 
-#### `scalex-sdb members <symbol> [--kind K]` — declarations with resolved types
+#### `scalex-sdb members <symbol> [--kind K] [--smart] [--verbose]` — declarations with resolved types
+
+Hides compiler-generated case class synthetics by default. Use `--verbose` to show all, `--smart` to also filter accessors and generated-code noise.
 
 ```bash
 scalex-sdb members PaymentService -w /project
+scalex-sdb members MyEntity --smart -w /project
 ```
 
 #### `scalex-sdb symbols [file] [--kind K]` — symbols in file
@@ -399,7 +412,8 @@ scalex-sdb stats -w /project              # Show counts
 | `--role R` | Filter occurrences (def, ref) |
 | `--depth N` | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
 | `--no-accessors` | Exclude val/var accessors from flow/callees output |
-| `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, effect-system combinators (flatMap, traverse, pure, succeed, etc.). In flow, only recurses into same-module callees. |
+| `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, effect-system combinators, case class synthetics. In flow, only recurses into same-module callees. In members, hides synthetics + accessors. In lookup, excludes generated sources. |
+| `--source-only` | Exclude generated/compiled sources from lookup results |
 | `--exclude "p1,p2,..."` | Exclude symbols matching FQN or file path (flow/callees/callers) |
 | `--exclude-test` | Exclude symbols from test source directories (/test/, /tests/, /it/, /spec/, *Test.scala, etc.) |
 | `--exclude-pkg "p1,p2,..."` | Exclude symbols by package prefix (dots auto-converted to /). Works with callers, callees, flow, path, explain. E.g. `--exclude-pkg "zio,cats.effect"` |

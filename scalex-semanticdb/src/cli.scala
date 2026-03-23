@@ -108,6 +108,7 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
         inScope = subFlags.inScope.orElse(ctx.inScope),
         excludeTest = subFlags.excludeTest || ctx.excludeTest,
         excludePkgPatterns = if subFlags.excludePkgPatterns.nonEmpty then subFlags.excludePkgPatterns else ctx.excludePkgPatterns,
+        sourceOnly = subFlags.sourceOnly || ctx.sourceOnly,
       )
       val result = commands.get(subCmd) match
         case Some(handler) => handler(subFlags.cleanArgs, subCtx)
@@ -140,6 +141,7 @@ case class SemParsedFlags(
   inScope: Option[String] = None,
   excludeTest: Boolean = false,
   excludePkgPatterns: List[String] = Nil,
+  sourceOnly: Boolean = false,
   cleanArgs: List[String] = Nil,
 )
 
@@ -193,6 +195,9 @@ def parseFlags(args: List[String]): SemParsedFlags =
       case "--smart" =>
         flags = flags.copy(smart = true)
         i += 1
+      case "--source-only" =>
+        flags = flags.copy(sourceOnly = true)
+        i += 1
       case "--in" if i + 1 < arr.length =>
         flags = flags.copy(inScope = Some(arr(i + 1)))
         i += 2
@@ -228,6 +233,7 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
     inScope = flags.inScope,
     excludeTest = flags.excludeTest,
     excludePkgPatterns = flags.excludePkgPatterns,
+    sourceOnly = flags.sourceOnly,
   )
 
 // ── Usage ──────────────────────────────────────────────────────────────────
@@ -287,7 +293,8 @@ def printUsage(): Unit =
     |  --exclude-test               Exclude symbols from test source directories
     |  --exclude-pkg "p1,p2,..."    Exclude symbols by package prefix (dots auto-converted to /)
     |  --in <scope>                 Scope symbol resolution by owner class, file, or package
-    |  --smart                       Auto-filter noise (accessors, protobuf, effect-system combinators)
+    |  --smart                       Auto-filter noise (synthetics, accessors, protobuf, combinators)
+    |  --source-only                 Exclude generated/compiled sources from lookup results
     |  --timings                    Print timing info to stderr
     |  --version                    Print version
     |""".stripMargin)

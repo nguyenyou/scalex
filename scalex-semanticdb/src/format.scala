@@ -10,6 +10,21 @@ def filterByKind(symbols: List[SemSymbol], kindFilter: Option[String]): List[Sem
 def isAccessor(s: SemSymbol): Boolean =
   (s.isVal || s.isVar) && (s.kind == SemKind.Field || s.kind == SemKind.Method)
 
+private val syntheticCaseClassNames: Set[String] = Set(
+  "copy", "productElement", "productPrefix", "canEqual",
+  "apply", "unapply",
+  "productArity", "productIterator", "productElementName",
+  "productElementNames",
+)
+
+def isSyntheticCaseClassMember(member: SemSymbol, owner: SemSymbol): Boolean =
+  if !owner.isCase then false
+  else
+    val name = member.displayName
+    syntheticCaseClassNames.contains(name) ||
+    (name.length >= 2 && name.charAt(0) == '_' && name.substring(1).forall(_.isDigit)) ||
+    name.startsWith("copy$default$")
+
 def isGeneratedSource(uri: String): Boolean =
   uri.startsWith("out/") || uri.contains("compileScalaPB.dest") || uri.contains("compilePB.dest")
 
@@ -146,7 +161,7 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
       if total > entries.size then
         println(s"... and ${total - entries.size} more")
 
-    case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, parents, members, totalMembers) =>
+    case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, parents, members, totalMembers, subtypes, totalSubtypes) =>
       val props = sym.propertyNames
       val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
       println(s"${sym.kind.toString.toLowerCase} ${sym.displayName}$propsStr")
@@ -155,6 +170,10 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
       if parents.nonEmpty then
         val resolved = parents.flatMap(p => ctx.index.symbolByFqn.get(p).map(_.displayName))
         if resolved.nonEmpty then println(s"  Extends: ${resolved.mkString(", ")}")
+      if totalSubtypes > 0 then
+        val names = subtypes.map(_.displayName).mkString(", ")
+        val more = if totalSubtypes > subtypes.size then s" ($totalSubtypes total)" else ""
+        println(s"  Subtypes: $names$more")
       if totalMembers > 0 then
         val names = members.map(_.displayName).mkString(", ")
         val more = if totalMembers > members.size then s" ($totalMembers total)" else ""
@@ -258,13 +277,14 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
       }
       println(s"""{"header":${jsonStr(header)},"total":$total,"related":[${items.mkString(",")}]}""")
 
-    case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, parents, members, totalMembers) =>
+    case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, parents, members, totalMembers, subtypes, totalSubtypes) =>
       val locJson = definedAt.map((f, l) => s""","file":${jsonStr(f)},"line":$l""").getOrElse("")
       val callerJson = callers.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)}}""").mkString(",")
       val calleeJson = callees.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)}}""").mkString(",")
       val memberJson = members.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)}}""").mkString(",")
       val parentsJson = parents.map(jsonStr).mkString(",")
-      println(s"""{"symbol":${symbolToJson(sym)}$locJson,"callers":[$callerJson],"totalCallers":$totalCallers,"callees":[$calleeJson],"totalCallees":$totalCallees,"parents":[$parentsJson],"members":[$memberJson],"totalMembers":$totalMembers}""")
+      val subtypeJson = subtypes.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)}}""").mkString(",")
+      println(s"""{"symbol":${symbolToJson(sym)}$locJson,"callers":[$callerJson],"totalCallers":$totalCallers,"callees":[$calleeJson],"totalCallees":$totalCallees,"parents":[$parentsJson],"members":[$memberJson],"totalMembers":$totalMembers,"subtypes":[$subtypeJson],"totalSubtypes":$totalSubtypes}""")
 
     case SemCmdResult.Stats(fc, sc, oc, ms, cached, parsed, skipped) =>
       println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached,"parsedCount":$parsed,"skippedCount":$skipped}""")

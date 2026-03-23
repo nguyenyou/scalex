@@ -13,6 +13,12 @@
 - `batch` now handles quoted FQN arguments — `batch 'callers "com/example/Foo#bar()."'` no longer fails with "not found" (#303)
 
 ### Added (scalex-sdb)
+- `members` now hides compiler-generated case class synthetics by default (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `apply`, `unapply`, etc.). Use `--verbose` to show all. User-overridden methods (`toString`, `equals`, `hashCode`) are never hidden. (#307)
+- `--smart` flag now works on `members` (filters synthetics, infrastructure noise, accessors) and `lookup` (excludes generated sources). Previously only worked on callers/callees/flow/explain. (#307)
+- `--source-only` flag — hard-exclude generated/compiled sources from `lookup` results (#307)
+- `explain` now includes subtypes section for traits and abstract classes — shows first 3 subtype names + total count. Respects `--smart`, `--exclude-test`, `--exclude-pkg`. (#307)
+
+### Added (scalex-sdb)
 - `--in <scope>` flag — scope symbol resolution to a containing class, file, or package without requiring full FQN. Works with all single-symbol commands (#303)
 - `--exclude-test` flag — filter out symbols from test source directories (paths containing `/test/`, `/tests/`, `/it/`, `/spec/`, or filenames ending in `Test.scala`, `Spec.scala`, `Suite.scala`, `Integ.scala`). Works with callers, callees, flow, path, explain (#303)
 - `--exclude-pkg "p1,p2,..."` flag — exclude symbols whose FQN starts with any of the given package prefixes (dots auto-converted to `/`). Works with callers, callees, flow, path, explain (#303)

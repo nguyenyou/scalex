@@ -147,6 +147,7 @@ enum SemCmdResult:
     callees: List[SemSymbol], totalCallees: Int,
     parents: List[String],
     members: List[SemSymbol], totalMembers: Int,
+    subtypes: List[SemSymbol] = Nil, totalSubtypes: Int = 0,
   )
   case Stats(fileCount: Int, symbolCount: Int, occurrenceCount: Int, buildTimeMs: Long, cached: Boolean, parsedCount: Int, skippedCount: Int)
   case Batch(results: List[(command: String, result: SemCmdResult)])
@@ -171,4 +172,5 @@ case class SemCommandContext(
   inScope: Option[String] = None,
   excludeTest: Boolean = false,
   excludePkgPatterns: List[String] = Nil,
+  sourceOnly: Boolean = false,
 )
