@@ -444,7 +444,13 @@ class SemIndex(val workspace: Path):
           buildTimeMs = System.currentTimeMillis() - start
           return
 
-        incrementalRebuild(files, cachedDocs)
+        // Re-load with full occurrences for incremental rebuild (which saves back to disk).
+        // cachedDocs may have been loaded with skipOccurrences=true, which would corrupt
+        // the cache if saved (empty occurrence lists for all MD5-matching files).
+        val fullDocs = if !needOccurrences then
+          SemTimings.phase("cache-reload-full") { SemPersistence.load(workspace, skipOccurrences = false) }.getOrElse(cachedDocs)
+        else cachedDocs
+        incrementalRebuild(files, fullDocs)
         buildIndexMaps(documents)
         SemPersistence.saveDirsManifest(workspace, semanticdbDirs)
 

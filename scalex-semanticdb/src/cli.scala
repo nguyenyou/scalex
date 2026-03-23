@@ -37,7 +37,7 @@ import java.nio.file.{Files, Path}
   // For all other commands, build/load the index first.
   // Symbol-only commands skip loading occurrences (~70% faster on large projects).
   val needOccs = cmd match
-    case "lookup" | "symbols" | "members" | "subtypes" | "supertypes" | "type" | "stats" => false
+    case "lookup" | "symbols" | "members" | "subtypes" | "supertypes" | "type" => false
     case _ => true // refs, callers, callees, flow, path, explain, related, occurrences, batch
   index.build(flags.semanticdbPath, needOccs)
 
