@@ -18,6 +18,8 @@ def cmdSubtypes(args: List[String], ctx: SemCommandContext): SemCmdResult =
         children.foreach { childFqn =>
           if count < ctx.limit then
             ctx.index.symbolByFqn.get(childFqn) match
+              case Some(s) if s.kind == SemKind.Local || s.kind == SemKind.Parameter =>
+                () // skip locals and parameters — they are not real subtypes
               case Some(s) =>
                 val prefix = "  " * indent
                 lines += s"$prefix${s.kind.toString.toLowerCase} ${s.displayName} (${s.sourceUri})"

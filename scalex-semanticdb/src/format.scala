@@ -10,6 +10,9 @@ def filterByKind(symbols: List[SemSymbol], kindFilter: Option[String]): List[Sem
 def isAccessor(s: SemSymbol): Boolean =
   (s.isVal || s.isVar) && (s.kind == SemKind.Field || s.kind == SemKind.Method)
 
+def isDefaultParamAccessor(s: SemSymbol): Boolean =
+  s.displayName.contains("$default$")
+
 private val syntheticCaseClassNames: Set[String] = Set(
   "copy", "productElement", "productPrefix", "canEqual",
   "apply", "unapply",

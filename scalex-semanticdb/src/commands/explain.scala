@@ -49,7 +49,7 @@ def cmdExplain(args: List[String], ctx: SemCommandContext): SemCmdResult =
                 if ctx.verbose then allMembers
                 else allMembers.filterNot(m => isSyntheticCaseClassMember(m, ownerForSynth))
               val members =
-                if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor)
+                if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor).filterNot(isDefaultParamAccessor)
                 else withoutSynthetics
               (memberList = members.take(5), totalMembers = members.size)
             else (memberList = Nil, totalMembers = 0)
@@ -61,6 +61,7 @@ def cmdExplain(args: List[String], ctx: SemCommandContext): SemCmdResult =
             if isTraitOrAbstract then
               val childFqns = ctx.index.subtypeIndex.getOrElse(sym.fqn, Nil)
               val resolved = childFqns.flatMap(ctx.index.symbolByFqn.get)
+                .filter(s => s.kind != SemKind.Local && s.kind != SemKind.Parameter)
               val f1 = if ctx.smart then resolved.filterNot(isInfraNoise) else resolved
               val f2 = if ctx.excludeTest then f1.filterNot(s => isTestSource(s.sourceUri)) else f1
               val filtered = filterByExcludePkg(f2, ctx.excludePkgPatterns)
