@@ -161,7 +161,12 @@ object SemPersistence:
           // Occurrences
           val occCount = in.readInt()
           if skipOccurrences then
-            in.skipBytes(occCount * BYTES_PER_OCCURRENCE)
+            // skipBytes may skip fewer than n bytes (Java contract). Loop to ensure all bytes are consumed.
+            var toSkip = occCount * BYTES_PER_OCCURRENCE
+            while toSkip > 0 do
+              val skipped = in.skipBytes(toSkip)
+              if skipped <= 0 then toSkip = 0 // EOF or error
+              else toSkip -= skipped
             docs += IndexedDocument(uri, md5, syms.result(), Nil)
           else
             val occs = List.newBuilder[SemOccurrence]
@@ -448,7 +453,7 @@ class SemIndex(val workspace: Path):
         // cachedDocs may have been loaded with skipOccurrences=true, which would corrupt
         // the cache if saved (empty occurrence lists for all MD5-matching files).
         val fullDocs = if !needOccurrences then
-          SemTimings.phase("cache-reload-full") { SemPersistence.load(workspace, skipOccurrences = false) }.getOrElse(cachedDocs)
+          SemTimings.phase("cache-reload-full") { SemPersistence.load(workspace, skipOccurrences = false) }.getOrElse(Nil)
         else cachedDocs
         incrementalRebuild(files, fullDocs)
         buildIndexMaps(documents)
