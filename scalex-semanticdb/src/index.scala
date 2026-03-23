@@ -1,6 +1,7 @@
 import scala.collection.mutable
 import java.nio.file.{Files, Path}
 import java.io.{BufferedInputStream, BufferedOutputStream, DataInputStream, DataOutputStream}
+import scala.jdk.CollectionConverters.*
 
 // ── Binary persistence ──────────────────────────────────────────────────────
 
@@ -213,76 +214,99 @@ class SemIndex(val workspace: Path):
   // ── Stats ──────────────────────────────────────────────────────────────
 
   def fileCount: Int = documents.size
-  def symbolCount: Int = documents.iterator.map(_.symbols.size).sum
-  def occurrenceCount: Int = documents.iterator.map(_.occurrences.size).sum
+  def symbolCount: Int = _symbolCount
+  def occurrenceCount: Int = _occurrenceCount
 
-  // ── Primary indexes ────────────────────────────────────────────────────
+  // ── Pre-built indexes ─────────────────────────────────────────────────
+  // On cache hit: populated by LoadedIndex (string-table-indexed arrays, no hashing)
+  // On rebuild: populated by buildIndexMaps (HashMap-based, single pass)
 
-  private lazy val allSymbols: List[SemSymbol] =
-    SemTimings.phase("build-allSymbols") {
-      documents.flatMap(_.symbols)
-    }
+  private var _symbolCount: Int = 0
+  private var _occurrenceCount: Int = 0
+  private var _allSymbols: List[SemSymbol] = Nil
+  var symbolByFqn: collection.Map[String, SemSymbol] = Map.empty
+  var symbolsByName: collection.Map[String, List[SemSymbol]] = Map.empty
+  var symbolsByFile: collection.Map[String, List[SemSymbol]] = Map.empty
+  var occurrencesBySymbol: collection.Map[String, List[SemOccurrence]] = Map.empty
+  var occurrencesByFile: collection.Map[String, List[SemOccurrence]] = Map.empty
+  var subtypeIndex: collection.Map[String, List[String]] = Map.empty
+  var memberIndex: collection.Map[String, List[SemSymbol]] = Map.empty
+  var definitionRanges: collection.Map[String, (file: String, range: SemRange)] = Map.empty
 
-  lazy val symbolByFqn: Map[String, SemSymbol] =
-    SemTimings.phase("build-symbolByFqn") {
-      val m = mutable.HashMap.empty[String, SemSymbol]
-      allSymbols.foreach(s => m.getOrElseUpdate(s.fqn, s))
-      m.toMap
-    }
 
-  lazy val symbolsByName: Map[String, List[SemSymbol]] =
-    SemTimings.phase("build-symbolsByName") {
-      allSymbols.groupBy(_.displayName.toLowerCase)
-    }
+  /** Build all index maps in a single pass over documents. Replaces 6+ lazy iterations. */
+  private def buildIndexMaps(docs: List[IndexedDocument]): Unit =
+    SemTimings.phase("build-indexes") {
+      // Pre-compute sizes for HashMap pre-allocation (avoids ~21 resizes for 2M entries)
+      var estSymbols = 0
+      var estOccs = 0
+      docs.foreach { d => estSymbols += d.symbols.size; estOccs += d.occurrences.size }
 
-  lazy val symbolsByFile: Map[String, List[SemSymbol]] =
-    SemTimings.phase("build-symbolsByFile") {
-      allSymbols.groupBy(_.sourceUri)
-    }
+      val symByFqn = new java.util.HashMap[String, SemSymbol](estSymbols * 2)
+      val symsByName = new java.util.HashMap[String, mutable.ListBuffer[SemSymbol]](estSymbols)
+      val symsByFile = new java.util.HashMap[String, mutable.ListBuffer[SemSymbol]](docs.size * 2)
+      val occsBySym = new java.util.HashMap[String, mutable.ListBuffer[SemOccurrence]](estSymbols)
+      val occsByFile = new java.util.HashMap[String, mutable.ListBuffer[SemOccurrence]](docs.size * 2)
+      val subIdx = new java.util.HashMap[String, mutable.ListBuffer[String]](estSymbols / 4)
+      val memIdx = new java.util.HashMap[String, mutable.ListBuffer[SemSymbol]](estSymbols / 4)
+      val defRanges = new java.util.HashMap[String, (file: String, range: SemRange)](estSymbols)
+      val allSyms = List.newBuilder[SemSymbol]
+      var symCount = 0
+      var occCount = 0
 
-  private lazy val allOccurrences: List[SemOccurrence] =
-    SemTimings.phase("build-allOccurrences") {
-      documents.flatMap(_.occurrences)
-    }
-
-  lazy val occurrencesBySymbol: Map[String, List[SemOccurrence]] =
-    SemTimings.phase("build-occsBySymbol") {
-      allOccurrences.groupBy(_.symbol)
-    }
-
-  lazy val occurrencesByFile: Map[String, List[SemOccurrence]] =
-    SemTimings.phase("build-occsByFile") {
-      allOccurrences.groupBy(_.file)
-    }
-
-  lazy val subtypeIndex: Map[String, List[String]] =
-    SemTimings.phase("build-subtypeIndex") {
-      val idx = mutable.HashMap.empty[String, mutable.ListBuffer[String]]
-      allSymbols.foreach { sym =>
-        sym.parents.foreach { parentFqn =>
-          idx.getOrElseUpdate(parentFqn, mutable.ListBuffer.empty) += sym.fqn
+      docs.foreach { doc =>
+        doc.symbols.foreach { s =>
+          allSyms += s
+          symCount += 1
+          symByFqn.putIfAbsent(s.fqn, s)
+          symsByName.computeIfAbsent(s.displayName.toLowerCase, _ => mutable.ListBuffer.empty) += s
+          symsByFile.computeIfAbsent(s.sourceUri, _ => mutable.ListBuffer.empty) += s
+          s.parents.foreach { p =>
+            subIdx.computeIfAbsent(p, _ => mutable.ListBuffer.empty) += s.fqn
+          }
+          if s.owner.nonEmpty && s.kind != SemKind.Parameter && s.kind != SemKind.TypeParam then
+            memIdx.computeIfAbsent(s.owner, _ => mutable.ListBuffer.empty) += s
+        }
+        doc.occurrences.foreach { o =>
+          occCount += 1
+          occsBySym.computeIfAbsent(o.symbol, _ => mutable.ListBuffer.empty) += o
+          occsByFile.computeIfAbsent(o.file, _ => mutable.ListBuffer.empty) += o
+          if o.role == OccRole.Definition && !defRanges.containsKey(o.symbol) then
+            defRanges.put(o.symbol, (file = o.file, range = o.range))
         }
       }
-      idx.map((k, v) => k -> v.distinct.toList).toMap
+
+      _allSymbols = allSyms.result()
+      _symbolCount = symCount
+      _occurrenceCount = occCount
+      // Wrap Java maps as Scala maps (zero-copy view). Convert ListBuffers to Lists in-place.
+      symbolByFqn = symByFqn.asScala
+      symbolsByName = convertListBufferMap(symsByName)
+      symbolsByFile = convertListBufferMap(symsByFile)
+      occurrencesBySymbol = convertListBufferMap(occsBySym)
+      occurrencesByFile = convertListBufferMap(occsByFile)
+      subtypeIndex = convertListBufferMapDistinct(subIdx)
+      memberIndex = convertListBufferMap(memIdx)
+      definitionRanges = defRanges.asScala
     }
 
-  lazy val memberIndex: Map[String, List[SemSymbol]] =
-    SemTimings.phase("build-memberIndex") {
-      allSymbols
-        .filter(s => s.owner.nonEmpty && s.kind != SemKind.Parameter && s.kind != SemKind.TypeParam)
-        .groupBy(_.owner)
-    }
+  /** Convert a Java HashMap[String, ListBuffer[A]] to a Scala Map[String, List[A]] by
+    * replacing ListBuffer values with List in-place (single pass, no map copy). */
+  private def convertListBufferMap[A](jmap: java.util.HashMap[String, mutable.ListBuffer[A]]): collection.Map[String, List[A]] =
+    val result = new java.util.HashMap[String, List[A]](jmap.size * 2)
+    val it = jmap.entrySet().iterator()
+    while it.hasNext do
+      val e = it.next()
+      result.put(e.getKey, e.getValue.toList)
+    result.asScala
 
-  /** Map from symbol FQN → (file, definition range). Built from DEFINITION occurrences. */
-  lazy val definitionRanges: Map[String, (file: String, range: SemRange)] =
-    SemTimings.phase("build-definitionRanges") {
-      val m = mutable.HashMap.empty[String, (file: String, range: SemRange)]
-      allOccurrences.foreach { occ =>
-        if occ.role == OccRole.Definition && !m.contains(occ.symbol) then
-          m(occ.symbol) = (file = occ.file, range = occ.range)
-      }
-      m.toMap
-    }
+  private def convertListBufferMapDistinct(jmap: java.util.HashMap[String, mutable.ListBuffer[String]]): collection.Map[String, List[String]] =
+    val result = new java.util.HashMap[String, List[String]](jmap.size * 2)
+    val it = jmap.entrySet().iterator()
+    while it.hasNext do
+      val e = it.next()
+      result.put(e.getKey, e.getValue.distinct.toList)
+    result.asScala
 
   // ── Query helpers ──────────────────────────────────────────────────────
 
@@ -294,7 +318,7 @@ class SemIndex(val workspace: Path):
       // 1. Exact FQN match
       symbolByFqn.get(query).map(List(_)).getOrElse {
         // 2. Suffix match on FQN (e.g. "List#map()." matches "scala/collection/immutable/List#map().")
-        val suffixMatches = allSymbols.filter(_.fqn.endsWith(query))
+        val suffixMatches = _allSymbols.filter(_.fqn.endsWith(query))
         if suffixMatches.nonEmpty then suffixMatches
         else
           // 3. Display name match (case-insensitive)
@@ -302,7 +326,7 @@ class SemIndex(val workspace: Path):
           if nameMatches.nonEmpty then nameMatches
           else
             // 4. Partial display name match
-            allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
+            _allSymbols.filter(_.displayName.toLowerCase.contains(query.toLowerCase))
       }
     // Deterministic ordering: non-local before local, source before generated, then by kind rank, then shorter FQN first
     raw.sortBy(s => (isLocal = if s.kind == SemKind.Local then 1 else 0, isGenerated = if isGeneratedSource(s.sourceUri) then 1 else 0, kindRank = kindRank(s.kind), fqnLen = s.fqn.length, fqn = s.fqn))
@@ -384,6 +408,7 @@ class SemIndex(val workspace: Path):
 
         if !stale then
           documents = cachedDocs
+          buildIndexMaps(documents)
           cachedLoad = true
           buildTimeMs = System.currentTimeMillis() - start
           return
@@ -405,7 +430,9 @@ class SemIndex(val workspace: Path):
           return
 
         incrementalRebuild(files, cachedDocs)
+        buildIndexMaps(documents)
         SemPersistence.saveDirsManifest(workspace, semanticdbDirs)
+
 
       case None =>
         // Cache miss — full discovery + full rebuild
@@ -431,6 +458,7 @@ class SemIndex(val workspace: Path):
         documents = SemTimings.phase("dedup-documents") {
           deduplicateDocuments(parsed)
         }
+        buildIndexMaps(documents)
 
         SemTimings.phase("save-index") {
           SemPersistence.save(workspace, documents)
@@ -480,6 +508,7 @@ class SemIndex(val workspace: Path):
           SemPersistence.save(workspace, documents)
         }
 
+    buildIndexMaps(documents)
     SemPersistence.saveDirsManifest(workspace, semanticdbDirs)
     buildTimeMs = System.currentTimeMillis() - start
 
