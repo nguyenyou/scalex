@@ -439,11 +439,10 @@ Scala compiler (-Xsemanticdb) → .semanticdb protobuf files → scalex-sdb inde
 
 The Scala compiler emits `.semanticdb` files containing every symbol definition, every reference with its resolved target, and full type information. `scalex-sdb` indexes this data into `.scalex/semanticdb.bin` and exposes it through 15 commands.
 
-**Generate .semanticdb files:**
+**Generate .semanticdb files** (Mill only — other build tools coming later):
 
 ```bash
-./mill __.semanticDbData                      # Mill (easiest)
-# or: ThisBuild / semanticdbEnabled := true   # sbt
+./mill __.semanticDbData
 ```
 
 ### Pros and cons
@@ -479,7 +478,7 @@ If IntelliJ IDEA is already open with your project, you can tap into its compile
 
 | | **scalex** | **scalex-sdb** | **scalex-intellij** |
 |---|---|---|---|
-| **Setup** | Just a binary + git repo | Compiled `.semanticdb` files | IntelliJ running with MCP Server |
+| **Setup** | Just a binary + git repo | Mill + compiled `.semanticdb` files | IntelliJ running with MCP Server |
 | **Precision** | Source-level | Compiler-level | Compiler-level + IDE features |
 | **Unique strengths** | Zero setup, wildcard imports, AST search, batch | Call graphs, precise refs, type info | Build errors, inspections, semantic rename, run configs |
 | **Speed** | ~0.1–0.5s | ~0.1s (warm) | ~0.1s (search), seconds (build) |

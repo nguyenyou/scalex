@@ -30,7 +30,7 @@ abstract class SemTestBase extends FunSuite:
 
     // Build the index
     index = SemIndex(workspace)
-    index.rebuild(Some(semanticdbDir.toString))
+    index.rebuild()
 
   override def afterAll(): Unit =
     deleteRecursive(workspace)

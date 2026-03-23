@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added (scalex-sdb)
+- `daemon` command — stdin/stdout JSON-lines server that keeps the index hot in memory. Queries drop from ~3.2s to <10ms. Self-terminates aggressively via 5 defensive layers: stdin EOF, idle timeout (default 5 min), max lifetime (default 30 min), shutdown command, SIGTERM/SIGINT.
+
+### Changed (scalex-sdb)
+- Discovery now Mill-only: parallel `semanticDbDataDetailed.dest/data/` walk, skip `classes/`, removed sbt/Bloop/generic fallback. Discovery ~44% faster on large projects.
+- Removed `--semanticdb-path` flag — Mill's `out/` is the only supported layout. Other build tools will be supported later.
+
 ### Fixed (scalex-sdb)
 - `batch` now handles quoted FQN arguments — `batch 'callers "com/example/Foo#bar()."'` no longer fails with "not found" (#303)
 

@@ -23,8 +23,14 @@ import java.nio.file.{Files, Path}
 
   val index = SemIndex(workspace)
 
+  if cmd == "daemon" then
+    val idleTimeout = flags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
+    val maxLifetime = flags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
+    runDaemon(workspace, idleTimeout, maxLifetime)
+    return
+
   if cmd == "index" then
-    index.rebuild(flags.semanticdbPath)
+    index.rebuild()
     val result = SemCmdResult.Stats(
       index.fileCount, index.symbolCount, index.occurrenceCount,
       index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
@@ -39,7 +45,7 @@ import java.nio.file.{Files, Path}
   val needOccs = cmd match
     case "lookup" | "symbols" | "members" | "subtypes" | "supertypes" | "type" => false
     case _ => true // refs, callers, callees, flow, path, explain, related, occurrences, batch
-  index.build(flags.semanticdbPath, needOccs)
+  index.build(needOccs)
 
   val ctx = flagsToContext(flags, index, workspace)
 
@@ -125,7 +131,6 @@ case class SemParsedFlags(
   roleFilter: Option[String] = None,
   depth: Option[Int] = None,
   explicitWorkspace: Option[String] = None,
-  semanticdbPath: Option[String] = None,
   timingsEnabled: Boolean = false,
   noAccessors: Boolean = false,
   excludePatterns: List[String] = Nil,
@@ -152,9 +157,6 @@ def parseFlags(args: List[String]): SemParsedFlags =
         i += 2
       case "--workspace" | "-w" if i + 1 < arr.length =>
         flags = flags.copy(explicitWorkspace = Some(arr(i + 1)))
-        i += 2
-      case "--semanticdb-path" if i + 1 < arr.length =>
-        flags = flags.copy(semanticdbPath = Some(arr(i + 1)))
         i += 2
       case "--role" if i + 1 < arr.length =>
         flags = flags.copy(roleFilter = Some(arr(i + 1)))
@@ -249,13 +251,18 @@ def printUsage(): Unit =
     |Batch:
     |  batch "cmd1" "cmd2"   Run multiple queries in one invocation
     |
+    |Daemon (for coding agents):
+    |  daemon [idle] [max]   Stdin/stdout JSON-lines server (keeps index hot in memory)
+    |                        idle = idle timeout seconds (default: 300)
+    |                        max  = max lifetime seconds (default: 1800)
+    |                        Self-terminates on: stdin EOF, idle timeout, max lifetime
+    |
     |Index:
     |  index                 Rebuild index (force)
     |  stats                 Index statistics
     |
     |Options:
-    |  -w, --workspace PATH         Set workspace (default: cwd)
-    |  --semanticdb-path PATH       Explicit .semanticdb directory
+    |  -w, --workspace PATH         Set workspace (default: cwd, must be a Mill project root)
     |  --limit N                    Max results (default: 50, 0=unlimited)
     |  --json                       JSON output
     |  --verbose, -v                Full signatures and properties

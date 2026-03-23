@@ -197,6 +197,7 @@ object SemTimings:
   private val phases = mutable.ListBuffer.empty[(name: String, ms: Long)]
 
   def enable(): Unit = enabled = true
+  def reset(): Unit = phases.clear()
 
   def phase[T](name: String)(body: => T): T =
     if !enabled then body
@@ -229,6 +230,13 @@ class SemIndex(val workspace: Path):
   def fileCount: Int = documents.size
   def symbolCount: Int = _symbolCount
   def occurrenceCount: Int = _occurrenceCount
+
+  /** Cheap staleness check for daemon mode. Returns true if semanticdb dirs
+    * have changed since the given timestamp. Does NOT reload from disk. ~7ms. */
+  def isStale(sinceMs: Long): Boolean =
+    SemPersistence.loadDirsManifest(workspace) match
+      case Some(dirs) if dirs.nonEmpty => SemPersistence.anyDirNewerThan(dirs, sinceMs)
+      case _ => false
 
   // ── Pre-built indexes (populated by buildIndexMaps in a single pass) ──
 
@@ -430,7 +438,7 @@ class SemIndex(val workspace: Path):
     * Staleness check uses a saved manifest of semanticdb directories (~5ms) instead of
     * a full file walk (~1s on large projects). Full discovery only runs when stale or on first build.
     * When needOccurrences=false, skip loading occurrence data (~70% faster for symbol-only commands). */
-  def build(semanticdbPath: Option[String] = None, needOccurrences: Boolean = true): Unit =
+  def build(needOccurrences: Boolean = true): Unit =
     val start = System.currentTimeMillis()
     cachedLoad = false
     parsedCount = 0
@@ -462,12 +470,7 @@ class SemIndex(val workspace: Path):
 
         // 3. Stale — full discovery + incremental rebuild
         val (files, _, semanticdbDirs) = SemTimings.phase("discover") {
-          semanticdbPath match
-            case Some(p) =>
-              val explicitPath = Path.of(p).toAbsolutePath.normalize
-              val r = Discovery.discoverFromExplicitPath(explicitPath)
-              (files = r.files, maxMtimeMs = r.maxMtimeMs, semanticdbDirs = List(explicitPath))
-            case None => Discovery.discoverSemanticdbFiles(workspace)
+          Discovery.discoverSemanticdbFiles(workspace)
         }
 
         if files.isEmpty then
@@ -491,12 +494,7 @@ class SemIndex(val workspace: Path):
       case None =>
         // Cache miss — full discovery + full rebuild
         val (files, _, semanticdbDirs) = SemTimings.phase("discover") {
-          semanticdbPath match
-            case Some(p) =>
-              val explicitPath = Path.of(p).toAbsolutePath.normalize
-              val r = Discovery.discoverFromExplicitPath(explicitPath)
-              (files = r.files, maxMtimeMs = r.maxMtimeMs, semanticdbDirs = List(explicitPath))
-            case None => Discovery.discoverSemanticdbFiles(workspace)
+          Discovery.discoverSemanticdbFiles(workspace)
         }
 
         if files.isEmpty then
@@ -523,19 +521,14 @@ class SemIndex(val workspace: Path):
     buildTimeMs = System.currentTimeMillis() - start
 
   /** Force rebuild (ignores mtime staleness check, but still uses incremental MD5 comparison). */
-  def rebuild(semanticdbPath: Option[String] = None): Unit =
+  def rebuild(): Unit =
     val start = System.currentTimeMillis()
     cachedLoad = false
     parsedCount = 0
     skippedCount = 0
 
     val (files, _, semanticdbDirs) = SemTimings.phase("discover") {
-      semanticdbPath match
-        case Some(p) =>
-          val explicitPath = Path.of(p).toAbsolutePath.normalize
-          val r = Discovery.discoverFromExplicitPath(explicitPath)
-          (files = r.files, maxMtimeMs = r.maxMtimeMs, semanticdbDirs = List(explicitPath))
-        case None => Discovery.discoverSemanticdbFiles(workspace)
+      Discovery.discoverSemanticdbFiles(workspace)
     }
 
     if files.isEmpty then
