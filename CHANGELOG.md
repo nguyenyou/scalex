@@ -4,6 +4,16 @@
 
 ### Added (scalex-sdb)
 - `daemon` command — stdin/stdout JSON-lines server that keeps the index hot in memory. Queries drop from ~3.2s to <10ms. Self-terminates aggressively via 8 defensive layers: stdin EOF, parent PID monitoring, idle timeout (default 5 min), max lifetime (default 30 min), shutdown command, per-query timeout (30s), heap pressure detection, SIGTERM/SIGINT.
+- `members` now hides compiler-generated case class synthetics by default (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `apply`, `unapply`, etc.). Use `--verbose` to show all. User-overridden methods (`toString`, `equals`, `hashCode`) are never hidden. (#307)
+- `--smart` flag now works on `members` (filters synthetics, infrastructure noise, accessors) and `lookup` (excludes generated sources). Previously only worked on callers/callees/flow/explain. (#307)
+- `--source-only` flag — hard-exclude generated/compiled sources from `lookup` results (#307)
+- `explain` now includes subtypes section for traits and abstract classes — shows first 3 subtype names + total count. Respects `--smart`, `--exclude-test`, `--exclude-pkg`. (#307)
+- `--in <scope>` flag — scope symbol resolution to a containing class, file, or package without requiring full FQN. Works with all single-symbol commands (#303)
+- `--exclude-test` flag — filter out symbols from test source directories (paths containing `/test/`, `/tests/`, `/it/`, `/spec/`, or filenames ending in `Test.scala`, `Spec.scala`, `Suite.scala`, `Integ.scala`). Works with callers, callees, flow, path, explain (#303)
+- `--exclude-pkg "p1,p2,..."` flag — exclude symbols whose FQN starts with any of the given package prefixes (dots auto-converted to `/`). Works with callers, callees, flow, path, explain (#303)
+- `--smart` now filters unambiguous effect-system combinators (flatMap, traverse, pure, succeed, attempt, etc.) from callees/flow/callers output. Common names like map, filter, fold are not filtered to avoid hiding domain methods (#303)
+- `lookup` multi-match output now shows `[class/trait]` or `[object]` annotation to distinguish member ownership (#303)
+- FQN resolution fallback — when exact FQN match fails, tries swapping `#` ↔ `.` separator before falling back to suffix/name match, with a stderr hint (#303)
 
 ### Changed (scalex-sdb)
 - Discovery now Mill-only: parallel `semanticDbDataDetailed.dest/data/` walk, skip `classes/`, removed sbt/Bloop/generic fallback. Discovery ~44% faster on large projects.
@@ -11,20 +21,6 @@
 
 ### Fixed (scalex-sdb)
 - `batch` now handles quoted FQN arguments — `batch 'callers "com/example/Foo#bar()."'` no longer fails with "not found" (#303)
-
-### Added (scalex-sdb)
-- `members` now hides compiler-generated case class synthetics by default (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `apply`, `unapply`, etc.). Use `--verbose` to show all. User-overridden methods (`toString`, `equals`, `hashCode`) are never hidden. (#307)
-- `--smart` flag now works on `members` (filters synthetics, infrastructure noise, accessors) and `lookup` (excludes generated sources). Previously only worked on callers/callees/flow/explain. (#307)
-- `--source-only` flag — hard-exclude generated/compiled sources from `lookup` results (#307)
-- `explain` now includes subtypes section for traits and abstract classes — shows first 3 subtype names + total count. Respects `--smart`, `--exclude-test`, `--exclude-pkg`. (#307)
-
-### Added (scalex-sdb)
-- `--in <scope>` flag — scope symbol resolution to a containing class, file, or package without requiring full FQN. Works with all single-symbol commands (#303)
-- `--exclude-test` flag — filter out symbols from test source directories (paths containing `/test/`, `/tests/`, `/it/`, `/spec/`, or filenames ending in `Test.scala`, `Spec.scala`, `Suite.scala`, `Integ.scala`). Works with callers, callees, flow, path, explain (#303)
-- `--exclude-pkg "p1,p2,..."` flag — exclude symbols whose FQN starts with any of the given package prefixes (dots auto-converted to `/`). Works with callers, callees, flow, path, explain (#303)
-- `--smart` now filters unambiguous effect-system combinators (flatMap, traverse, pure, succeed, attempt, etc.) from callees/flow/callers output. Common names like map, filter, fold are not filtered to avoid hiding domain methods (#303)
-- `lookup` multi-match output now shows `[class/trait]` or `[object]` annotation to distinguish member ownership (#303)
-- FQN resolution fallback — when exact FQN match fails, tries swapping `#` ↔ `.` separator before falling back to suffix/name match, with a stderr hint (#303)
 
 ## [scalex-sdb 0.3.0] — 2026-03-23
 

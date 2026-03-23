@@ -186,7 +186,7 @@
 
 ### scalex-sdb: reduce noise in members/lookup output (#307)
 
-- [x] `members` synthetic filtering — hide compiler-generated case class members (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `canEqual`, `hashCode`, `toString`, `equals`, `apply`, `unapply`) by default; show with `--verbose`
+- [x] `members` synthetic filtering — hide compiler-generated case class members (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `canEqual`, `apply`, `unapply`) by default; show with `--verbose`. Note: `hashCode`/`toString`/`equals` are not filtered because Scala 3 SemanticDB only emits them when user-overridden.
 - [x] `--smart` on `members` — consistent with `--smart` on flow/callees/callers; filters synthetic case class methods + val accessors, showing only user-declared members
 - [x] `lookup --source-only` — hard-exclude symbols from generated code directories (protobuf, codegen); apply existing `isGeneratedSource()` filter post-resolution; also available via `--smart` on lookup
 - [x] `explain` subtypes — add `subtypes: N` line + first 3 names for traits/abstract classes; new field in `ExplainResult`, `findSubtypes()` call, formatter update

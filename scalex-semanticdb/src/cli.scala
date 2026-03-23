@@ -83,40 +83,41 @@ val commands: Map[String, (List[String], SemCommandContext) => SemCmdResult] = M
 )
 
 def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
-  if args.isEmpty then return SemCmdResult.UsageError("batch requires at least one sub-command argument.\nUsage: batch \"lookup Dog\" \"members Animal\" ...")
-
-  val results = args.map { subCmdStr =>
-    val parts = subCmdStr.trim.split("\\s+").toList.filter(_.nonEmpty)
-      .map(t => if t.length > 1 && ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) then t.substring(1, t.length - 1) else t)
-    if parts.isEmpty then (command = subCmdStr, result = SemCmdResult.UsageError("Empty sub-command"))
-    else {
-      val subCmd  = parts.head
-      val subRest = parts.tail
-      val subFlags = parseFlags(subRest)
-      val hasExplicitDepth = subRest.contains("--depth")
-      val hasExplicitLimit = subRest.contains("--limit")
-      val subCtx = ctx.copy(
-        limit = if hasExplicitLimit then (if subFlags.limit == 0 then Int.MaxValue else subFlags.limit) else ctx.limit,
-        verbose = subFlags.verbose || ctx.verbose,
-        jsonOutput = ctx.jsonOutput,
-        kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
-        roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
-        depth = if hasExplicitDepth then subFlags.depth else ctx.depth,  // both are Option[Int]
-        noAccessors = subFlags.noAccessors || ctx.noAccessors,
-        excludePatterns = if subFlags.excludePatterns.nonEmpty then subFlags.excludePatterns else ctx.excludePatterns,
-        smart = subFlags.smart || ctx.smart,
-        inScope = subFlags.inScope.orElse(ctx.inScope),
-        excludeTest = subFlags.excludeTest || ctx.excludeTest,
-        excludePkgPatterns = if subFlags.excludePkgPatterns.nonEmpty then subFlags.excludePkgPatterns else ctx.excludePkgPatterns,
-        sourceOnly = subFlags.sourceOnly || ctx.sourceOnly,
-      )
-      val result = commands.get(subCmd) match
-        case Some(handler) => handler(subFlags.cleanArgs, subCtx)
-        case None => SemCmdResult.UsageError(s"Unknown command: $subCmd")
-      (command = subCmdStr, result = result)
+  if args.isEmpty then SemCmdResult.UsageError("batch requires at least one sub-command argument.\nUsage: batch \"lookup Dog\" \"members Animal\" ...")
+  else {
+    val results = args.map { subCmdStr =>
+      val parts = subCmdStr.trim.split("\\s+").toList.filter(_.nonEmpty)
+        .map(t => if t.length > 1 && ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) then t.substring(1, t.length - 1) else t)
+      if parts.isEmpty then (command = subCmdStr, result = SemCmdResult.UsageError("Empty sub-command"))
+      else {
+        val subCmd  = parts.head
+        val subRest = parts.tail
+        val subFlags = parseFlags(subRest)
+        val hasExplicitDepth = subRest.contains("--depth")
+        val hasExplicitLimit = subRest.contains("--limit")
+        val subCtx = ctx.copy(
+          limit = if hasExplicitLimit then (if subFlags.limit == 0 then Int.MaxValue else subFlags.limit) else ctx.limit,
+          verbose = subFlags.verbose || ctx.verbose,
+          jsonOutput = ctx.jsonOutput,
+          kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
+          roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
+          depth = if hasExplicitDepth then subFlags.depth else ctx.depth,  // both are Option[Int]
+          noAccessors = subFlags.noAccessors || ctx.noAccessors,
+          excludePatterns = if subFlags.excludePatterns.nonEmpty then subFlags.excludePatterns else ctx.excludePatterns,
+          smart = subFlags.smart || ctx.smart,
+          inScope = subFlags.inScope.orElse(ctx.inScope),
+          excludeTest = subFlags.excludeTest || ctx.excludeTest,
+          excludePkgPatterns = if subFlags.excludePkgPatterns.nonEmpty then subFlags.excludePkgPatterns else ctx.excludePkgPatterns,
+          sourceOnly = subFlags.sourceOnly || ctx.sourceOnly,
+        )
+        val result = commands.get(subCmd) match
+          case Some(handler) => handler(subFlags.cleanArgs, subCtx)
+          case None => SemCmdResult.UsageError(s"Unknown command: $subCmd")
+        (command = subCmdStr, result = result)
+      }
     }
+    SemCmdResult.Batch(results)
   }
-  SemCmdResult.Batch(results)
 
 def cmdStats(args: List[String], ctx: SemCommandContext): SemCmdResult =
   SemCmdResult.Stats(
@@ -250,7 +251,7 @@ def printUsage(): Unit =
     |  path <src> <tgt>      Find shortest call path between two symbols
     |
     |Composite:
-    |  explain <symbol>      One-shot summary: type, callers, callees, members
+    |  explain <symbol>      One-shot summary: type, callers, callees, members, subtypes
     |
     |Compiler-precise queries:
     |  refs <symbol>         Zero-false-positive references
