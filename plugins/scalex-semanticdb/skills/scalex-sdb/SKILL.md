@@ -36,18 +36,49 @@ Replace `/absolute/path/to/skills/scalex-sdb` with the absolute path to the dire
 - **`Java is required`**: Install Java 11+ (e.g. `brew install openjdk` or `sdk install java`).
 - **No .semanticdb files found**: The project must be compiled with SemanticDB enabled. See "Prerequisites" below.
 
-## Prerequisites
+## Prerequisites — run this first, every time
 
-scalex-sdb requires `.semanticdb` files produced by the Scala compiler. Currently optimized for **Mill projects only** — other build tools (sbt, scala-cli) will be supported once the Mill workflow is rock-solid.
+Before using scalex-sdb (CLI or daemon), generate SemanticDB data for the **entire** codebase:
 
-**Mill** — generate SemanticDB data:
 ```bash
 ./mill __.semanticDbData
 ```
 
-This produces `.semanticdb` files under `out/` in each module's `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directory. scalex-sdb auto-discovers these via a fast targeted search of `out/` — no configuration needed.
+This step is non-negotiable. Run it before your first query, and re-run it after any code change you want reflected in results.
 
-**Other build tools**: Not yet supported. If you're interested in sbt/Gradle/scala-cli support, please [file an issue](https://github.com/nguyenyou/scalex/issues).
+### Why this matters
+
+scalex-sdb does not read source code. It reads `.semanticdb` files — binary artifacts the Scala compiler produces alongside `.class` files. These contain the compiler's resolved understanding of every symbol: which exact method `validate` refers to (not just the name, but the specific overload in the specific package), what type was inferred for `val result = ...`, which class implements which trait. This is what makes callers/refs/types precise instead of approximate.
+
+**If you skip this step, scalex-sdb has nothing to read.** No `.semanticdb` files means no index, which means every query returns empty results. The tool will tell you "No .semanticdb files found" and exit.
+
+### Why you need ALL modules, not just some
+
+The `__` in `./mill __.semanticDbData` is Mill's wildcard — it means "every module in the project." This is deliberate. Consider what happens if you only generate SemanticDB for module A but not module B:
+
+- `callers processPayment` — finds callers *within module A* but silently misses every call from module B. You think there are 3 callers when there are actually 12. You refactor based on this, and break 9 call sites you didn't know existed.
+- `subtypes Repository` — finds implementations in module A but misses the ones in module B. You think you've found every implementation when you haven't.
+- `refs Config` — shows 8 references instead of 40. You conclude a type is barely used when it's actually central to the codebase.
+- `path A B` — reports "no path found" between two symbols because the connecting module wasn't indexed. The path exists, but scalex-sdb can't see the bridge.
+
+**Partial data is worse than no data** because it gives you false confidence. With no data, the tool fails loudly and you know to fix it. With partial data, every answer looks plausible but is silently incomplete. You make decisions based on a partial view of the codebase without knowing it's partial.
+
+Think of it like searching a book but only having half the pages. You won't get an error — you'll just get fewer results and wrongly conclude they're all the results.
+
+### After code changes
+
+SemanticDB files are generated at compile time. If you change code and query without regenerating, scalex-sdb uses stale data — it might reference methods that no longer exist or miss new call sites. The daemon auto-detects stale files and rebuilds its index, but only from whatever `.semanticdb` data exists on disk. If the disk data is old, the index is old.
+
+Re-run after significant code changes:
+```bash
+./mill __.semanticDbData
+```
+
+This is incremental — Mill only recompiles changed modules, so it's fast after the first run.
+
+### Mill only (for now)
+
+scalex-sdb currently discovers `.semanticdb` files from Mill's `out/` directory structure only. Other build tools (sbt, Gradle, scala-cli) are not yet supported. If you're interested in support for other tools, [file an issue](https://github.com/nguyenyou/scalex/issues).
 
 ## When to use scalex-sdb vs scalex
 
@@ -444,52 +475,25 @@ What do you need?
 
 ### Common workflows
 
-**Impact analysis** — before changing a method, find all callers:
 ```bash
+# Impact analysis — who calls this? (exclude tests)
 scalex-sdb callers processPayment --exclude "test,integ" -w /project
-```
 
-**Understanding a method** — what it calls (clean, flat):
-```bash
-scalex-sdb callees createOrder --kind method --smart -w /project
-```
-
-**Understanding a method** — recursive view into same-module internals:
-```bash
-scalex-sdb flow createOrder --kind method --depth 3 --smart -w /project
-```
-
-**Documentation fact-checking** — verify many claims in one shot:
-```bash
-scalex-sdb batch \
-  "lookup UserService" \
-  "members RequestContext" \
-  "subtypes AuthProvider" \
-  "callers handleLogin" \
-  -w /project
-```
-
-**Tracing a call path** — "how does this endpoint reach that database method?":
-```bash
-scalex-sdb path OrderServer.createOrder EventStoreOperations.add -w /project
-```
-
-**Quick orientation on an unfamiliar method** — callers, callees, type in one shot:
-```bash
-scalex-sdb explain processPayment --kind method -w /project
-```
-
-**Transitive impact analysis** — who *eventually* calls this internal method?:
-```bash
+# Transitive impact — who *eventually* calls this internal method?
 scalex-sdb callers add --depth 3 --exclude "test,integ" -w /project
-```
 
-**Precise references** — when the name is common (Config, Service, etc.):
-```bash
-scalex-sdb refs MyConfig -w /project
-```
+# Understand a method — clean flat list of what it calls
+scalex-sdb callees createOrder --kind method --smart -w /project
 
-**Type exploration** — for inferred or complex types:
-```bash
-scalex-sdb type computeResult -w /project
+# Trace through service layers — recursive call tree
+scalex-sdb flow createOrder --kind method --depth 3 --smart -w /project
+
+# How does endpoint A reach database method B?
+scalex-sdb path OrderServer.createOrder EventStoreOperations.add -w /project
+
+# Quick orientation — callers, callees, type in one shot
+scalex-sdb explain processPayment --kind method -w /project
+
+# Verify many claims at once (amortizes index load)
+scalex-sdb batch "lookup UserService" "subtypes AuthProvider" "callers handleLogin" -w /project
 ```
