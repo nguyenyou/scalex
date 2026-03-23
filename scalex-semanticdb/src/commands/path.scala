@@ -7,12 +7,11 @@ def cmdPath(args: List[String], ctx: SemCommandContext): SemCmdResult =
         case None => return SemCmdResult.NotFound(s"No symbol found matching '$source'")
         case Some(s) => s
 
+      // --kind only disambiguates source, not target (target accepts all matching FQNs)
       val tgtSymbols = ctx.index.resolveSymbol(target)
       if tgtSymbols.isEmpty then
         return SemCmdResult.NotFound(s"No symbol found matching '$target'")
-      val tgtFqns = filterByKind(tgtSymbols, ctx.kindFilter).map(_.fqn).toSet match
-        case s if s.nonEmpty => s
-        case _ => tgtSymbols.map(_.fqn).toSet
+      val tgtFqns = tgtSymbols.map(_.fqn).toSet
 
       val maxDepth = ctx.depth.getOrElse(5)
       val rootModule = if ctx.smart then Some(modulePrefix(srcSym.sourceUri)) else None
@@ -37,8 +36,9 @@ def cmdPath(args: List[String], ctx: SemCommandContext): SemCmdResult =
               .filterNot(s => ctx.smart && isInfraNoise(s))
               .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
 
+            // In --smart mode, restrict BFS to same module — but always allow the target through
             val filtered = rootModule match
-              case Some(rm) => callees.filter(_.sourceUri.startsWith(rm))
+              case Some(rm) => callees.filter(s => s.sourceUri.startsWith(rm) || tgtFqns.contains(s.fqn))
               case None => callees
 
             filtered.foreach { callee =>

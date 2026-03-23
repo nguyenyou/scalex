@@ -21,7 +21,7 @@
 
 ## Plugin / UX
 
-- [ ] **Disambiguation hints** — when multiple symbols match, show ready-to-run commands with FQN like scalex does. [#297](https://github.com/nguyenyou/scalex/issues/297) requests showing numbered candidates with FQN + location instead of silently picking the first match.
+- [x] **Disambiguation hints** — `resolveOne` prints candidates with FQN + kind to stderr when multiple symbols match. Applied to 7 single-symbol commands. [#297](https://github.com/nguyenyou/scalex/issues/297)
 - [ ] **`--count` flag for refs** — show category counts without listing all occurrences
 - [ ] **`--top N` flag for refs** — rank files by reference count
 - [ ] **`--no-stdlib` flag** — filter out `scala/`, `java/` symbols from results globally
