@@ -265,7 +265,7 @@ class CommandsTest extends SemTestBase:
       case SemCmdResult.RelatedList(_, entries, _) =>
         val names = entries.map(_.sym.displayName).toSet
         assert(names.contains("Animal") || entries.exists(_.sym.fqn.contains("Animal")),
-          s"Animal should be related to Dog: ${entries.map(e => e.sym.displayName -> e.count)}")
+          s"Animal should be related to Dog: ${entries.map(e => (name = e.sym.displayName, count = e.count))}")
       case other =>
         fail(s"unexpected result: $other")
   }
@@ -389,7 +389,7 @@ class CommandsTest extends SemTestBase:
         assertEquals(results.size, 1)
         results.head.result match
           case SemCmdResult.SymbolList(_, syms, _) =>
-            assert(syms.forall(_.kind == SemKind.Method), s"all should be methods: ${syms.map(s => s.displayName -> s.kind)}")
+            assert(syms.forall(_.kind == SemKind.Method), s"all should be methods: ${syms.map(s => (name = s.displayName, kind = s.kind))}")
           case other =>
             fail(s"unexpected sub-result: $other")
       case other =>
@@ -511,7 +511,7 @@ class CommandsTest extends SemTestBase:
       case SemCmdResult.SymbolList(_, syms, _) =>
         val files = syms.map(_.sourceUri)
         assert(!files.exists(_.contains("Animal.scala")),
-          s"symbols from Animal.scala should be excluded: ${syms.map(s => s.displayName -> s.sourceUri)}")
+          s"symbols from Animal.scala should be excluded: ${syms.map(s => (name = s.displayName, file = s.sourceUri))}")
       case other =>
         fail(s"unexpected result: $other")
   }
@@ -1098,7 +1098,7 @@ class CommandsTest extends SemTestBase:
 
     if hasTestCaller then
       assert(!filteredCallers.exists(s => isTestSource(s.sourceUri)),
-        s"with --exclude-test, should have no test callers: ${filteredCallers.map(s => s.displayName -> s.sourceUri)}")
+        s"with --exclude-test, should have no test callers: ${filteredCallers.map(s => (name = s.displayName, file = s.sourceUri))}")
     // If no test callers found at all, at least verify the flag doesn't break anything
     assert(filteredCallers.size <= allCallers.size,
       s"--exclude-test should not increase callers: ${filteredCallers.size} vs ${allCallers.size}")
@@ -1110,7 +1110,7 @@ class CommandsTest extends SemTestBase:
     result match
       case SemCmdResult.SymbolList(_, syms, _) =>
         assert(!syms.exists(s => isTestSource(s.sourceUri)),
-          s"should have no test callees: ${syms.map(s => s.displayName -> s.sourceUri)}")
+          s"should have no test callees: ${syms.map(s => (name = s.displayName, file = s.sourceUri))}")
       case other => fail(s"unexpected: $other")
   }
 

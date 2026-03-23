@@ -365,18 +365,26 @@ class SemIndex(val workspace: Path):
     case _                   => 8
 
   /** Try swapping the type separator in a FQN: # (class/trait) ↔ . (object).
-    * E.g. "com/example/Foo#bar()." → "com/example/Foo.bar()." and vice versa. */
+    * For #→. swap: unambiguous since # appears exactly once (type-member boundary).
+    * For .→# swap: only swap when there's exactly one `.` before `(` to avoid
+    * misidentifying nested object separators (e.g. `Foo.Bar.baz().`). */
   private def swapFqnSeparator(fqn: String): Option[String] =
     val lastSlash = fqn.lastIndexOf('/')
     val rest = if lastSlash >= 0 then fqn.substring(lastSlash + 1) else fqn
     val prefix = if lastSlash >= 0 then fqn.substring(0, lastSlash + 1) else ""
     val hashIdx = rest.indexOf('#')
-    val dotIdx = rest.indexOf('.')
     if hashIdx > 0 then
+      // # is unambiguous — always the type-member boundary
       Some(prefix + rest.substring(0, hashIdx) + "." + rest.substring(hashIdx + 1))
-    else if dotIdx > 0 then
-      Some(prefix + rest.substring(0, dotIdx) + "#" + rest.substring(dotIdx + 1))
-    else None
+    else
+      // For .→# swap, find the dot just before the method name (before first `(`)
+      val parenIdx = rest.indexOf('(')
+      val searchUpTo = if parenIdx > 0 then parenIdx else rest.length
+      val methodPart = rest.substring(0, searchUpTo)
+      val lastDot = methodPart.lastIndexOf('.')
+      if lastDot > 0 then
+        Some(prefix + rest.substring(0, lastDot) + "#" + rest.substring(lastDot + 1))
+      else None
 
   // ── Build ──────────────────────────────────────────────────────────────
 

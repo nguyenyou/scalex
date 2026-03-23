@@ -18,7 +18,8 @@ def cmdExplain(args: List[String], ctx: SemCommandContext): SemCmdResult =
         if isCallable then
           val all = findCallers(sym.fqn, ctx.index)
           val f1 = if ctx.smart then all.filterNot(isInfraNoise).filterNot(isMonadicCombinator) else all
-          val filtered = if ctx.excludeTest then f1.filterNot(s => isTestSource(s.sourceUri)) else f1
+          val f2 = if ctx.excludeTest then f1.filterNot(s => isTestSource(s.sourceUri)) else f1
+          val filtered = filterByExcludePkg(f2, ctx.excludePkgPatterns)
           (callerList = filtered.take(5), totalCallers = filtered.size)
         else (callerList = Nil, totalCallers = 0)
 
@@ -28,7 +29,8 @@ def cmdExplain(args: List[String], ctx: SemCommandContext): SemCmdResult =
           val all = findCallees(sym.fqn, ctx.index)
             .filterNot(s => isTrivial(s.fqn))
           val f1 = if ctx.smart then all.filterNot(isAccessor).filterNot(isInfraNoise).filterNot(isMonadicCombinator) else all
-          val filtered = if ctx.excludeTest then f1.filterNot(s => isTestSource(s.sourceUri)) else f1
+          val f2 = if ctx.excludeTest then f1.filterNot(s => isTestSource(s.sourceUri)) else f1
+          val filtered = filterByExcludePkg(f2, ctx.excludePkgPatterns)
           (calleeList = filtered.take(5), totalCallees = filtered.size)
         else (calleeList = Nil, totalCallees = 0)
 

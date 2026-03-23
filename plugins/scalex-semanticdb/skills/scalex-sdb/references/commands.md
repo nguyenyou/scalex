@@ -101,6 +101,6 @@ All commands support `--json`. Output is a single JSON object per invocation:
 - `flow`/`path`: `{"header", "lines": [...]}`
 - `explain`: `{"symbol", "file", "line", "callers", "totalCallers", "callees", "totalCallees", "parents", "members", "totalMembers"}`
 - `related`: `{"header", "total", "related": [...]}`
-- `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached"}`
+- `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached", "parsedCount", "skippedCount"}`
 - `batch`: `{"batch": [{"command": "...", "result": {...}}, ...]}`
 - Errors: `{"error": "not_found"|"usage", "message": "..."}`
