@@ -230,9 +230,7 @@ class SemIndex(val workspace: Path):
   def symbolCount: Int = _symbolCount
   def occurrenceCount: Int = _occurrenceCount
 
-  // ── Pre-built indexes ─────────────────────────────────────────────────
-  // On cache hit: populated by LoadedIndex (string-table-indexed arrays, no hashing)
-  // On rebuild: populated by buildIndexMaps (HashMap-based, single pass)
+  // ── Pre-built indexes (populated by buildIndexMaps in a single pass) ──
 
   private var _symbolCount: Int = 0
   private var _occurrenceCount: Int = 0
@@ -420,8 +418,8 @@ class SemIndex(val workspace: Path):
         // 2. Cheap staleness check: stat directories from saved manifest (~5ms)
         val stale = SemTimings.phase("staleness-check") {
           SemPersistence.loadDirsManifest(workspace) match
-            case Some(dirs) => SemPersistence.anyDirNewerThan(dirs, cacheMtime)
-            case None       => true // no manifest → must do full discovery to create one
+            case Some(dirs) if dirs.nonEmpty => SemPersistence.anyDirNewerThan(dirs, cacheMtime)
+            case _ => true // no manifest or empty dirs → must do full discovery
         }
 
         if !stale then
@@ -511,6 +509,7 @@ class SemIndex(val workspace: Path):
 
     if files.isEmpty then
       documents = Nil
+      SemPersistence.saveDirsManifest(workspace, semanticdbDirs)
       buildTimeMs = System.currentTimeMillis() - start
       return
 
