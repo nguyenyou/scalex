@@ -62,7 +62,7 @@
 | `--role` | — | all | Filter occurrences by role (def/ref) |
 | `--depth` | — | varies | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
 | `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
-| `--smart` | — | off | Auto-filter infrastructure noise (accessors, generated, protobuf, monadic combinators) |
+| `--smart` | — | off | Auto-filter infrastructure noise (accessors, generated, protobuf, effect-system combinators) |
 | `--exclude` | — | — | Exclude symbols matching FQN or file path (comma-separated) |
 | `--exclude-test` | — | off | Exclude symbols from test source directories |
 | `--exclude-pkg` | — | — | Exclude symbols by package prefix (comma-separated, dots auto-converted to /) |

@@ -1126,6 +1126,41 @@ class CommandsTest extends SemTestBase:
       case other => fail(s"unexpected: $other")
   }
 
+  test("--exclude-pkg normalizes with trailing slash in flow tree walk") {
+    // Bug: flow/path/callers tree walks use inline filterNot without trailing "/" normalization,
+    // so --exclude-pkg "exampl" incorrectly matches "example/" symbols.
+    // With proper normalization, "exampl/" should NOT match "example/" FQNs.
+    val ctx = makeCtx(depth = Some(1), excludePkgPatterns = List("exampl"))
+    val result = cmdFlow(List("example/Main.main()."), ctx)
+    result match
+      case SemCmdResult.FlowTree(_, lines) =>
+        // "exampl" (without e) normalized to "exampl/" should NOT match "example/" symbols
+        assert(lines.size > 1,
+          s"--exclude-pkg 'exampl' should not exclude 'example/' symbols in flow: $lines")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("--exclude-pkg normalizes with trailing slash in callers tree walk") {
+    // Same bug in transitive callers (--depth > 1)
+    // Use "greet" which is called by main via all.foreach(a => println(a.greet()))
+    val ctxBaseline = makeCtx(depth = Some(2), kindFilter = Some("method"))
+    val baseline = cmdCallers(List("greet"), ctxBaseline)
+    val baselineLines = baseline match
+      case SemCmdResult.FlowTree(_, lines) => lines
+      case _ => Nil
+
+    // With --exclude-pkg "exampl" (no trailing 'e'), normalized to "exampl/"
+    // should NOT match "example/" symbols — callers should still appear
+    val ctx = makeCtx(depth = Some(2), excludePkgPatterns = List("exampl"), kindFilter = Some("method"))
+    val result = cmdCallers(List("greet"), ctx)
+    result match
+      case SemCmdResult.FlowTree(_, lines) =>
+        assertEquals(lines.size, baselineLines.size,
+          s"--exclude-pkg 'exampl' should not exclude 'example/' callers: filtered=$lines baseline=$baselineLines")
+      case other =>
+        if baselineLines.nonEmpty then fail(s"expected FlowTree, got: $other")
+  }
+
   // ── lookup annotations (#303) ─────────────────────────────────────────────
 
   test("formatSymbolLine shows [object] vs [class/trait] annotation") {

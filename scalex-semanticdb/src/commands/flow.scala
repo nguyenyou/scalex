@@ -26,9 +26,9 @@ def cmdFlow(args: List[String], ctx: SemCommandContext): SemCmdResult =
           .filterNot(s => ctx.smart && isMonadicCombinator(s))
           .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
           .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p)))
-          .filterNot(s => ctx.excludePkgPatterns.exists(p => s.fqn.startsWith(p)))
+        val withPkgFilter = filterByExcludePkg(callees, ctx.excludePkgPatterns)
 
-        callees.foreach { callee =>
+        withPkgFilter.foreach { callee =>
           if !visited.contains(callee.fqn) then
             val prefix = "  " * indent
             val loc = ctx.index.definitionRanges.get(callee.fqn) match

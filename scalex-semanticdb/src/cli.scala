@@ -267,7 +267,7 @@ def printUsage(): Unit =
     |  --exclude-test               Exclude symbols from test source directories
     |  --exclude-pkg "p1,p2,..."    Exclude symbols by package prefix (dots auto-converted to /)
     |  --in <scope>                 Scope symbol resolution by owner class, file, or package
-    |  --smart                       Auto-filter noise (accessors, protobuf, monadic combinators)
+    |  --smart                       Auto-filter noise (accessors, protobuf, effect-system combinators)
     |  --timings                    Print timing info to stderr
     |  --version                    Print version
     |""".stripMargin)
