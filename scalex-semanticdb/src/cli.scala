@@ -79,7 +79,7 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
 
   val results = args.map { subCmdStr =>
     val parts = subCmdStr.trim.split("\\s+").toList.filter(_.nonEmpty)
-      .map(t => if (t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'")) then t.substring(1, t.length - 1) else t)
+      .map(t => if t.length > 1 && ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) then t.substring(1, t.length - 1) else t)
     if parts.isEmpty then (command = subCmdStr, result = SemCmdResult.UsageError("Empty sub-command"))
     else {
       val subCmd  = parts.head

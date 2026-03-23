@@ -24,13 +24,13 @@ def isTestSource(uri: String): Boolean =
   lower.endsWith("test.scala") || lower.endsWith("spec.scala") ||
   lower.endsWith("suite.scala") || lower.endsWith("integ.scala")
 
-/** Well-known monadic/functional combinator names that are plumbing noise. */
+/** Monadic/effect combinator names that are unambiguously plumbing noise.
+  * Only includes names unlikely to appear as business-domain methods.
+  * Common names like `map`, `filter`, `foreach`, `fold` are excluded
+  * because user-defined domain methods often share those names. */
 private val monadicCombinatorNames = Set(
-  "flatMap", "map", "traverse", "unit", "pure", "succeed", "attempt",
-  "fold", "fromOption", "foreach", "filter", "collect",
-  "getOrElse", "orElse", "toOption", "as", "when", "unless",
-  "catchAll", "catchSome", "mapError", "tapError",
-  "zip", "zipWith", "zipLeft", "zipRight",
+  "flatMap", "traverse", "pure", "succeed", "attempt",
+  "fromOption", "catchAll", "catchSome", "mapError", "tapError",
 )
 
 def isMonadicCombinator(s: SemSymbol): Boolean =
@@ -42,7 +42,10 @@ def filterByExclude(symbols: List[SemSymbol], patterns: List[String]): List[SemS
 
 def filterByExcludePkg(symbols: List[SemSymbol], patterns: List[String]): List[SemSymbol] =
   if patterns.isEmpty then symbols
-  else symbols.filterNot(s => patterns.exists(p => s.fqn.startsWith(p)))
+  else
+    // Ensure each pattern ends with "/" to avoid prefix collisions (e.g. "com/example" matching "com/exampleother")
+    val normalized = patterns.map(p => if p.endsWith("/") then p else p + "/")
+    symbols.filterNot(s => normalized.exists(p => s.fqn.startsWith(p)))
 
 /** Stdlib/trivial prefixes to filter out of call trees. */
 private val trivialPrefixes = Set(
@@ -191,10 +194,11 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
 def formatSymbolLine(s: SemSymbol): String =
   val props = s.propertyNames
   val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
-  // For method/field/constructor members, show [object] vs [class/trait] based on FQN convention
+  // For method/field/constructor members, show [object] vs [class/trait] based on FQN convention.
+  // Use lastIndexOf to avoid matching displayName in package path (e.g. "com/example/bar/Foo#bar().")
   val memberOf =
     if s.kind == SemKind.Method || s.kind == SemKind.Field || s.kind == SemKind.Constructor then
-      val nameStart = s.fqn.indexOf(s.displayName)
+      val nameStart = s.fqn.lastIndexOf(s.displayName)
       if nameStart > 0 then
         s.fqn.charAt(nameStart - 1) match
           case '#' => " [class/trait]"

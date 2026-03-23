@@ -16,7 +16,10 @@ def cmdLookup(args: List[String], ctx: SemCommandContext): SemCmdResult =
             s.fqn.contains(scopeFqn) ||
             s.sourceUri.contains(scope)
           }
-          if scoped.nonEmpty then scoped else byKind
+          if scoped.nonEmpty then scoped
+          else
+            System.err.println(s"Warning: --in '$scope' matched no candidates, falling back to unscoped resolution")
+            byKind
         case None => byKind
       if filtered.isEmpty then
         SemCmdResult.NotFound(s"No symbol found matching '$query'")
