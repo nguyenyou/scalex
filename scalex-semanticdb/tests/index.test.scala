@@ -112,12 +112,9 @@ class IndexTest extends SemTestBase:
   test("incremental rebuild reuses unchanged documents") {
     val totalFiles = index.fileCount
 
-    // Touch one .semanticdb file to trigger staleness
-    val sdbFiles = Discovery.discoverFromExplicitPath(semanticdbDir).files
-    assert(sdbFiles.nonEmpty, "should have .semanticdb files")
-    val target = sdbFiles.head
-    // Set mtime to future to guarantee staleness
-    java.nio.file.Files.setLastModifiedTime(target, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 10000))
+    // Touch the semanticdb directory itself to trigger staleness detection.
+    // The staleness check stats directories (from the saved manifest), not individual files.
+    java.nio.file.Files.setLastModifiedTime(semanticdbDir, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 10000))
 
     // Build should detect staleness and do incremental rebuild
     val index3 = SemIndex(workspace)

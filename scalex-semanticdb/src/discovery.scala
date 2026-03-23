@@ -13,9 +13,10 @@ object Discovery:
 
   /** Find all .semanticdb files under workspace build output directories.
     * Uses targeted discovery for Mill (semanticDbDataDetailed.dest) and sbt (target/).
-    * Returns files and the max mtime (ms since epoch) across all discovered files. */
-  def discoverSemanticdbFiles(workspace: Path): (files: List[Path], maxMtimeMs: Long) =
+    * Returns files, max mtime, and the semanticdb parent directories walked (for manifest caching). */
+  def discoverSemanticdbFiles(workspace: Path): (files: List[Path], maxMtimeMs: Long, semanticdbDirs: List[Path]) =
     val results = ListBuffer.empty[Path]
+    val walkedDirs = ListBuffer.empty[Path]
     var maxMtime = 0L
 
     // Mill: find semanticDbDataDetailed.dest dirs, then walk only data/META-INF/semanticdb/
@@ -27,38 +28,43 @@ object Discovery:
           // Prefer data/ over classes/ (both contain the same files)
           val dataDir = dest.resolve("data").resolve("META-INF").resolve("semanticdb")
           if Files.isDirectory(dataDir) then
+            walkedDirs += dataDir
             maxMtime = math.max(maxMtime, walkSemanticdbDir(dataDir, results))
           else
             // Fallback: check classes/
             val classesDir = dest.resolve("classes").resolve("META-INF").resolve("semanticdb")
             if Files.isDirectory(classesDir) then
+              walkedDirs += classesDir
               maxMtime = math.max(maxMtime, walkSemanticdbDir(classesDir, results))
         if results.nonEmpty then
           val deduped = deduplicateByRelativePath(results.toList)
-          return (files = deduped, maxMtimeMs = maxMtime)
+          return (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
 
       // Direct META-INF/semanticdb/ under out/ (e.g. scalac -semanticdb-target)
       val directDir = outDir.resolve("META-INF").resolve("semanticdb")
       if Files.isDirectory(directDir) then
+        walkedDirs += directDir
         maxMtime = math.max(maxMtime, walkSemanticdbDir(directDir, results))
         if results.nonEmpty then
           val deduped = deduplicateByRelativePath(results.toList)
-          return (files = deduped, maxMtimeMs = maxMtime)
+          return (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
 
       // No Mill structure found — fall through to generic walk of out/
+      walkedDirs += outDir
       maxMtime = math.max(maxMtime, walkForSemanticdb(outDir, results))
       if results.nonEmpty then
         val deduped = deduplicateByRelativePath(results.toList)
-        return (files = deduped, maxMtimeMs = maxMtime)
+        return (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
 
     // sbt / Bloop: walk target/ and .bloop/ looking for META-INF/semanticdb
     for dirName <- List("target", ".bloop") do
       val dir = workspace.resolve(dirName)
       if Files.isDirectory(dir) then
+        walkedDirs += dir
         maxMtime = math.max(maxMtime, walkForSemanticdb(dir, results))
 
     val deduped = deduplicateByRelativePath(results.toList)
-    (files = deduped, maxMtimeMs = maxMtime)
+    (files = deduped, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs.toList)
 
   /** Find Mill's semanticDbDataDetailed.dest directories under out/.
     * Walks only directory entries looking for the target name — skips file content entirely. */
