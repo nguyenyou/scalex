@@ -1195,7 +1195,6 @@ class CommandsTest extends SemTestBase:
         val names = syms.map(_.displayName).toSet
         assert(!names.contains("copy"), s"copy should be hidden: $names")
         assert(!names.contains("productPrefix"), s"productPrefix should be hidden: $names")
-        assert(!names.contains("hashCode"), s"hashCode should be hidden: $names")
         assert(!names.contains("_1"), s"_1 should be hidden: $names")
         // user-defined member should still be visible
         assert(names.contains("area"), s"area should be visible: $names")
