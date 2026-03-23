@@ -184,6 +184,16 @@
 - [x] `lookup` shows `[object]`/`[class/trait]` annotations for method/field members
 - [x] FQN resolution `#`↔`.` fallback with stderr hint
 
+### scalex-sdb: daemon mode & Mill-only discovery
+
+- [x] `daemon` command — stdin/stdout JSON-lines server, keeps index hot in memory (<10ms queries vs ~1.5s CLI)
+- [x] 8 defensive termination layers: stdin EOF, parent PID monitoring, idle timeout, max lifetime, shutdown command, per-query timeout, heap pressure, shutdown hook
+- [x] `--parent-pid PID` flag — daemon auto-exits when parent process dies
+- [x] Auto-rebuild on staleness — checks `.semanticdb` directory mtimes before each query (~7ms)
+- [x] Mill-only discovery — parallel `semanticDbDataDetailed.dest/data/` walk, ~44% faster
+- [x] Removed `--semanticdb-path` flag — Mill's `out/` is the only supported layout
+- [x] 7 subprocess-based daemon lifecycle tests (stdin-eof, idle-timeout, max-lifetime, shutdown, heartbeat, query-response, error-recovery)
+
 ## Completed
 
 ### JavaParser-based Java extraction (#167)

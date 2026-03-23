@@ -232,11 +232,13 @@ class SemIndex(val workspace: Path):
   def occurrenceCount: Int = _occurrenceCount
 
   /** Cheap staleness check for daemon mode. Returns true if semanticdb dirs
-    * have changed since the given timestamp. Does NOT reload from disk. ~7ms. */
+    * have changed since the given timestamp. Does NOT reload from disk. ~7ms.
+    * Returns true on missing/empty manifest (same as build()'s staleness logic)
+    * so the daemon triggers a rebuild instead of silently serving stale data. */
   def isStale(sinceMs: Long): Boolean =
     SemPersistence.loadDirsManifest(workspace) match
       case Some(dirs) if dirs.nonEmpty => SemPersistence.anyDirNewerThan(dirs, sinceMs)
-      case _ => false
+      case _ => true // no manifest or empty dirs → must rebuild (matches build() behavior)
 
   // ── Pre-built indexes (populated by buildIndexMaps in a single pass) ──
 

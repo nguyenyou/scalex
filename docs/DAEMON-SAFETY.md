@@ -108,7 +108,7 @@ From [Guido Flohr's analysis](https://www.guido-flohr.net/never-delete-your-pid-
 
 ## 3. Our Current Implementation: Audit
 
-### Five Layers (from `daemon.scala`)
+### Eight Layers (from `daemon.scala`)
 
 | Layer | Mechanism | Triggers | Status |
 |-------|-----------|----------|--------|
@@ -357,15 +357,15 @@ Things we must **never** add to the daemon:
 | Feature | scalex-sdb | sbt server | Bloop | Metals | Gradle | gopls | rust-analyzer |
 |---------|-----------|------------|-------|--------|--------|-------|---------------|
 | stdin EOF detection | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Parent PID monitoring | 🔜 | ❌ | ❌ | ✅ (fixed) | ❌ | ❌ | ❌ |
+| Parent PID monitoring | ✅ | ❌ | ❌ | ✅ (fixed) | ❌ | ❌ | ❌ |
 | Idle timeout | ✅ 5min | ✅ 5min | ❌ | ❌ | ✅ 3hr | ✅ 1min | ❌ |
 | Max lifetime cap | ✅ 30min | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Explicit shutdown | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Shutdown hook | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
-| Heap monitoring | 🔜 | ❌ | ❌ | ❌ | ✅ | N/A | N/A |
-| Lifecycle tests | 🔜 | ❌ | Partial | Partial | Partial | ❌ | ❌ |
+| Heap monitoring | ✅ | ❌ | ❌ | ❌ | ✅ | N/A | N/A |
+| Lifecycle tests | ✅ | ❌ | Partial | Partial | Partial | ❌ | ❌ |
 
-scalex-sdb already has more termination layers than any tool surveyed. The planned additions (parent PID, heap monitoring, lifecycle tests) will make it the most defensively-programmed daemon in the Scala ecosystem.
+scalex-sdb has more termination layers (8) than any tool surveyed, with full lifecycle test coverage.
 
 ---
 

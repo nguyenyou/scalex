@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added (scalex-sdb)
-- `daemon` command — stdin/stdout JSON-lines server that keeps the index hot in memory. Queries drop from ~3.2s to <10ms. Self-terminates aggressively via 5 defensive layers: stdin EOF, idle timeout (default 5 min), max lifetime (default 30 min), shutdown command, SIGTERM/SIGINT.
+- `daemon` command — stdin/stdout JSON-lines server that keeps the index hot in memory. Queries drop from ~3.2s to <10ms. Self-terminates aggressively via 8 defensive layers: stdin EOF, parent PID monitoring, idle timeout (default 5 min), max lifetime (default 30 min), shutdown command, per-query timeout (30s), heap pressure detection, SIGTERM/SIGINT.
 
 ### Changed (scalex-sdb)
 - Discovery now Mill-only: parallel `semanticDbDataDetailed.dest/data/` walk, skip `classes/`, removed sbt/Bloop/generic fallback. Discovery ~44% faster on large projects.

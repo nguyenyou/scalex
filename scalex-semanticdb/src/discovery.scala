@@ -15,23 +15,29 @@ object Discovery:
   def discoverSemanticdbFiles(workspace: Path): (files: List[Path], maxMtimeMs: Long, semanticdbDirs: List[Path]) =
     val outDir = workspace.resolve("out")
     if !Files.isDirectory(outDir) then
-      return (files = Nil, maxMtimeMs = 0L, semanticdbDirs = Nil)
+      (files = Nil, maxMtimeMs = 0L, semanticdbDirs = Nil)
+    else
+      // Mill: find semanticDbDataDetailed.dest dirs, walk data/META-INF/semanticdb/ in parallel
+      val destDirs = findMillSemanticdbDests(outDir)
+      val millResult =
+        if destDirs.nonEmpty then
+          val r = walkMillDestDirsParallel(destDirs)
+          if r.files.nonEmpty then Some(r) else None
+        else None
 
-    // Mill: find semanticDbDataDetailed.dest dirs, walk data/META-INF/semanticdb/ in parallel
-    val destDirs = findMillSemanticdbDests(outDir)
-    if destDirs.nonEmpty then
-      val (files, maxMtime, walkedDirs) = walkMillDestDirsParallel(destDirs)
-      if files.nonEmpty then
-        return (files = files, maxMtimeMs = maxMtime, semanticdbDirs = walkedDirs)
-
-    // Fallback: direct META-INF/semanticdb/ under out/ (e.g. scalac -semanticdb-target)
-    val directDir = outDir.resolve("META-INF").resolve("semanticdb")
-    if Files.isDirectory(directDir) then
-      val (files, maxMtime) = walkSemanticdbDir(directDir)
-      if files.nonEmpty then
-        return (files = files, maxMtimeMs = maxMtime, semanticdbDirs = List(directDir))
-
-    (files = Nil, maxMtimeMs = 0L, semanticdbDirs = Nil)
+      millResult match
+        case Some(r) => r
+        case None =>
+          // Fallback: direct META-INF/semanticdb/ under out/ (e.g. scalac -semanticdb-target)
+          val directDir = outDir.resolve("META-INF").resolve("semanticdb")
+          if Files.isDirectory(directDir) then
+            val walked = walkSemanticdbDir(directDir)
+            if walked.files.nonEmpty then
+              (files = walked.files, maxMtimeMs = walked.maxMtime, semanticdbDirs = List(directDir))
+            else
+              (files = Nil, maxMtimeMs = 0L, semanticdbDirs = Nil)
+          else
+            (files = Nil, maxMtimeMs = 0L, semanticdbDirs = Nil)
 
   /** Walk Mill dest directories in parallel, collecting .semanticdb files from data/META-INF/semanticdb/.
     * Each module's directory is walked on a separate thread via parallelStream(). */

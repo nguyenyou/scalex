@@ -32,9 +32,7 @@ import java.nio.file.{Files, Path}
     val idleTimeout = daemonFlags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
     val maxLifetime = daemonFlags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
     runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid)
-    return
-
-  if cmd == "index" then
+  else if cmd == "index" then
     index.rebuild()
     val result = SemCmdResult.Stats(
       index.fileCount, index.symbolCount, index.occurrenceCount,
@@ -43,26 +41,25 @@ import java.nio.file.{Files, Path}
     val ctx = flagsToContext(flags, index, workspace)
     render(result, ctx)
     SemTimings.report()
-    return
+  else
+    // For all other commands, build/load the index first.
+    // Symbol-only commands skip loading occurrences (~70% faster on large projects).
+    val needOccs = cmd match
+      case "lookup" | "symbols" | "members" | "subtypes" | "supertypes" | "type" => false
+      case _ => true // refs, callers, callees, flow, path, explain, related, occurrences, batch
+    index.build(needOccs)
 
-  // For all other commands, build/load the index first.
-  // Symbol-only commands skip loading occurrences (~70% faster on large projects).
-  val needOccs = cmd match
-    case "lookup" | "symbols" | "members" | "subtypes" | "supertypes" | "type" => false
-    case _ => true // refs, callers, callees, flow, path, explain, related, occurrences, batch
-  index.build(needOccs)
+    val ctx = flagsToContext(flags, index, workspace)
 
-  val ctx = flagsToContext(flags, index, workspace)
+    val result =
+      if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
+      else
+        commands.get(cmd) match
+          case Some(handler) => handler(flags.cleanArgs, ctx)
+          case None => SemCmdResult.UsageError(s"Unknown command: $cmd\nRun with --help for usage.")
 
-  val result =
-    if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
-    else
-      commands.get(cmd) match
-        case Some(handler) => handler(flags.cleanArgs, ctx)
-        case None => SemCmdResult.UsageError(s"Unknown command: $cmd\nRun with --help for usage.")
-
-  render(result, ctx)
-  SemTimings.report()
+    render(result, ctx)
+    SemTimings.report()
 
 // ── Command dispatch ───────────────────────────────────────────────────────
 

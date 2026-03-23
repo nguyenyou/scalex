@@ -212,6 +212,27 @@ class IndexTest extends SemTestBase:
     assertEquals(idx.occurrenceCount, 0, "occurrenceCount should be 0 when occurrences skipped")
   }
 
+  test("isStale returns true on missing or empty manifest") {
+    // Bug: isStale returned false on missing/empty manifest, while build() returned true.
+    // Daemon uses isStale() as its only staleness check — if it returns false on missing
+    // manifest, the daemon silently serves empty/stale results forever after mill clean.
+    val idx = SemIndex(workspace)
+
+    // Case 1: missing manifest file
+    val manifestPath = workspace.resolve(".scalex").resolve("semanticdb-dirs.txt")
+    val hadManifest = java.nio.file.Files.exists(manifestPath)
+    if hadManifest then java.nio.file.Files.delete(manifestPath)
+    assert(idx.isStale(0L), "isStale should return true when manifest file is missing")
+    if hadManifest then ensureFreshCache() // restore
+
+    // Case 2: empty manifest file
+    ensureFreshCache()
+    java.nio.file.Files.writeString(manifestPath, "")
+    assert(idx.isStale(0L), "isStale should return true when manifest is empty")
+
+    ensureFreshCache()
+  }
+
   test("empty dirs manifest triggers full discovery on next build") {
     // Bug: empty manifest made anyDirNewerThan always return false, never detecting new files
     ensureFreshCache()
