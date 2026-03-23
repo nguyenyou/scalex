@@ -1,6 +1,6 @@
 ---
 name: scalex-sdb
-description: "Compiler-precise Scala code intelligence from SemanticDB data. Call graph analysis (callers, callees, flow), precise references with zero false positives, resolved type signatures, related symbol discovery. Requires compiled .semanticdb files (Scala 2/3). Triggers: \"who calls X\", \"what does X call\", \"trace the call flow from X\", \"what calls this method\", \"precise references of X\", \"what type does X return\", \"show callers of X\", \"call graph of X\", \"what symbols are related to X\", \"what methods does this class have with types\", \"trace execution flow\", \"trace the service layers\", \"how does A reach B\", \"find call path from X to Y\", \"explain this method\", \"summarize this symbol\", or when you need compiler-precise (not text-based) code intelligence. Use this over scalex when you need call graphs, type information, or zero-false-positive references. Use scalex for zero-setup exploration; use scalex-sdb when the project has been compiled with SemanticDB enabled."
+description: "Compiler-precise Scala code intelligence from SemanticDB data. Call graph analysis (callers, callees, flow), precise references with zero false positives, resolved type signatures, related symbol discovery. Requires compiled .semanticdb files (Scala 2/3). Triggers: \"who calls X\", \"what does X call\", \"trace the call flow from X\", \"what calls this method\", \"precise references of X\", \"what type does X return\", \"show callers of X\", \"call graph of X\", \"what symbols are related to X\", \"what methods does this class have with types\", \"trace execution flow\", \"trace the service layers\", \"how does A reach B\", \"find call path from X to Y\", \"explain this method\", or when you need compiler-precise (not text-based) code intelligence. Use this over scalex when you need call graphs, type information, or zero-false-positive references. Use scalex for zero-setup exploration; use scalex-sdb when the project has been compiled with SemanticDB enabled. Daemon mode: <10ms queries."
 ---
 
 You have access to `scalex-sdb`, a compiler-precise Scala code intelligence CLI. It reads `.semanticdb` files produced by the Scala compiler and provides capabilities that source-text parsing fundamentally cannot:
@@ -14,7 +14,7 @@ You have access to `scalex-sdb`, a compiler-precise Scala code intelligence CLI.
 
 **Use scalex as your primary tool** for exploration — it's zero-setup and fast. Reach for scalex-sdb when you need precision: `callers`, precise `refs`, exhaustive `subtypes`, or resolved types.
 
-First run discovers and indexes `.semanticdb` files from build output (~10s for large codebases). Subsequent runs load from cache (~1.5s). Index is stored at `.scalex/semanticdb.bin`.
+First run discovers and indexes `.semanticdb` files from build output (~10s for large codebases). Subsequent CLI runs load from cache (~1.5s). For agents making many queries, the **daemon mode** keeps the index hot in memory — queries take **<10ms** instead of 1.5s. Index is stored at `.scalex/semanticdb.bin`.
 
 ## Setup
 
@@ -261,6 +261,94 @@ scalex-sdb batch "lookup Dog" "members Animal" "subtypes Shape" -w /project
 scalex-sdb batch "callers handleRequest" "callees processPayment --smart" -w /project
 ```
 
+### Daemon mode (for coding agents)
+
+The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1.5s. If you're making multiple queries in a session, the daemon is dramatically faster than repeated CLI invocations or even `batch`.
+
+#### Starting the daemon
+
+```bash
+# Start as a subprocess — reads JSON-lines from stdin, writes JSON to stdout
+bash "/path/to/scalex-sdb-cli" daemon --parent-pid $$ -w /project
+
+# With custom timeouts (idle=120s, max-lifetime=600s):
+bash "/path/to/scalex-sdb-cli" daemon --parent-pid $$ 120 600 -w /project
+```
+
+The daemon emits a ready signal on stdout when the index is loaded:
+```json
+{"ok":true,"event":"ready","files":142,"symbols":3580,"occurrences":28400,"buildTimeMs":1823}
+```
+
+Wait for this line before sending queries.
+
+#### Request/response protocol (JSON-lines on stdin/stdout)
+
+Send one JSON object per line to stdin. The daemon responds with one JSON line on stdout per request.
+
+**Request format:**
+```json
+{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method","--depth":"3"}}
+```
+
+- `command` (required): any command name (`callers`, `refs`, `lookup`, `stats`, `heartbeat`, `shutdown`, etc.)
+- `args` (optional): list of positional arguments
+- `flags` (optional): map of flags to values. Boolean flags use `"true"` as value. Keys can include `--` prefix or not.
+
+**Response format:**
+```json
+{"ok":true,"result":{...}}
+{"ok":false,"error":"parse_error","message":"missing 'command' field"}
+{"ok":false,"error":"unknown_command","message":"Unknown command: foo"}
+{"ok":false,"error":"timeout","message":"Query timed out after 30s"}
+{"ok":false,"error":"internal","message":"..."}
+```
+
+**Special daemon commands:**
+- `{"command":"heartbeat"}` — returns `{"ok":true}`, resets idle timer
+- `{"command":"shutdown"}` — returns `{"ok":true}`, then exits cleanly
+- `{"command":"rebuild"}` — force-rebuilds the index, returns stats with `"event":"rebuilt"`
+- `{"command":"stats"}` — returns index statistics
+
+**Examples:**
+```json
+{"command":"callers","args":["processPayment"],"flags":{"--kind":"method","--exclude":"test"}}
+{"command":"refs","args":["Config"]}
+{"command":"callees","args":["createOrder"],"flags":{"--smart":"true","--kind":"method"}}
+{"command":"explain","args":["processPayment"],"flags":{"--kind":"method"}}
+{"command":"batch","args":["callers handleRequest","subtypes Repository","members Config"]}
+{"command":"stats"}
+{"command":"heartbeat"}
+```
+
+#### Auto-rebuild on staleness
+
+The daemon checks if `.semanticdb` files have changed before each query (~7ms check). If files are newer than the last build, it automatically rebuilds — no need to send `rebuild` manually after recompilation.
+
+#### Safety guarantees
+
+The daemon is designed to self-terminate aggressively — it will never become a zombie process. Eight independent termination layers ensure this:
+
+1. **Stdin EOF** — if you close stdin (or your process dies), the daemon exits immediately
+2. **Parent PID monitoring** — pass `--parent-pid <PID>` and the daemon exits when that process dies (works even if stdin stays open)
+3. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
+4. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)
+5. **Per-query timeout** — any query taking >30s returns a timeout error instead of hanging
+6. **Heap pressure** — exits if JVM memory usage exceeds 85% after GC
+7. **Startup timeout** — exits if index building takes >120s
+8. **Shutdown hook** — SIGTERM/SIGINT triggers clean exit
+
+You do not need to worry about cleanup — the daemon handles it. But you can send `{"command":"shutdown"}` for explicit clean shutdown.
+
+#### When to use daemon vs CLI vs batch
+
+| Scenario | Best approach | Why |
+|---|---|---|
+| 1-2 queries in a session | CLI (`scalex-sdb callers ...`) | Simplest, no setup overhead |
+| 3-5 related queries | `batch` | Amortizes 1.5s load, single command |
+| Many queries over time | Daemon | <10ms per query after initial load |
+| Exploratory session (asking 10+ questions) | Daemon | Dramatically faster iteration |
+
 ### Index management
 
 ```bash
@@ -318,7 +406,7 @@ scalex-sdb callees "com/example/OrderService#createOrder()."
 
 **Pitfall 2: Using `flow` without `--smart` on large codebases.** Raw `flow` at depth 3 can produce thousands of lines because it follows every val accessor, generated method, and utility call. On large codebases, always use `--smart`. If still too verbose, fall back to `callees --smart` (flat list, same signal, no depth explosion).
 
-**Pitfall 3: One query at a time.** Each invocation pays ~1.5s index load. Use `batch` to amortize this when verifying multiple symbols:
+**Pitfall 3: Paying 1.5s index load per query.** Each CLI invocation reloads the index. For a handful of queries, use `batch`. For many queries across a session, use the daemon (keeps index in memory, <10ms per query):
 
 ```bash
 # Bad: 3 invocations = ~4.5s of index loading
@@ -326,8 +414,12 @@ scalex-sdb callers handleRequest -w /project
 scalex-sdb subtypes Repository -w /project
 scalex-sdb members Config -w /project
 
-# Good: 1 invocation = ~1.5s of index loading
+# Good for a few queries: batch amortizes the load
 scalex-sdb batch "callers handleRequest" "subtypes Repository" "members Config" -w /project
+
+# Best for many queries: daemon keeps index hot (<10ms per query)
+# Start once, query many times via stdin JSON-lines
+bash "/path/to/scalex-sdb-cli" daemon --parent-pid $$ -w /project
 ```
 
 ### Decision tree: which command to use
@@ -346,7 +438,8 @@ What do you need?
 ├─ "What type is X?" ──────────── type X
 ├─ "What members does X have?" ── members X
 ├─ "What's related to X?" ─────── related X
-└─ "Verify 5 symbols at once" ── batch "cmd1" "cmd2" "cmd3" ...
+├─ "Verify 5 symbols at once" ── batch "cmd1" "cmd2" "cmd3" ...
+└─ "Many queries in a session" ── daemon (keeps index hot, <10ms/query)
 ```
 
 ### Common workflows

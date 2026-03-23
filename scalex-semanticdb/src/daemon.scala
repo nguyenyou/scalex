@@ -1,7 +1,27 @@
 import java.nio.file.Path
-import java.util.concurrent.{Executors, ScheduledFuture, TimeUnit}
+import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, TimeUnit}
 
 // ── Daemon mode ───────────────────────────────────────────────────────────
+//
+// TERMINATION CONTRACT — every code path MUST lead to eventual JVM exit.
+//
+// Eight defensive layers (ordered by reliability):
+//   1.   Stdin EOF          — pipe closure on parent death (even SIGKILL)
+//   1.5  Parent PID exit    — ProcessHandle.onExit() backup (optional --parent-pid)
+//   2.   Idle timeout       — no request for N seconds (resettable, default 300)
+//   3.   Max lifetime       — hard cap regardless of activity (default 1800)
+//   4.   Shutdown command   — explicit {"command":"shutdown"}
+//   5.   Per-query timeout  — any query >30s returns error (prevents hung dispatch)
+//   6.   Heap pressure      — >85% heap after GC → exit
+//   7.   Startup timeout    — 120s to build index or die (exit code 1)
+//   8.   Shutdown hook      — SIGTERM/SIGINT cleanup
+//
+// RULES:
+//   - Never add keep-alive logic, reconnection attempts, or retry loops
+//   - Never weaken any termination layer
+//   - If something goes wrong, the correct behavior is to die
+//   - All exits use System.exit(0) except startup failure (exit code 1)
+//
 
 case class DaemonRequest(
   command: String,
@@ -9,20 +29,43 @@ case class DaemonRequest(
   flags: Map[String, String] = Map.empty,
 )
 
-def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit =
-  // 1. Build index with full occurrences
-  System.err.println("scalex-sdb daemon starting...")
-  val index = SemIndex(workspace)
-  index.build(needOccurrences = true)
-  var lastBuildMs = System.currentTimeMillis()
+private val QueryTimeoutSec = 30L
+private val StartupTimeoutSec = 120L
+private val HeapCheckIntervalSec = 60L
 
-  // 2. Self-termination timers
+def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None): Unit =
+  System.err.println("scalex-sdb daemon starting...")
+
+  // Self-termination timers (created early so startup timeout works)
   val scheduler = Executors.newSingleThreadScheduledExecutor { r =>
     val t = Thread(r, "daemon-watchdog")
     t.setDaemon(true)
     t
   }
 
+  // Layer 7: Startup timeout — 120s to build index or die
+  val startupTimer = scheduler.schedule(
+    (() => { System.err.println("Startup timeout, exiting."); System.exit(1) }): Runnable,
+    StartupTimeoutSec, TimeUnit.SECONDS,
+  )
+
+  // Build index with full occurrences
+  val index = SemIndex(workspace)
+  index.build(needOccurrences = true)
+  startupTimer.cancel(false)
+  var lastBuildMs = System.currentTimeMillis()
+
+  // Layer 1.5: Parent PID monitoring (optional)
+  parentPid.foreach { pid =>
+    ProcessHandle.of(pid).ifPresent { handle =>
+      handle.onExit().thenRun { () =>
+        System.err.println(s"Parent process $pid exited, shutting down.")
+        System.exit(0)
+      }
+    }
+  }
+
+  // Layer 2: Idle timeout (resettable)
   @volatile var idleTask: ScheduledFuture[?] = null
 
   def resetIdleTimer(): Unit =
@@ -32,25 +75,41 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit
       idleTimeoutSec, TimeUnit.SECONDS,
     )
 
-  // Max lifetime — non-resettable
+  // Layer 3: Max lifetime — non-resettable
   scheduler.schedule(
     (() => { System.err.println("Max lifetime reached, exiting."); System.exit(0) }): Runnable,
     maxLifetimeSec, TimeUnit.SECONDS,
   )
 
-  // 3. Shutdown hook
+  // Layer 6: Heap pressure monitoring — exit if memory is critically low
+  scheduler.scheduleAtFixedRate(
+    { () =>
+      val runtime = Runtime.getRuntime()
+      val used = runtime.totalMemory() - runtime.freeMemory()
+      val max = runtime.maxMemory()
+      if max > 0 && used.toDouble / max > 0.90 then
+        System.gc()
+        val usedAfterGc = runtime.totalMemory() - runtime.freeMemory()
+        if usedAfterGc.toDouble / max > 0.85 then
+          System.err.println(s"Heap pressure critical (${usedAfterGc / 1024 / 1024}MB / ${max / 1024 / 1024}MB after GC), exiting.")
+          System.exit(0)
+    }: Runnable,
+    HeapCheckIntervalSec, HeapCheckIntervalSec, TimeUnit.SECONDS,
+  )
+
+  // Layer 8: Shutdown hook
   val shutdownThread = new Thread:
     override def run(): Unit =
       System.err.println("Daemon shutting down.")
       scheduler.shutdownNow()
   Runtime.getRuntime().addShutdownHook(shutdownThread)
 
-  // 4. Ready signal
+  // Ready signal
   resetIdleTimer()
   println(s"""{"ok":true,"event":"ready","files":${index.fileCount},"symbols":${index.symbolCount},"occurrences":${index.occurrenceCount},"buildTimeMs":${index.buildTimeMs}}""")
   System.out.flush()
 
-  // 5. Main loop
+  // Layer 1: Stdin EOF — main loop
   val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in))
   while true do
     val line = reader.readLine()
@@ -63,11 +122,23 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit
       resetIdleTimer()
       SemTimings.reset()
       try
-        val response = handleDaemonRequest(trimmed, index, workspace, lastBuildMs)
-        // Update lastBuildMs if a rebuild happened
+        // Layer 5: Per-query timeout — 30s max per query
+        val future = CompletableFuture.supplyAsync { () =>
+          handleDaemonRequest(trimmed, index, workspace, lastBuildMs)
+        }
+        val response =
+          try future.get(QueryTimeoutSec, TimeUnit.SECONDS)
+          catch
+            case _: java.util.concurrent.TimeoutException =>
+              future.cancel(true)
+              DaemonResponse(s"""{"ok":false,"error":"timeout","message":"Query timed out after ${QueryTimeoutSec}s"}""")
         if response.rebuilt then lastBuildMs = System.currentTimeMillis()
         println(response.json)
       catch
+        case e: java.util.concurrent.ExecutionException =>
+          val cause = if e.getCause != null then e.getCause else e
+          System.err.println(s"Error: ${cause.getMessage}")
+          println(s"""{"ok":false,"error":"internal","message":${jsonStr(cause.getMessage)}}""")
         case e: Exception =>
           System.err.println(s"Error: ${e.getMessage}")
           println(s"""{"ok":false,"error":"internal","message":${jsonStr(e.getMessage)}}""")
@@ -78,10 +149,13 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit
 private case class DaemonResponse(json: String, rebuilt: Boolean = false)
 
 private def handleDaemonRequest(line: String, index: SemIndex, workspace: Path, lastBuildMs: Long): DaemonResponse =
-  val req = parseDaemonRequest(line) match
-    case Left(err) => return DaemonResponse(s"""{"ok":false,"error":"parse_error","message":${jsonStr(err)}}""")
-    case Right(r) => r
+  parseDaemonRequest(line) match
+    case Left(err) =>
+      DaemonResponse(s"""{"ok":false,"error":"parse_error","message":${jsonStr(err)}}""")
+    case Right(req) =>
+      dispatchDaemonCommand(req, index, workspace, lastBuildMs)
 
+private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace: Path, lastBuildMs: Long): DaemonResponse =
   req.command match
     case "heartbeat" =>
       DaemonResponse("""{"ok":true}""")
@@ -102,35 +176,35 @@ private def handleDaemonRequest(line: String, index: SemIndex, workspace: Path, 
       DaemonResponse(stats)
 
     case cmd =>
-      // Check staleness before query (~7ms)
-      val rebuilt = if index.isStale(lastBuildMs) then
-        System.err.println("Index stale, rebuilding...")
-        index.rebuild()
-        true
-      else false
+      // Validate command exists before doing any work
+      if cmd != "batch" && !commands.contains(cmd) then
+        DaemonResponse(s"""{"ok":false,"error":"unknown_command","message":${jsonStr(s"Unknown command: $cmd")}}""")
+      else
+        // Check staleness before query (~7ms)
+        val rebuilt = if index.isStale(lastBuildMs) then
+          System.err.println("Index stale, rebuilding...")
+          index.rebuild()
+          true
+        else false
 
-      // Translate daemon request to CLI-style args and dispatch
-      val argList = flagsToArgList(req.flags) ++ req.args
-      val flags = parseFlags(argList)
-      val ctx = flagsToContext(flags, index, workspace).copy(jsonOutput = true)
+        // Translate daemon request to CLI-style args and dispatch
+        val argList = flagsToArgList(req.flags) ++ req.args
+        val flags = parseFlags(argList)
+        val ctx = flagsToContext(flags, index, workspace).copy(jsonOutput = true)
 
-      // Handle batch separately (uses cleanArgs, not the command dispatch map)
-      val result =
-        if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
-        else
-          commands.get(cmd) match
-            case Some(handler) => handler(flags.cleanArgs, ctx)
-            case None => return DaemonResponse(s"""{"ok":false,"error":"unknown_command","message":${jsonStr(s"Unknown command: $cmd")}}""")
+        val result =
+          if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
+          else commands(cmd)(flags.cleanArgs, ctx)
 
-      // Capture JSON output
-      val buf = java.io.ByteArrayOutputStream()
-      Console.withOut(buf) {
-        Console.withErr(java.io.ByteArrayOutputStream()) {
-          renderJson(result, ctx)
+        // Capture JSON output
+        val buf = java.io.ByteArrayOutputStream()
+        Console.withOut(buf) {
+          Console.withErr(java.io.ByteArrayOutputStream()) {
+            renderJson(result, ctx)
+          }
         }
-      }
-      val jsonResult = buf.toString("UTF-8").trim
-      DaemonResponse(s"""{"ok":true,"result":$jsonResult}""", rebuilt = rebuilt)
+        val jsonResult = buf.toString("UTF-8").trim
+        DaemonResponse(s"""{"ok":true,"result":$jsonResult}""", rebuilt = rebuilt)
 
 // ── Flag translation ──────────────────────────────────────────────────────
 

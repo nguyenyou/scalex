@@ -42,6 +42,15 @@
 |---|---|---|
 | `batch` | `"cmd1" "cmd2" ...` | Run multiple queries in one invocation |
 
+**Daemon (for coding agents):**
+
+| Command | Arguments | Description |
+|---|---|---|
+| `daemon` | `[idle] [max]` | Stdin/stdout JSON-lines server (keeps index hot, <10ms/query) |
+
+Daemon-only options: `--parent-pid PID` (monitor parent process, auto-exit on parent death).
+Positional args: idle timeout seconds (default: 300), max lifetime seconds (default: 1800).
+
 **Index:**
 
 | Command | Arguments | Description |
@@ -103,3 +112,59 @@ All commands support `--json`. Output is a single JSON object per invocation:
 - `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached", "parsedCount", "skippedCount"}`
 - `batch`: `{"batch": [{"command": "...", "result": {...}}, ...]}`
 - Errors: `{"error": "not_found"|"usage", "message": "..."}`
+
+## Daemon Protocol
+
+The daemon communicates via JSON-lines on stdin/stdout. It supports all regular commands plus daemon-specific ones.
+
+### Startup
+
+On launch, the daemon builds the index and emits a ready signal:
+```json
+{"ok":true,"event":"ready","files":142,"symbols":3580,"occurrences":28400,"buildTimeMs":1823}
+```
+
+### Request format
+
+One JSON object per line on stdin:
+```json
+{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method","--depth":"3"}}
+```
+
+- `command` (required): command name
+- `args` (optional): positional arguments as string array
+- `flags` (optional): flag-value pairs. Boolean flags use `"true"`. Keys may include `--` prefix.
+
+### Response format
+
+One JSON object per line on stdout:
+```json
+{"ok":true,"result":{...}}
+{"ok":false,"error":"parse_error|unknown_command|timeout|internal","message":"..."}
+```
+
+### Daemon-specific commands
+
+| Command | Response | Effect |
+|---|---|---|
+| `heartbeat` | `{"ok":true}` | Resets idle timer, no-op otherwise |
+| `shutdown` | `{"ok":true}` | Daemon exits after response |
+| `rebuild` | `{"ok":true,"event":"rebuilt","files":N,...}` | Force-rebuilds index |
+| `stats` | `{"ok":true,"result":{"files":N,...}}` | Returns index statistics |
+
+### Auto-rebuild
+
+Before each query, the daemon checks if `.semanticdb` directories have been modified (mtime check, ~7ms). If stale, it automatically rebuilds before dispatching the query.
+
+### Safety guarantees
+
+Eight termination layers ensure the daemon never becomes a zombie:
+
+1. **Stdin EOF** — parent dies → pipe closes → daemon exits immediately
+2. **Parent PID exit** — `--parent-pid PID` → `ProcessHandle.onExit()` → daemon exits when parent dies
+3. **Idle timeout** — no request for N seconds → exit (default: 300s, configurable)
+4. **Max lifetime** — hard cap regardless of activity (default: 1800s, configurable)
+5. **Per-query timeout** — query >30s → returns `{"ok":false,"error":"timeout",...}`, daemon stays alive
+6. **Heap pressure** — used heap >85% after GC → exit
+7. **Startup timeout** — index build >120s → exit with code 1
+8. **Shutdown hook** — SIGTERM/SIGINT → clean exit

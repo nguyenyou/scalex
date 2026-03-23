@@ -24,9 +24,14 @@ import java.nio.file.{Files, Path}
   val index = SemIndex(workspace)
 
   if cmd == "daemon" then
-    val idleTimeout = flags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
-    val maxLifetime = flags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
-    runDaemon(workspace, idleTimeout, maxLifetime)
+    val (parentPid, daemonArgs) = extractDaemonParentPid(rest)
+    val daemonFlags = parseFlags(daemonArgs)
+    val daemonWorkspace = daemonFlags.explicitWorkspace match
+      case Some(w) => Path.of(w).toAbsolutePath.normalize
+      case None    => workspace
+    val idleTimeout = daemonFlags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
+    val maxLifetime = daemonFlags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
+    runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid)
     return
 
   if cmd == "index" then
@@ -140,6 +145,15 @@ case class SemParsedFlags(
   excludePkgPatterns: List[String] = Nil,
   cleanArgs: List[String] = Nil,
 )
+
+private def extractDaemonParentPid(args: List[String]): (parentPid: Option[Long], remaining: List[String]) =
+  val idx = args.indexOf("--parent-pid")
+  if idx >= 0 && idx + 1 < args.length then
+    val pid = args(idx + 1).toLongOption
+    val remaining = args.take(idx) ++ args.drop(idx + 2)
+    (parentPid = pid, remaining = remaining)
+  else
+    (parentPid = None, remaining = args)
 
 def parseFlags(args: List[String]): SemParsedFlags =
   var flags = SemParsedFlags()
@@ -255,7 +269,9 @@ def printUsage(): Unit =
     |  daemon [idle] [max]   Stdin/stdout JSON-lines server (keeps index hot in memory)
     |                        idle = idle timeout seconds (default: 300)
     |                        max  = max lifetime seconds (default: 1800)
-    |                        Self-terminates on: stdin EOF, idle timeout, max lifetime
+    |                        --parent-pid PID  Monitor parent process (auto-exit on parent death)
+    |                        Self-terminates on: stdin EOF, parent PID exit, idle timeout,
+    |                        max lifetime, query timeout (30s), heap pressure, startup timeout (120s)
     |
     |Index:
     |  index                 Rebuild index (force)
