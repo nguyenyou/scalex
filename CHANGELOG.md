@@ -2,8 +2,16 @@
 
 ## [Unreleased]
 
-### Added (scalex-sdb)
+## [scalex-sdb 0.3.0] — 2026-03-24
+
+### Added
 - `daemon` command — stdin/stdout JSON-lines server that keeps the index hot in memory. Queries drop from ~3.2s to <10ms. Self-terminates aggressively via 8 defensive layers: stdin EOF, parent PID monitoring, idle timeout (default 5 min), max lifetime (default 30 min), shutdown command, per-query timeout (30s), heap pressure detection, SIGTERM/SIGINT.
+- `path <source> <target>` command — BFS shortest call path between two symbols (#297)
+- `explain <symbol>` command — one-shot summary: type, callers, callees, parents, members (#297)
+- `callers --depth N` — transitive caller tree with cycle detection (#297)
+- Disambiguation hints — when multiple symbols match, prints candidates to stderr (#297)
+- Auto-staleness detection — query commands detect stale cache by comparing directory mtimes (#298)
+- Incremental indexing — only re-converts `.semanticdb` files whose MD5 changed (#298)
 - `members` now hides compiler-generated case class synthetics by default (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `apply`, `unapply`, etc.). Use `--verbose` to show all. User-overridden methods (`toString`, `equals`, `hashCode`) are never hidden. (#307)
 - `--smart` flag now works on `members` (filters synthetics, infrastructure noise, accessors) and `lookup` (excludes generated sources). Previously only worked on callers/callees/flow/explain. (#307)
 - `--source-only` flag — hard-exclude generated/compiled sources from `lookup` results (#307)
@@ -15,27 +23,15 @@
 - `lookup` multi-match output now shows `[class/trait]` or `[object]` annotation to distinguish member ownership (#303)
 - FQN resolution fallback — when exact FQN match fails, tries swapping `#` ↔ `.` separator before falling back to suffix/name match, with a stderr hint (#303)
 
-### Changed (scalex-sdb)
+### Changed
 - Discovery now Mill-only: parallel `semanticDbDataDetailed.dest/data/` walk, skip `classes/`, removed sbt/Bloop/generic fallback. Discovery ~44% faster on large projects.
 - Removed `--semanticdb-path` flag — Mill's `out/` is the only supported layout. Other build tools will be supported later.
-
-### Fixed (scalex-sdb)
-- `batch` now handles quoted FQN arguments — `batch 'callers "com/example/Foo#bar()."'` no longer fails with "not found" (#303)
-
-## [scalex-sdb 0.3.0] — 2026-03-23
-
-### Added
-- `path <source> <target>` command — BFS shortest call path between two symbols (#297)
-- `explain <symbol>` command — one-shot summary: type, callers, callees, parents, members (#297)
-- `callers --depth N` — transitive caller tree with cycle detection (#297)
-- Disambiguation hints — when multiple symbols match, prints candidates to stderr (#297)
-- Auto-staleness detection — query commands detect stale cache by comparing directory mtimes (#298)
-- Incremental indexing — only re-converts `.semanticdb` files whose MD5 changed (#298)
-
-### Changed
 - `depth` parameter changed from `Int = 3` to `Option[Int] = None` — each command supplies its own default
 - `callers` flat mode now respects `--smart` and `--no-accessors` flags
 - `rebuild` now uses incremental MD5 comparison when a cached index exists
+
+### Fixed
+- `batch` now handles quoted FQN arguments — `batch 'callers "com/example/Foo#bar()."'` no longer fails with "not found" (#303)
 
 ## [scalex-sdb 0.2.0] — 2026-03-23
 
