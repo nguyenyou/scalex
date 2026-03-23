@@ -82,26 +82,43 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
   )
 
   // Layer 6: Heap pressure monitoring — exit if memory is critically low
+  // Runs GC on a separate thread to avoid blocking the scheduler (which also
+  // runs idle-timeout and max-lifetime tasks on its single thread).
   scheduler.scheduleAtFixedRate(
     { () =>
       val runtime = Runtime.getRuntime()
       val used = runtime.totalMemory() - runtime.freeMemory()
       val max = runtime.maxMemory()
       if max > 0 && used.toDouble / max > 0.90 then
-        System.gc()
-        val usedAfterGc = runtime.totalMemory() - runtime.freeMemory()
-        if usedAfterGc.toDouble / max > 0.85 then
-          System.err.println(s"Heap pressure critical (${usedAfterGc / 1024 / 1024}MB / ${max / 1024 / 1024}MB after GC), exiting.")
-          System.exit(0)
+        val gcThread = new Thread:
+          override def run(): Unit =
+            System.gc()
+            val usedAfterGc = runtime.totalMemory() - runtime.freeMemory()
+            if usedAfterGc.toDouble / max > 0.85 then
+              System.err.println(s"Heap pressure critical (${usedAfterGc / 1024 / 1024}MB / ${max / 1024 / 1024}MB after GC), exiting.")
+              System.exit(0)
+        gcThread.setDaemon(true)
+        gcThread.start()
     }: Runnable,
     HeapCheckIntervalSec, HeapCheckIntervalSec, TimeUnit.SECONDS,
   )
+
+  // Single-thread executor for query dispatch — serializes all queries to prevent
+  // concurrent mutation of SemIndex. If a query times out, the background thread
+  // keeps running, but the next query queues behind it (same thread), so no two
+  // queries ever mutate the index simultaneously.
+  val queryExecutor = Executors.newSingleThreadExecutor { r =>
+    val t = Thread(r, "daemon-query")
+    t.setDaemon(true)
+    t
+  }
 
   // Layer 8: Shutdown hook
   val shutdownThread = new Thread:
     override def run(): Unit =
       System.err.println("Daemon shutting down.")
       scheduler.shutdownNow()
+      queryExecutor.shutdownNow()
   Runtime.getRuntime().addShutdownHook(shutdownThread)
 
   // Ready signal
@@ -123,9 +140,12 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
       SemTimings.reset()
       try
         // Layer 5: Per-query timeout — 30s max per query
-        val future = CompletableFuture.supplyAsync { () =>
-          handleDaemonRequest(trimmed, index, workspace, lastBuildMs)
-        }
+        // Uses dedicated single-thread queryExecutor (not ForkJoinPool) to serialize
+        // all queries and prevent concurrent mutation of SemIndex on timeout.
+        val future = CompletableFuture.supplyAsync(
+          { () => handleDaemonRequest(trimmed, index, workspace, lastBuildMs) },
+          queryExecutor,
+        )
         val response =
           try future.get(QueryTimeoutSec, TimeUnit.SECONDS)
           catch
