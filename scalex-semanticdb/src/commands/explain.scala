@@ -47,9 +47,9 @@ def cmdExplain(args: List[String], ctx: SemCommandContext): SemCmdResult =
                 else sym
               val withoutSynthetics =
                 if ctx.verbose then allMembers
-                else allMembers.filterNot(m => isSyntheticCaseClassMember(m, ownerForSynth))
+                else allMembers.filterNot(m => isSyntheticCaseClassMember(m, ownerForSynth) || isDefaultParamAccessor(m))
               val members =
-                if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor).filterNot(isDefaultParamAccessor)
+                if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor)
                 else withoutSynthetics
               (memberList = members.take(5), totalMembers = members.size)
             else (memberList = Nil, totalMembers = 0)

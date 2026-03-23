@@ -17,14 +17,16 @@ def cmdMembers(args: List[String], ctx: SemCommandContext): SemCmdResult =
               ctx.index.symbolByFqn.getOrElse(sym.fqn.stripSuffix(".") + "#", sym)
             else sym
 
-          // Default: hide compiler-generated case class synthetics (unless --verbose)
+          // Default: hide compiler-generated noise (unless --verbose)
+          // - case class synthetics (copy, _N, productElement, etc.)
+          // - default parameter accessors (methodName$default$N) on any class
           val withoutSynthetics =
             if ctx.verbose then raw
-            else raw.filterNot(m => isSyntheticCaseClassMember(m, ownerForSynth))
+            else raw.filterNot(m => isSyntheticCaseClassMember(m, ownerForSynth) || isDefaultParamAccessor(m))
 
-          // --smart: additionally filter infrastructure noise, accessors, default param accessors
+          // --smart: additionally filter infrastructure noise + accessors
           val members =
-            if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor).filterNot(isDefaultParamAccessor)
+            if ctx.smart then withoutSynthetics.filterNot(isInfraNoise).filterNot(isAccessor)
             else withoutSynthetics
 
           val filtered = filterByKind(members, ctx.kindFilter)
