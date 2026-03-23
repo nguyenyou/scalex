@@ -8,7 +8,7 @@
 ### Added (scalex-sdb)
 - `--in <scope>` flag — scope symbol resolution to a containing class, file, or package without requiring full FQN. Works with all single-symbol commands (#303)
 - `--exclude-test` flag — filter out symbols from test source directories (paths containing `/test/`, `/tests/`, `/it/`, `/spec/`, or filenames ending in `Test.scala`, `Spec.scala`, `Suite.scala`, `Integ.scala`). Works with callers, callees, flow, path, explain (#303)
-- `--exclude-pkg "p1,p2,..."` flag — exclude symbols whose FQN starts with any of the given package prefixes (dots auto-converted to `/`) (#303)
+- `--exclude-pkg "p1,p2,..."` flag — exclude symbols whose FQN starts with any of the given package prefixes (dots auto-converted to `/`). Works with callers, callees, flow, path, explain (#303)
 - `--smart` now filters unambiguous effect-system combinators (flatMap, traverse, pure, succeed, attempt, etc.) from callees/flow/callers output. Common names like map, filter, fold are not filtered to avoid hiding domain methods (#303)
 - `lookup` multi-match output now shows `[class/trait]` or `[object]` annotation to distinguish member ownership (#303)
 - FQN resolution fallback — when exact FQN match fails, tries swapping `#` ↔ `.` separator before falling back to suffix/name match, with a stderr hint (#303)

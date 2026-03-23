@@ -76,11 +76,11 @@ def resolveOne(query: String, index: SemIndex, kindFilter: Option[String], inSco
   val scoped = inScope match
     case Some(scope) =>
       val scopeLower = scope.toLowerCase
-      val scopeFqn = scope.replace(".", "/")
+      val scopeFqnLower = scope.replace(".", "/").toLowerCase
       val matched = candidates.filter { s =>
         s.owner.toLowerCase.contains(scopeLower) ||
-        s.fqn.contains(scopeFqn) ||
-        s.sourceUri.contains(scope)
+        s.fqn.toLowerCase.contains(scopeFqnLower) ||
+        s.sourceUri.toLowerCase.contains(scopeLower)
       }
       if matched.nonEmpty then matched
       else

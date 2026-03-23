@@ -10,11 +10,11 @@ def cmdLookup(args: List[String], ctx: SemCommandContext): SemCmdResult =
       val filtered = ctx.inScope match
         case Some(scope) =>
           val scopeLower = scope.toLowerCase
-          val scopeFqn = scope.replace(".", "/")
+          val scopeFqnLower = scope.replace(".", "/").toLowerCase
           val scoped = byKind.filter { s =>
             s.owner.toLowerCase.contains(scopeLower) ||
-            s.fqn.contains(scopeFqn) ||
-            s.sourceUri.contains(scope)
+            s.fqn.toLowerCase.contains(scopeFqnLower) ||
+            s.sourceUri.toLowerCase.contains(scopeLower)
           }
           if scoped.nonEmpty then scoped
           else

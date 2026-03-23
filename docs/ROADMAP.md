@@ -180,7 +180,7 @@
 - [x] `--in <scope>` flag — scope symbol resolution by owner, FQN, or file without full FQN
 - [x] `--exclude-test` flag — filter out test source directories
 - [x] `--exclude-pkg "p1,p2,..."` flag — exclude symbols by package prefix
-- [x] `--smart` filters monadic combinators (flatMap, map, traverse, etc.)
+- [x] `--smart` filters effect-system combinators (flatMap, traverse, pure, succeed, etc.)
 - [x] `lookup` shows `[object]`/`[class/trait]` annotations for method/field members
 - [x] FQN resolution `#`↔`.` fallback with stderr hint
 

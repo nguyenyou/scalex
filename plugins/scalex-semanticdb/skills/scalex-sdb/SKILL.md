@@ -289,7 +289,7 @@ scalex-sdb stats -w /project              # Show counts
 | `--smart` | Auto-filter infrastructure noise: accessors, generated code, protobuf boilerplate, effect-system combinators (flatMap, traverse, pure, succeed, etc.). In flow, only recurses into same-module callees. |
 | `--exclude "p1,p2,..."` | Exclude symbols matching FQN or file path (flow/callees/callers) |
 | `--exclude-test` | Exclude symbols from test source directories (/test/, /tests/, /it/, /spec/, *Test.scala, etc.) |
-| `--exclude-pkg "p1,p2,..."` | Exclude symbols by package prefix (dots auto-converted to /). E.g. `--exclude-pkg "zio,cats.effect"` |
+| `--exclude-pkg "p1,p2,..."` | Exclude symbols by package prefix (dots auto-converted to /). Works with callers, callees, flow, path, explain. E.g. `--exclude-pkg "zio,cats.effect"` |
 | `--in <scope>` | Scope symbol resolution by owner class, file path, or package. Avoids full-FQN round-trip. E.g. `--in OrderService` |
 | `--timings` | Print timing info to stderr |
 

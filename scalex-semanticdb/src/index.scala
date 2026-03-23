@@ -366,8 +366,11 @@ class SemIndex(val workspace: Path):
 
   /** Try swapping the type separator in a FQN: # (class/trait) ↔ . (object).
     * For #→. swap: unambiguous since # appears exactly once (type-member boundary).
-    * For .→# swap: only swap when there's exactly one `.` before `(` to avoid
-    * misidentifying nested object separators (e.g. `Foo.Bar.baz().`). */
+    * For .→# swap: uses lastIndexOf('.') before '(' to target the dot closest to
+    * the method name. For nested objects (e.g. `Foo.Bar.baz().`) this swaps the
+    * last dot, producing `Foo.Bar#baz().` — correct if `Bar` is a class, wrong if
+    * it's a nested object, but the caller only uses the result if it exists in the
+    * index, so incorrect swaps are harmlessly discarded. */
   private def swapFqnSeparator(fqn: String): Option[String] =
     val lastSlash = fqn.lastIndexOf('/')
     val rest = if lastSlash >= 0 then fqn.substring(lastSlash + 1) else fqn
