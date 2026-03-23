@@ -108,7 +108,7 @@ All commands support `--json`. Output is a single JSON object per invocation:
 - `lookup`/`members`/`symbols`: `{"header", "total", "symbols": [...]}`
 - `refs`/`occurrences`: `{"header", "total", "occurrences": [...]}`
 - `flow`/`path`: `{"header", "lines": [...]}`
-- `explain`: `{"symbol", "file", "line", "callers", "totalCallers", "callees", "totalCallees", "parents", "members", "totalMembers", "subtypes", "totalSubtypes"}`
+- `explain`: `{"symbol", "file", "line", "callers", "totalCallers", "callees", "totalCallees", "parents", "subtypes", "totalSubtypes", "members", "totalMembers"}`
 - `related`: `{"header", "total", "related": [...]}`
 - `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached", "parsedCount", "skippedCount"}`
 - `batch`: `{"batch": [{"command": "...", "result": {...}}, ...]}`

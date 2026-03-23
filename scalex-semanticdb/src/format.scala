@@ -284,7 +284,7 @@ def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
       val memberJson = members.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)}}""").mkString(",")
       val parentsJson = parents.map(jsonStr).mkString(",")
       val subtypeJson = subtypes.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)}}""").mkString(",")
-      println(s"""{"symbol":${symbolToJson(sym)}$locJson,"callers":[$callerJson],"totalCallers":$totalCallers,"callees":[$calleeJson],"totalCallees":$totalCallees,"parents":[$parentsJson],"members":[$memberJson],"totalMembers":$totalMembers,"subtypes":[$subtypeJson],"totalSubtypes":$totalSubtypes}""")
+      println(s"""{"symbol":${symbolToJson(sym)}$locJson,"callers":[$callerJson],"totalCallers":$totalCallers,"callees":[$calleeJson],"totalCallees":$totalCallees,"parents":[$parentsJson],"subtypes":[$subtypeJson],"totalSubtypes":$totalSubtypes,"members":[$memberJson],"totalMembers":$totalMembers}""")
 
     case SemCmdResult.Stats(fc, sc, oc, ms, cached, parsed, skipped) =>
       println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached,"parsedCount":$parsed,"skippedCount":$skipped}""")
