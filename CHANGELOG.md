@@ -20,6 +20,46 @@
 - `lookup` multi-match output now shows `[class/trait]` or `[object]` annotation to distinguish member ownership (#303)
 - FQN resolution fallback — when exact FQN match fails, tries swapping `#` ↔ `.` separator before falling back to suffix/name match, with a stderr hint (#303)
 
+## [scalex-sdb 0.3.0] — 2026-03-23
+
+### Added
+- `path <source> <target>` command — BFS shortest call path between two symbols (#297)
+- `explain <symbol>` command — one-shot summary: type, callers, callees, parents, members (#297)
+- `callers --depth N` — transitive caller tree with cycle detection (#297)
+- Disambiguation hints — when multiple symbols match, prints candidates to stderr (#297)
+- Auto-staleness detection — query commands detect stale cache by comparing directory mtimes (#298)
+- Incremental indexing — only re-converts `.semanticdb` files whose MD5 changed (#298)
+
+### Changed
+- `depth` parameter changed from `Int = 3` to `Option[Int] = None` — each command supplies its own default
+- `callers` flat mode now respects `--smart` and `--no-accessors` flags
+- `rebuild` now uses incremental MD5 comparison when a cached index exists
+
+## [scalex-sdb 0.2.0] — 2026-03-23
+
+### Added
+- `batch` command — run multiple queries in one invocation (#284)
+- `--no-accessors` flag for `flow` and `callees` (#284)
+- `--exclude "p1,p2,..."` flag for `flow`, `callees`, and `callers` (#284)
+- `--smart` flag for `flow` and `callees` — auto-filters infrastructure noise (#284)
+
+### Changed
+- `--kind` now narrows symbol resolution in `flow`, `callees`, and `callers`
+- `resolveSymbol` now prefers source-defined symbols over generated code
+
+## [scalex-sdb 0.1.0] — 2026-03-22
+
+Initial release of scalex-semanticdb.
+
+### Added
+- SemanticDB file discovery optimized for Mill (`out/`)
+- Parallel protobuf parsing via `parallelStream()`
+- Binary index persistence at `.scalex/semanticdb.bin` with string interning
+- Deduplication of Mill cross-platform shared source copies
+- 14 commands: flow, callers, callees, refs, type, related, occurrences, lookup, supertypes, subtypes, members, symbols, index, stats
+- JSON output (`--json`), kind filter (`--kind`), role filter (`--role`), timing instrumentation (`--timings`)
+- Assembly JAR build (JVM JIT is 11x faster than GraalVM native for protobuf workloads)
+
 ## [1.38.0] — 2026-03-22
 
 ### Fixed
