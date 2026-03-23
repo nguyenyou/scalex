@@ -69,6 +69,7 @@ abstract class SemTestBase extends FunSuite:
     inScope: Option[String] = None,
     excludeTest: Boolean = false,
     excludePkgPatterns: List[String] = Nil,
+    sourceOnly: Boolean = false,
   ): SemCommandContext =
     SemCommandContext(
       index = index,
@@ -85,6 +86,7 @@ abstract class SemTestBase extends FunSuite:
       inScope = inScope,
       excludeTest = excludeTest,
       excludePkgPatterns = excludePkgPatterns,
+      sourceOnly = sourceOnly,
     )
 
   private def deleteRecursive(path: Path): Unit =
@@ -195,6 +197,27 @@ abstract class SemTestBase extends FunSuite:
         |
         |case class Triangle(base: Double, height: Double) extends Shape:
         |  def area: Double = 0.5 * base * height
+        |""".stripMargin)
+
+    // Case class with user-overridden toString/equals for synthetic filtering tests
+    writeFile(srcDir, "example/Event.scala",
+      """package example
+        |
+        |case class Event(id: String, payload: String, timestamp: Long):
+        |  override def toString: String = s"Event($id)"
+        |  override def equals(that: Any): Boolean = that match
+        |    case e: Event => e.id == id
+        |    case _ => false
+        |  override def hashCode: Int = id.hashCode
+        |""".stripMargin)
+
+    // Generated source file (simulates protobuf/codegen output)
+    writeFile(srcDir, "out/generated/Proto.scala",
+      """package generated
+        |
+        |class ProtoMessage:
+        |  def toByteArray: Array[Byte] = Array.empty
+        |  def parseFrom(bytes: Array[Byte]): ProtoMessage = ProtoMessage()
         |""".stripMargin)
 
     // Type hierarchy for supertypes tests

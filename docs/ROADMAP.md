@@ -184,6 +184,14 @@
 - [x] `lookup` shows `[object]`/`[class/trait]` annotations for method/field members
 - [x] FQN resolution `#`↔`.` fallback with stderr hint
 
+### scalex-sdb: reduce noise in members/lookup output (#307)
+
+- [x] `members` synthetic filtering — hide compiler-generated case class members (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `canEqual`, `hashCode`, `toString`, `equals`, `apply`, `unapply`) by default; show with `--verbose`
+- [x] `--smart` on `members` — consistent with `--smart` on flow/callees/callers; filters synthetic case class methods + val accessors, showing only user-declared members
+- [x] `lookup --source-only` — hard-exclude symbols from generated code directories (protobuf, codegen); apply existing `isGeneratedSource()` filter post-resolution; also available via `--smart` on lookup
+- [x] `explain` subtypes — add `subtypes: N` line + first 3 names for traits/abstract classes; new field in `ExplainResult`, `findSubtypes()` call, formatter update
+- Discarded: SKILL.md daemon nudge — already documented with decision tree (lines 374-382) recommending daemon for 3+ queries and exploratory sessions
+
 ### scalex-sdb: daemon mode & Mill-only discovery
 
 - [x] `daemon` command — stdin/stdout JSON-lines server, keeps index hot in memory (<10ms queries vs ~1.5s CLI)

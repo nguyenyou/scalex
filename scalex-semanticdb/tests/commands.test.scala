@@ -903,7 +903,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdExplain(List("example/Main.main()."), ctx)
     result match
-      case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, _, _, _) =>
+      case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, _, _, _, _, _) =>
         assert(sym.displayName == "main", s"should resolve to main: ${sym.displayName}")
         assert(definedAt.isDefined, "should have definition location")
         assert(totalCallees > 0, s"main should have callees: $totalCallees")
@@ -915,7 +915,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdExplain(List("example/Main.main()."), ctx)
     result match
-      case SemCmdResult.ExplainResult(_, definedAt, _, _, _, _, _, _, _) =>
+      case SemCmdResult.ExplainResult(_, definedAt, _, _, _, _, _, _, _, _, _) =>
         assert(definedAt.isDefined, "should have definition location")
         val (file, line) = definedAt.get
         assert(file.contains("Main.scala"), s"should be in Main.scala: $file")
@@ -929,7 +929,7 @@ class CommandsTest extends SemTestBase:
     // greet is called by main and loudGreet
     val result = cmdExplain(List("example/Animal#greet()."), ctx)
     result match
-      case SemCmdResult.ExplainResult(_, _, callers, totalCallers, _, _, _, _, _) =>
+      case SemCmdResult.ExplainResult(_, _, callers, totalCallers, _, _, _, _, _, _, _) =>
         assert(totalCallers > 0, s"greet should have callers: $totalCallers")
         val callerNames = callers.map(_.displayName)
         assert(callerNames.contains("main") || callerNames.contains("loudGreet"),
@@ -942,7 +942,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdExplain(List("Dog"), ctx)
     result match
-      case SemCmdResult.ExplainResult(sym, _, _, _, _, _, parents, members, totalMembers) =>
+      case SemCmdResult.ExplainResult(sym, _, _, _, _, _, parents, members, totalMembers, _, _) =>
         assert(sym.displayName == "Dog", s"should resolve to Dog: ${sym.displayName}")
         assert(parents.nonEmpty, s"Dog should have parents (Animal)")
         assert(totalMembers > 0, s"Dog should have members: $totalMembers")
@@ -957,7 +957,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdExplain(List("Dog"), ctx)
     result match
-      case SemCmdResult.ExplainResult(_, _, _, totalCallers, _, totalCallees, _, _, _) =>
+      case SemCmdResult.ExplainResult(_, _, _, totalCallers, _, totalCallees, _, _, _, _, _) =>
         assert(totalCallers == 0, s"class itself should have 0 callers: $totalCallers")
         assert(totalCallees == 0, s"class itself should have 0 callees: $totalCallees")
       case other =>
@@ -968,7 +968,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdExplain(List("AnimalService"), ctx)
     result match
-      case SemCmdResult.ExplainResult(sym, _, _, _, _, _, _, members, totalMembers) =>
+      case SemCmdResult.ExplainResult(sym, _, _, _, _, _, _, members, totalMembers, _, _) =>
         assert(sym.kind == SemKind.Trait, s"should be a trait: ${sym.kind}")
         assert(totalMembers > 0, s"AnimalService should have members: $totalMembers")
       case other =>
@@ -979,7 +979,7 @@ class CommandsTest extends SemTestBase:
     val ctx = makeCtx()
     val result = cmdExplain(List("AnimalOps"), ctx)
     result match
-      case SemCmdResult.ExplainResult(sym, _, _, _, _, _, _, members, totalMembers) =>
+      case SemCmdResult.ExplainResult(sym, _, _, _, _, _, _, members, totalMembers, _, _) =>
         assert(sym.kind == SemKind.Object, s"should be an object: ${sym.kind}")
         assert(totalMembers > 0, s"AnimalOps should have members: $totalMembers")
       case other =>
@@ -991,7 +991,7 @@ class CommandsTest extends SemTestBase:
     // Dog.name is a field (val), called by greet, fetch, findByName, describe
     val result = cmdExplain(List("example/Dog#name."), ctx)
     result match
-      case SemCmdResult.ExplainResult(_, _, _, totalCallers, _, _, _, _, _) =>
+      case SemCmdResult.ExplainResult(_, _, _, totalCallers, _, _, _, _, _, _, _) =>
         assert(totalCallers >= 0, s"field explain should work: $totalCallers")
       case other =>
         fail(s"unexpected result: $other")
@@ -1183,4 +1183,174 @@ class CommandsTest extends SemTestBase:
     val syms = index.resolveSymbol("example/Main#main().")
     assert(syms.nonEmpty, "should resolve via # -> . swap")
     assertEquals(syms.head.fqn, "example/Main.main().")
+  }
+
+  // ── members synthetic filtering (#307) ──────────────────────────────────
+
+  test("members of case class hides synthetics by default") {
+    val ctx = makeCtx()
+    val result = cmdMembers(List("Circle"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val names = syms.map(_.displayName).toSet
+        assert(!names.contains("copy"), s"copy should be hidden: $names")
+        assert(!names.contains("productPrefix"), s"productPrefix should be hidden: $names")
+        assert(!names.contains("hashCode"), s"hashCode should be hidden: $names")
+        assert(!names.contains("_1"), s"_1 should be hidden: $names")
+        // user-defined member should still be visible
+        assert(names.contains("area"), s"area should be visible: $names")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("members of case class with --verbose shows synthetics") {
+    val ctx = makeCtx(verbose = true)
+    val result = cmdMembers(List("Circle"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val names = syms.map(_.displayName).toSet
+        assert(names.contains("copy") || names.contains("hashCode") || names.contains("productPrefix"),
+          s"verbose should show synthetics: $names")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("members of non-case class is unaffected by synthetic filtering") {
+    val ctx = makeCtx()
+    val result = cmdMembers(List("Dog"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val names = syms.map(_.displayName).toSet
+        assert(names.contains("fetch"), s"fetch should be visible: $names")
+        assert(names.contains("sound"), s"sound should be visible: $names")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("members --smart filters accessors and infra noise") {
+    val ctx = makeCtx(smart = true)
+    val result = cmdMembers(List("Circle"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val names = syms.map(_.displayName).toSet
+        assert(!names.contains("copy"), s"copy should be hidden with --smart: $names")
+        assert(names.contains("area"), s"area should be visible with --smart: $names")
+      case other => fail(s"unexpected: $other")
+  }
+
+  // ── explain subtypes (#307) ─────────────────────────────────────────────
+
+  test("explain trait shows subtypes") {
+    val ctx = makeCtx()
+    val result = cmdExplain(List("Shape"), ctx)
+    result match
+      case er: SemCmdResult.ExplainResult =>
+        assert(er.totalSubtypes >= 3, s"Shape should have >= 3 subtypes: ${er.totalSubtypes}")
+        val subNames = er.subtypes.map(_.displayName).toSet
+        assert(subNames.contains("Circle") || subNames.contains("Rectangle") || subNames.contains("Triangle"),
+          s"subtypes should include Circle/Rectangle/Triangle: $subNames")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("explain concrete class has no subtypes") {
+    val ctx = makeCtx()
+    val result = cmdExplain(List("Dog"), ctx)
+    result match
+      case er: SemCmdResult.ExplainResult =>
+        assert(er.totalSubtypes == 0, s"Dog (concrete class) should have 0 subtypes: ${er.totalSubtypes}")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("explain text output renders subtypes for traits") {
+    val ctx = makeCtx()
+    val result = cmdExplain(List("Shape"), ctx)
+    val output = captureOut { renderText(result, ctx) }
+    assert(output.contains("Subtypes:"), s"should contain Subtypes section: $output")
+  }
+
+  test("explain JSON includes subtypes") {
+    val ctx = makeCtx(json = true)
+    val result = cmdExplain(List("Shape"), ctx)
+    val output = captureOut { renderJson(result, ctx) }
+    assert(output.contains("\"totalSubtypes\""), s"JSON should contain totalSubtypes: $output")
+    assert(output.contains("\"subtypes\""), s"JSON should contain subtypes array: $output")
+  }
+
+  test("explain member filtering hides case class synthetics") {
+    val ctx = makeCtx()
+    val result = cmdExplain(List("Circle"), ctx)
+    result match
+      case er: SemCmdResult.ExplainResult =>
+        val memberNames = er.members.map(_.displayName).toSet
+        assert(!memberNames.contains("copy"), s"copy should be hidden in explain members: $memberNames")
+        assert(!memberNames.contains("_1"), s"_1 should be hidden in explain members: $memberNames")
+      case other => fail(s"unexpected: $other")
+  }
+
+  // ── isOverride preservation (#307) ──────────────────────────────────────
+
+  test("members preserves user-overridden toString/equals/hashCode on case classes") {
+    val ctx = makeCtx()
+    val result = cmdMembers(List("Event"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        val names = syms.map(_.displayName).toSet
+        // User-overridden methods should NOT be hidden
+        assert(names.contains("toString"), s"overridden toString should be visible: $names")
+        assert(names.contains("equals"), s"overridden equals should be visible: $names")
+        assert(names.contains("hashCode"), s"overridden hashCode should be visible: $names")
+        // Purely synthetic members should still be hidden
+        assert(!names.contains("copy"), s"copy should be hidden: $names")
+        assert(!names.contains("productPrefix"), s"productPrefix should be hidden: $names")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("explain preserves user-overridden toString on case classes") {
+    val ctx = makeCtx()
+    val result = cmdExplain(List("Event"), ctx)
+    result match
+      case er: SemCmdResult.ExplainResult =>
+        val memberNames = er.members.map(_.displayName).toSet
+        assert(memberNames.contains("toString"), s"overridden toString should be visible in explain: $memberNames")
+      case other => fail(s"unexpected: $other")
+  }
+
+  // ── --source-only (#307) ────────────────────────────────────────────────
+
+  test("lookup --source-only excludes generated sources") {
+    // ProtoMessage is defined in out/generated/Proto.scala which matches isGeneratedSource
+    val ctx = makeCtx(sourceOnly = true)
+    val result = cmdLookup(List("ProtoMessage"), ctx)
+    result match
+      case SemCmdResult.NotFound(_) => () // correctly filtered
+      case SemCmdResult.SymbolDetail(sym) =>
+        assert(!isGeneratedSource(sym.sourceUri),
+          s"--source-only should exclude generated: ${sym.sourceUri}")
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        assert(syms.forall(s => !isGeneratedSource(s.sourceUri)),
+          s"--source-only should exclude all generated: ${syms.map(_.sourceUri)}")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("lookup without --source-only includes generated sources") {
+    val ctx = makeCtx()
+    val result = cmdLookup(List("ProtoMessage"), ctx)
+    result match
+      case SemCmdResult.NotFound(_) =>
+        fail("ProtoMessage should be found without --source-only")
+      case SemCmdResult.SymbolDetail(sym) =>
+        assert(isGeneratedSource(sym.sourceUri),
+          s"ProtoMessage should be from a generated source: ${sym.sourceUri}")
+      case SemCmdResult.SymbolList(_, syms, _) =>
+        assert(syms.exists(s => isGeneratedSource(s.sourceUri)),
+          s"should include generated source: ${syms.map(_.sourceUri)}")
+      case other => fail(s"unexpected: $other")
+  }
+
+  test("lookup --smart excludes generated sources") {
+    val ctx = makeCtx(smart = true)
+    val result = cmdLookup(List("ProtoMessage"), ctx)
+    result match
+      case SemCmdResult.NotFound(_) => () // correctly filtered by --smart
+      case SemCmdResult.SymbolDetail(sym) =>
+        assert(!isGeneratedSource(sym.sourceUri),
+          s"--smart should exclude generated: ${sym.sourceUri}")
+      case other => fail(s"unexpected: $other")
   }

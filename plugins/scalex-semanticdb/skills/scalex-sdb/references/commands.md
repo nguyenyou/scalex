@@ -15,7 +15,7 @@
 
 | Command | Arguments | Description |
 |---|---|---|
-| `explain` | `<symbol>` | One-shot summary: type, callers, callees, members |
+| `explain` | `<symbol>` | One-shot summary: type, callers, callees, members, subtypes |
 
 **Compiler-precise queries:**
 
@@ -30,10 +30,10 @@
 
 | Command | Arguments | Description |
 |---|---|---|
-| `lookup` | `<symbol>` | Find symbol by FQN or display name |
+| `lookup` | `<symbol>` | Find symbol by FQN or display name. `--source-only`/`--smart` excludes generated code |
 | `supertypes` | `<symbol>` | Resolved parent type chain |
 | `subtypes` | `<symbol>` | Who extends this |
-| `members` | `<symbol>` | Declarations with resolved types |
+| `members` | `<symbol>` | Declarations with resolved types. Hides case class synthetics by default (`--verbose` to show) |
 | `symbols` | `[file]` | List symbols (all or per-file) |
 
 **Batch:**
@@ -70,7 +70,8 @@ Positional args: idle timeout seconds (default: 300), max lifetime seconds (defa
 | `--role` | — | all | Filter occurrences by role (def/ref) |
 | `--depth` | — | varies | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
 | `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
-| `--smart` | — | off | Auto-filter infrastructure noise (accessors, generated, protobuf, effect-system combinators) |
+| `--smart` | — | off | Auto-filter noise: accessors, generated code, protobuf, combinators, case class synthetics. In members: hides synthetics + accessors. In lookup: excludes generated sources. In flow: same-module only. |
+| `--source-only` | — | off | Exclude generated/compiled sources from lookup results |
 | `--exclude` | — | — | Exclude symbols matching FQN or file path (comma-separated) |
 | `--exclude-test` | — | off | Exclude symbols from test source directories |
 | `--exclude-pkg` | — | — | Exclude symbols by package prefix (comma-separated, dots auto-converted to /) |
@@ -107,7 +108,7 @@ All commands support `--json`. Output is a single JSON object per invocation:
 - `lookup`/`members`/`symbols`: `{"header", "total", "symbols": [...]}`
 - `refs`/`occurrences`: `{"header", "total", "occurrences": [...]}`
 - `flow`/`path`: `{"header", "lines": [...]}`
-- `explain`: `{"symbol", "file", "line", "callers", "totalCallers", "callees", "totalCallees", "parents", "members", "totalMembers"}`
+- `explain`: `{"symbol", "file", "line", "callers", "totalCallers", "callees", "totalCallees", "parents", "members", "totalMembers", "subtypes", "totalSubtypes"}`
 - `related`: `{"header", "total", "related": [...]}`
 - `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached", "parsedCount", "skippedCount"}`
 - `batch`: `{"batch": [{"command": "...", "result": {...}}, ...]}`
