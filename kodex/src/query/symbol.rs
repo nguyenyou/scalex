@@ -100,7 +100,7 @@ fn trigram_candidates(index: &ArchivedKodexIndex, query: &str) -> Option<Vec<u32
             Ok(idx) => {
                 index.name_trigrams[idx].symbol_ids.iter().map(|v| (*v).into()).collect::<Vec<u32>>()
             }
-            Err(_) => return Some(vec![]), // trigram not found → no matches
+            Err(_) => return None, // trigram not found in index → fall back to linear scan
         };
         result = Some(match result {
             None => posting,
@@ -206,13 +206,10 @@ pub fn kind_str(kind: &ArchivedSymbolKind) -> &'static str {
     }
 }
 
-/// Find edges from a given node in an edge list.
+/// Find edges from a given node in an edge list (binary search — edge lists sorted by `from`).
 pub fn edges_from(edge_lists: &[ArchivedEdgeList], from_id: u32) -> Vec<u32> {
-    for el in edge_lists {
-        let el_from: u32 = el.from.into();
-        if el_from == from_id {
-            return el.to.iter().map(|v| (*v).into()).collect();
-        }
+    match edge_lists.binary_search_by_key(&from_id, |el| el.from.into()) {
+        Ok(idx) => edge_lists[idx].to.iter().map(|v| (*v).into()).collect(),
+        Err(_) => vec![],
     }
-    vec![]
 }
