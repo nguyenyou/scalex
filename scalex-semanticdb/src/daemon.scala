@@ -7,7 +7,9 @@ import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, Time
 //
 // Eight defensive layers (ordered by reliability):
 //   1.   Stdin EOF           — pipe closure on parent death (even SIGKILL)
-//   1.5  Parent PID exit    — ProcessHandle.onExit() backup (optional --parent-pid)
+//                              Inactive in --socket mode (daemon blocks on accept, not stdin)
+//   1.5  Parent PID exit    — ProcessHandle.onExit() backup (--parent-pid)
+//                              Required in --socket mode (only reliable orphan guard)
 //   2.   Idle timeout       — no request for N seconds (resettable, default 300)
 //   3.   Max lifetime       — hard cap regardless of activity (default 1800)
 //   4.   Shutdown command   — explicit {"command":"shutdown"}
@@ -62,13 +64,16 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
   startupTimer.cancel(false)
   var lastBuildMs = System.currentTimeMillis()
 
-  // Layer 1.5: Parent PID monitoring (optional)
+  // Layer 1.5: Parent PID monitoring (required in socket mode)
   parentPid.foreach { pid =>
-    ProcessHandle.of(pid).ifPresent { handle =>
-      handle.onExit().thenRun { () =>
-        System.err.println(s"Parent process $pid exited, shutting down.")
-        System.exit(0)
-      }
+    val handleOpt = ProcessHandle.of(pid)
+    if handleOpt.isEmpty then
+      // Parent already dead — die immediately per termination contract
+      System.err.println(s"Parent process $pid not found (already exited), shutting down.")
+      System.exit(0)
+    handleOpt.get().onExit().thenRun { () =>
+      System.err.println(s"Parent process $pid exited, shutting down.")
+      System.exit(0)
     }
   }
 
@@ -182,19 +187,21 @@ private def cleanupSocket(sockPath: java.nio.file.Path): Unit =
   try java.nio.file.Files.deleteIfExists(sockPath) catch case _: Exception => ()
 
 private def isStaleSocket(sockPath: java.nio.file.Path): Boolean =
-  if !java.nio.file.Files.exists(sockPath) then return false
-  try
-    val addr = java.net.UnixDomainSocketAddress.of(sockPath)
-    val ch = java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)
+  if !java.nio.file.Files.exists(sockPath) then false
+  else
     try
-      ch.connect(addr)
-      ch.close()
-      false // connected successfully — daemon is running, NOT stale
+      val addr = java.net.UnixDomainSocketAddress.of(sockPath)
+      val ch = java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)
+      try
+        ch.connect(addr)
+        false // connected successfully — daemon is running, NOT stale
+      catch
+        case _: java.net.ConnectException | _: java.io.IOException =>
+          true // can't connect — stale socket file
+      finally
+        try ch.close() catch case _: Exception => ()
     catch
-      case _: java.net.ConnectException | _: java.io.IOException =>
-        true // can't connect — stale socket file
-  catch
-    case _: Exception => true
+      case _: Exception => true
 
 private def setupSocketServer(workspace: Path): java.nio.channels.ServerSocketChannel =
   val sockPath = socketPath(workspace)
@@ -234,15 +241,14 @@ private def runSocketLoop(
   while true do
     val client = server.accept()
     try
-      resetIdleTimer()
-      SemTimings.reset()
-
       val reader = java.io.BufferedReader(
         java.io.InputStreamReader(java.nio.channels.Channels.newInputStream(client))
       )
       val line = reader.readLine()
 
       if line != null && line.trim.nonEmpty then
+        resetIdleTimer()
+        SemTimings.reset()
         val result = processQuery(line.trim, index, workspace, lastBuildMs, queryExecutor)
         if result.rebuilt then lastBuildMs = System.currentTimeMillis()
 

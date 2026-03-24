@@ -126,7 +126,7 @@ sdbx auto-discovers `.semanticdb` files from Mill's `out/` directory only. It fi
 The `daemon` command keeps the index hot in memory so queries take <10ms instead of ~3.2s. Coding agents launch it as a subprocess and communicate via stdin/stdout JSON-lines.
 
 **The daemon MUST be treated as hostile to long-running processes.** It is designed to self-terminate aggressively — we never want zombie JVM processes consuming memory after the agent session ends. Eight defensive layers enforce this:
-1. **Stdin/FIFO EOF** (primary): parent dies → pipe closes → daemon exits immediately. `--fifo PATH` reads from a named pipe instead of stdin (for non-interactive shells where `&` closes stdin).
+1. **Stdin EOF** (primary): parent dies → pipe closes → daemon exits immediately. In `--socket` mode, stdin is not used — `--parent-pid` is required instead.
 2. **Parent PID exit**: `--parent-pid PID` → `ProcessHandle.onExit()` → daemon exits when parent dies
 3. **Idle timeout**: no query for 5 min → exit (configurable, default 300s)
 4. **Max lifetime**: 30 min hard cap regardless of activity (configurable, default 1800s)
