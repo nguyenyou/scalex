@@ -1,14 +1,14 @@
 import munit.FunSuite
 import java.nio.file.{Files, Path}
-import java.io.{BufferedReader, BufferedWriter, InputStreamReader, OutputStreamWriter}
+import java.io.{BufferedReader, InputStreamReader}
 import java.util.concurrent.TimeUnit
 import scala.jdk.CollectionConverters.*
 
 /** Daemon lifecycle tests — subprocess-based.
   *
-  * Each test spawns a real daemon process via `scala-cli run`, sends JSON-lines
-  * commands, and asserts termination behavior. These tests verify the termination
-  * contract documented in daemon.scala.
+  * Each test spawns a real daemon process via `scala-cli run`, communicates
+  * via Unix domain socket, and asserts termination behavior. These tests
+  * verify the termination contract documented in daemon.scala.
   */
 class DaemonLifecycleTest extends FunSuite:
 
@@ -24,114 +24,14 @@ class DaemonLifecycleTest extends FunSuite:
     compileWithSemanticdb(srcDir, workspace.resolve("out"))
 
   override def afterAll(): Unit =
-    // Clean up socket file if it exists
     try Files.deleteIfExists(socketPath(workspace)) catch case _: Exception => ()
     deleteRecursive(workspace)
 
   // ── Tests ──────────────────────────────────────────────────────────────
 
-  test("stdin-eof: closing stdin terminates daemon") {
+  test("query-response: daemon accepts socket connection and responds") {
     val proc = startDaemon()
-    val reader = waitForReady(proc)
-    // Close stdin — daemon must detect EOF and exit
-    proc.getOutputStream.close()
-    val exited = proc.waitFor(15, TimeUnit.SECONDS)
-    assert(exited, "Daemon did not exit within 15s of stdin closure")
-    assertEquals(proc.exitValue(), 0)
-  }
-
-  test("idle-timeout: daemon exits after idle period") {
-    val proc = startDaemon(idleTimeout = 3)
-    val reader = waitForReady(proc)
-    // Send nothing — daemon must exit after ~3s idle
-    val exited = proc.waitFor(15, TimeUnit.SECONDS)
-    assert(exited, "Daemon did not exit after idle timeout")
-    assertEquals(proc.exitValue(), 0)
-  }
-
-  test("max-lifetime: daemon exits despite activity") {
-    val proc = startDaemon(idleTimeout = 300, maxLifetime = 4)
-    val reader = waitForReady(proc)
-    // Send heartbeats to prevent idle timeout
-    val heartbeatThread = new Thread:
-      override def run(): Unit =
-        try
-          for _ <- 1 to 10 do
-            Thread.sleep(1000)
-            sendCommand(proc, """{"command":"heartbeat"}""")
-            reader.readLine() // consume response
-        catch case _: Exception => () // expected when daemon exits
-    heartbeatThread.setDaemon(true)
-    heartbeatThread.start()
-    // Despite activity, daemon must exit after max lifetime
-    val exited = proc.waitFor(15, TimeUnit.SECONDS)
-    assert(exited, "Daemon did not exit after max lifetime")
-    assertEquals(proc.exitValue(), 0)
-  }
-
-  test("shutdown-command: explicit shutdown exits daemon") {
-    val proc = startDaemon()
-    val reader = waitForReady(proc)
-    sendCommand(proc, """{"command":"shutdown"}""")
-    val response = readResponse(reader)
-    assert(response.contains("\"ok\":true"), s"Expected ok response, got: $response")
-    val exited = proc.waitFor(10, TimeUnit.SECONDS)
-    assert(exited, "Daemon did not exit after shutdown command")
-    assertEquals(proc.exitValue(), 0)
-  }
-
-  test("heartbeat-keeps-alive: daemon survives past idle timeout with activity") {
-    val proc = startDaemon(idleTimeout = 2)
-    val reader = waitForReady(proc)
-    // Send heartbeat at ~1s to reset idle timer
-    Thread.sleep(1000)
-    sendCommand(proc, """{"command":"heartbeat"}""")
-    val hbResponse = readResponse(reader)
-    assert(hbResponse.contains("\"ok\":true"))
-    // At ~3s total (past original idle timeout of 2s), daemon should still be alive
-    Thread.sleep(2000)
-    assert(proc.isAlive, "Daemon died prematurely despite heartbeat activity")
-    // Clean up
-    proc.getOutputStream.close()
-    proc.waitFor(15, TimeUnit.SECONDS)
-  }
-
-  test("query-response: real command returns valid JSON") {
-    val proc = startDaemon()
-    val reader = waitForReady(proc)
-    sendCommand(proc, """{"command":"stats"}""")
-    val response = readResponse(reader)
-    assert(response.contains("\"ok\":true"), s"Expected ok stats response, got: $response")
-    assert(response.contains("\"files\""), s"Expected files in stats, got: $response")
-    // Clean up
-    proc.getOutputStream.close()
-    proc.waitFor(15, TimeUnit.SECONDS)
-  }
-
-  test("error-recovery: malformed JSON returns error, daemon stays alive") {
-    val proc = startDaemon()
-    val reader = waitForReady(proc)
-    // Send garbage
-    sendCommand(proc, "this is not json")
-    val errResponse = readResponse(reader)
-    assert(errResponse.contains("\"ok\":false"), s"Expected error response, got: $errResponse")
-    assert(errResponse.contains("parse_error"), s"Expected parse_error, got: $errResponse")
-    // Daemon should still be alive
-    assert(proc.isAlive, "Daemon died after malformed input")
-    // Send valid command to prove it's functional
-    sendCommand(proc, """{"command":"heartbeat"}""")
-    val okResponse = readResponse(reader)
-    assert(okResponse.contains("\"ok\":true"), s"Expected ok after recovery, got: $okResponse")
-    // Clean up
-    proc.getOutputStream.close()
-    proc.waitFor(15, TimeUnit.SECONDS)
-  }
-
-  // ── Socket tests ──────────────────────────────────────────────────
-
-  test("socket-query-response: daemon accepts socket connection and responds") {
-    val proc = startDaemon(socketMode = true)
-    val reader = waitForReady(proc)
+    waitForReady(proc)
     try
       val sockPath = socketPath(workspace)
       assert(Files.exists(sockPath), s"Socket file not created at $sockPath")
@@ -143,30 +43,65 @@ class DaemonLifecycleTest extends FunSuite:
       proc.waitFor(10, TimeUnit.SECONDS)
   }
 
-  test("socket-shutdown: shutdown command via socket exits daemon and cleans up") {
-    val proc = startDaemon(socketMode = true)
+  test("shutdown: shutdown command exits daemon and cleans up socket") {
+    val proc = startDaemon()
     waitForReady(proc)
     val sockPath = socketPath(workspace)
     val response = socketQuery(sockPath, """{"command":"shutdown"}""")
     assert(response.contains("\"ok\":true"), s"Expected ok response, got: $response")
     val exited = proc.waitFor(10, TimeUnit.SECONDS)
-    assert(exited, "Daemon did not exit after shutdown command via socket")
+    assert(exited, "Daemon did not exit after shutdown command")
     assertEquals(proc.exitValue(), 0)
-    // Socket file should be cleaned up by shutdown hook
     Thread.sleep(500) // give shutdown hook time
     assert(!Files.exists(sockPath), "Socket file was not cleaned up")
   }
 
-  test("socket-idle-timeout: idle timeout works in socket mode") {
-    val proc = startDaemon(idleTimeout = 3, socketMode = true)
+  test("idle-timeout: daemon exits after idle period") {
+    val proc = startDaemon(idleTimeout = 3)
     waitForReady(proc)
     val exited = proc.waitFor(15, TimeUnit.SECONDS)
-    assert(exited, "Daemon did not exit after idle timeout in socket mode")
+    assert(exited, "Daemon did not exit after idle timeout")
     assertEquals(proc.exitValue(), 0)
   }
 
-  test("socket-multiple-connections: sequential connections work") {
-    val proc = startDaemon(socketMode = true)
+  test("max-lifetime: daemon exits despite activity") {
+    val proc = startDaemon(idleTimeout = 300, maxLifetime = 4)
+    waitForReady(proc)
+    val sockPath = socketPath(workspace)
+    // Send heartbeats via socket to prevent idle timeout
+    val heartbeatThread = new Thread:
+      override def run(): Unit =
+        try
+          for _ <- 1 to 10 do
+            Thread.sleep(1000)
+            socketQuery(sockPath, """{"command":"heartbeat"}""")
+        catch case _: Exception => () // expected when daemon exits
+    heartbeatThread.setDaemon(true)
+    heartbeatThread.start()
+    // Despite activity, daemon must exit after max lifetime
+    val exited = proc.waitFor(15, TimeUnit.SECONDS)
+    assert(exited, "Daemon did not exit after max lifetime")
+    assertEquals(proc.exitValue(), 0)
+  }
+
+  test("heartbeat-keeps-alive: daemon survives past idle timeout with activity") {
+    val proc = startDaemon(idleTimeout = 2)
+    waitForReady(proc)
+    val sockPath = socketPath(workspace)
+    // Send heartbeat at ~1s to reset idle timer
+    Thread.sleep(1000)
+    val hbResponse = socketQuery(sockPath, """{"command":"heartbeat"}""")
+    assert(hbResponse.contains("\"ok\":true"))
+    // At ~3s total (past original idle timeout of 2s), daemon should still be alive
+    Thread.sleep(2000)
+    assert(proc.isAlive, "Daemon died prematurely despite heartbeat activity")
+    // Clean up
+    sendSocketCommand(workspace, """{"command":"shutdown"}""")
+    proc.waitFor(10, TimeUnit.SECONDS)
+  }
+
+  test("multiple-connections: sequential connections work") {
+    val proc = startDaemon()
     waitForReady(proc)
     val sockPath = socketPath(workspace)
     try
@@ -181,8 +116,8 @@ class DaemonLifecycleTest extends FunSuite:
       proc.waitFor(10, TimeUnit.SECONDS)
   }
 
-  test("socket-error-recovery: malformed JSON returns error, daemon stays alive") {
-    val proc = startDaemon(socketMode = true)
+  test("error-recovery: malformed JSON returns error, daemon stays alive") {
+    val proc = startDaemon()
     waitForReady(proc)
     val sockPath = socketPath(workspace)
     try
@@ -204,35 +139,22 @@ class DaemonLifecycleTest extends FunSuite:
   private def startDaemon(
     idleTimeout: Int = 300,
     maxLifetime: Int = 1800,
-    socketMode: Boolean = false,
   ): Process =
     val baseArgs = List("scala-cli", "run", sdbxSrcDir, "--")
     val daemonArgs = List("daemon")
-    val socketArgs = if socketMode then List("--socket") else Nil
     val positionalArgs = List(idleTimeout.toString, maxLifetime.toString)
     val wsArgs = List("--workspace", workspace.toString)
 
-    val cmd = baseArgs ++ daemonArgs ++ socketArgs ++ positionalArgs ++ wsArgs
+    val cmd = baseArgs ++ daemonArgs ++ positionalArgs ++ wsArgs
     val pb = ProcessBuilder(cmd*)
     pb.redirectErrorStream(false)
     pb.start()
 
-  private def waitForReady(proc: Process, timeoutSec: Int = 90): BufferedReader =
+  private def waitForReady(proc: Process, timeoutSec: Int = 90): Unit =
     val reader = BufferedReader(InputStreamReader(proc.getInputStream))
     val ready = reader.readLine()
     assert(ready != null, "Daemon exited before sending ready signal")
     assert(ready.contains("\"event\":\"ready\""), s"Expected ready signal, got: $ready")
-    reader
-
-  private def sendCommand(proc: Process, json: String): Unit =
-    val writer = proc.getOutputStream
-    writer.write((json + "\n").getBytes)
-    writer.flush()
-
-  private def readResponse(reader: BufferedReader): String =
-    val line = reader.readLine()
-    assert(line != null, "Daemon closed stdout unexpectedly")
-    line
 
   // ── Fixture setup ──────────────────────────────────────────────────────
 
