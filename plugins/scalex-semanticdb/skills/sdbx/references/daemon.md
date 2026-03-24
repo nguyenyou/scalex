@@ -1,48 +1,18 @@
 # Daemon Reference
 
-## Socket mode (recommended for coding agents)
+## Usage
 
-Socket mode lets any process connect to a running daemon, send a query, and read the response — no persistent shell needed.
+The daemon listens on a Unix domain socket. Any process can connect, send a query, and read the response — no persistent shell needed.
 
 ```bash
-# Start daemon in socket mode (backgrounding is fine)
-bash "/path/to/sdbx-cli" daemon --socket -w /project &
+# Start daemon (backgrounding is fine)
+bash "/path/to/sdbx-cli" daemon -w /project &
 
-# Wait for ready signal on stdout
-# Non-daemon commands auto-detect the socket and forward queries transparently:
+# Non-daemon commands auto-detect the daemon and forward queries transparently:
 sdbx callers handleRequest -w /project  # <10ms via socket, falls back to local index if no daemon
 ```
 
 The socket is created at a short path under `/tmp/` (hashed from workspace path) to respect the macOS 104-byte limit on Unix domain socket paths. Requires Java 16+.
-
-## Stdin mode
-
-The default mode reads JSON-lines from stdin and writes responses to stdout. Useful with `coproc` or heredoc when all queries happen in a single shell:
-
-```bash
-# coproc (zsh)
-coproc bash "/path/to/sdbx-cli" daemon -w /project 2>/dev/null
-read -t 30 ready <&p          # wait for ready signal
-print -p '{"command":"callers","args":["handleRequest"]}'
-read -t 10 resp <&p
-print -p '{"command":"shutdown"}'
-```
-
-```bash
-# coproc (bash)
-coproc SDBX { bash "/path/to/sdbx-cli" daemon -w /project 2>/dev/null; }
-read -t 30 ready <&${SDBX[0]}
-echo '{"command":"callers","args":["handleRequest"]}' >&${SDBX[1]}
-read -t 10 resp <&${SDBX[0]}
-```
-
-```bash
-# heredoc — all queries known upfront
-bash "/path/to/sdbx-cli" daemon -w /project <<'QUERIES'
-{"command":"callers","args":["handleRequest"]}
-{"command":"subtypes","args":["Repository"]}
-QUERIES
-```
 
 ## Request/response protocol (JSON-lines)
 
