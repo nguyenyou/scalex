@@ -126,12 +126,12 @@ sdbx auto-discovers `.semanticdb` files from Mill's `out/` directory only. It fi
 The `daemon` command keeps the index hot in memory so queries take <10ms instead of ~3.2s. Coding agents launch it as a subprocess and communicate via stdin/stdout JSON-lines.
 
 **The daemon MUST be treated as hostile to long-running processes.** It is designed to self-terminate aggressively — we never want zombie JVM processes consuming memory after the agent session ends. Seven defensive layers enforce this:
-1. **Stdin EOF** (stdin mode only): parent dies → pipe closes → daemon exits immediately
-2. **Idle timeout**: no query for 5 min → exit (configurable, default 300s)
-3. **Max lifetime**: 30 min hard cap regardless of activity (configurable, default 1800s)
-4. **Shutdown command**: explicit `{"command":"shutdown"}` message
-5. **Per-query timeout**: any query >30s returns timeout error (daemon stays responsive)
-6. **Heap pressure**: >85% heap after GC → exit
+1. **Idle timeout**: no query for 5 min → exit (configurable, default 300s)
+2. **Max lifetime**: 30 min hard cap regardless of activity (configurable, default 1800s)
+3. **Shutdown command**: explicit `{"command":"shutdown"}` message
+4. **Per-query timeout**: any query >30s returns timeout error (daemon stays responsive)
+5. **Heap pressure**: >85% heap after GC → exit
+6. **Startup timeout**: index build >120s → exit
 7. **Shutdown hook**: SIGTERM/SIGINT triggers cleanup
 
 When adding features to the daemon, never weaken these guarantees. Every code path must lead to eventual termination. Never add "keep-alive" logic, reconnection attempts, or retry loops. If something goes wrong, the correct behavior is to die.
