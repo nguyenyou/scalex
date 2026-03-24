@@ -172,4 +172,5 @@ case class SemCommandContext(
   excludeTest: Boolean = false,
   excludePkgPatterns: List[String] = Nil,
   sourceOnly: Boolean = false,
+  groupByFile: Boolean = false,
 )

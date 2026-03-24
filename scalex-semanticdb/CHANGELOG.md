@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+- Trait-aware callers — `callers` now automatically includes callers of overridden trait/abstract methods. When querying callers of an implementation method, call sites that reference the trait's method FQN are included. Works in both flat and transitive (`--depth N`) modes. (#331)
+- `--group-by-file` flag for `callers` — groups flat caller output by source file for readability (#331)
+
 ## [0.8.0] — 2026-03-24
 
 ### Changed

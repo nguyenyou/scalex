@@ -212,21 +212,23 @@ def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
     case SemCmdResult.UsageError(msg) =>
       System.err.println(msg)
 
+/** For method/field/constructor members, return [object] vs [class/trait] based on FQN convention.
+  * Uses lastIndexOf to avoid matching displayName in package path (e.g. "com/example/bar/Foo#bar()."). */
+def formatMemberOf(s: SemSymbol): String =
+  if s.kind == SemKind.Method || s.kind == SemKind.Field || s.kind == SemKind.Constructor then
+    val nameStart = s.fqn.lastIndexOf(s.displayName)
+    if nameStart > 0 then
+      s.fqn.charAt(nameStart - 1) match
+        case '#' => " [class/trait]"
+        case '.' => " [object]"
+        case _   => ""
+    else ""
+  else ""
+
 def formatSymbolLine(s: SemSymbol): String =
   val props = s.propertyNames
   val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
-  // For method/field/constructor members, show [object] vs [class/trait] based on FQN convention.
-  // Use lastIndexOf to avoid matching displayName in package path (e.g. "com/example/bar/Foo#bar().")
-  val memberOf =
-    if s.kind == SemKind.Method || s.kind == SemKind.Field || s.kind == SemKind.Constructor then
-      val nameStart = s.fqn.lastIndexOf(s.displayName)
-      if nameStart > 0 then
-        s.fqn.charAt(nameStart - 1) match
-          case '#' => " [class/trait]"
-          case '.' => " [object]"
-          case _   => ""
-      else ""
-    else ""
+  val memberOf = formatMemberOf(s)
   s"  ${s.kind.toString.toLowerCase} ${s.displayName}$propsStr$memberOf (${s.sourceUri})"
 
 def formatSymbolDetail(s: SemSymbol, verbose: Boolean): String =

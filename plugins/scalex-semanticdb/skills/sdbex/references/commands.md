@@ -6,9 +6,9 @@
 
 | Command | Arguments | Description |
 |---|---|---|
-| `flow` | `<method>` | Downstream call tree with `--depth N` |
-| `callers` | `<symbol>` | Reverse call graph — who calls this (`--depth N` for transitive) |
+| `callers` | `<symbol>` | Reverse call graph — who calls this. Trait-aware by default. `--depth N` for transitive, `--group-by-file` to group by file |
 | `callees` | `<symbol>` | Forward call graph — what does this call |
+| `flow` | `<method>` | Downstream call tree with `--depth N`. Use `--smart` on large codebases |
 | `path` | `<source> <target>` | Shortest call path between two symbols (BFS) |
 
 **Composite:**
@@ -21,41 +21,27 @@
 
 | Command | Arguments | Description |
 |---|---|---|
-| `refs` | `<symbol>` | Zero-false-positive references |
+| `refs` | `<symbol>` | Zero-false-positive references. `--role def\|ref` to filter |
 | `type` | `<symbol>` | Resolved type signature |
 | `related` | `<symbol>` | Co-occurring symbols by frequency |
 | `occurrences` | `<file>` | All occurrences in a file with roles |
 
-**Navigation (with resolved types):**
+**Navigation:**
 
 | Command | Arguments | Description |
 |---|---|---|
-| `lookup` | `<symbol>` | Find symbol by FQN or display name. `--source-only`/`--smart` excludes generated code |
+| `lookup` | `<symbol>` | Find symbol by FQN or name. `--source-only`/`--smart` excludes generated code |
 | `supertypes` | `<symbol>` | Resolved parent type chain |
-| `subtypes` | `<symbol>` | Who extends this |
-| `members` | `<symbol>` | Declarations with resolved types. Hides case class synthetics by default (`--verbose` to show) |
+| `subtypes` | `<symbol>` | Exhaustive subtype tree. `--depth N` for depth |
+| `members` | `<symbol>` | Declarations with resolved types. Hides case class synthetics by default |
 | `symbols` | `[file]` | List symbols (all or per-file) |
 
-**Batch:**
+**Batch and daemon:**
 
 | Command | Arguments | Description |
 |---|---|---|
-| `batch` | `"cmd1" "cmd2" ...` | Run multiple queries in one invocation |
-
-**Daemon (for coding agents):**
-
-| Command | Arguments | Description |
-|---|---|---|
-| `daemon` | `[idle] [max]` | Socket daemon — keeps index hot in memory (<10ms/query) |
-
-Positional args: idle timeout seconds (default: 300), max lifetime seconds (default: 1800).
-Non-daemon commands auto-detect a running daemon and forward queries transparently.
-Output is identical whether daemon is running or not — always human-readable text.
-
-**Index:**
-
-| Command | Arguments | Description |
-|---|---|---|
+| `batch` | `"cmd1" "cmd2" ...` | Run multiple queries in one invocation (~1.5s amortized) |
+| `daemon` | `[idle] [max]` | Socket daemon — keeps index hot in memory (<10ms/query). Self-terminates. |
 | `index` | — | Force rebuild index |
 | `stats` | — | Index statistics |
 
@@ -63,84 +49,39 @@ Output is identical whether daemon is running or not — always human-readable t
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| `--workspace` | `-w` | cwd | Set workspace root |
+| `--workspace` | `-w` | cwd | Set workspace root (must be Mill project root) |
 | `--limit` | — | 50 | Max results (0=unlimited) |
-| `--verbose` | `-v` | off | Show full signatures, properties, overrides |
-| `--kind` | — | all | Filter by symbol kind AND narrow resolution in flow/callees/callers |
-| `--role` | — | all | Filter occurrences by role (def/ref) |
+| `--kind` | — | all | Filter by symbol kind AND narrow resolution |
+| `--in` | — | — | Scope resolution by owner class, file, or package |
 | `--depth` | — | varies | Max recursion depth (callers: 1, flow/subtypes: 3, path: 5) |
-| `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
-| `--smart` | — | off | Auto-filter noise: accessors, generated code, protobuf, combinators, case class synthetics. In members: hides synthetics + accessors. In lookup: excludes generated sources. In flow: same-module only. |
-| `--source-only` | — | off | Exclude generated/compiled sources from lookup results |
+| `--smart` | — | off | Auto-filter noise: accessors, generated code, protobuf, combinators. In flow: same-module only |
 | `--exclude` | — | — | Exclude symbols matching FQN or file path (comma-separated) |
-| `--exclude-test` | — | off | Exclude symbols from test source directories |
-| `--exclude-pkg` | — | — | Exclude symbols by package prefix (comma-separated, dots auto-converted to /) |
-| `--in` | — | — | Scope symbol resolution by owner class, file, or package |
+| `--exclude-test` | — | off | Exclude test source directories |
+| `--exclude-pkg` | — | — | Exclude by package prefix (dots auto-converted to /) |
+| `--group-by-file` | — | off | Group callers output by source file |
+| `--role` | — | all | Filter occurrences by role (def/ref) |
+| `--verbose` | `-v` | off | Full signatures, properties, overrides |
+| `--source-only` | — | off | Exclude generated sources from lookup |
+| `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
 | `--timings` | — | off | Print timing breakdown to stderr |
-| `--version` | — | — | Print version |
 
 ## Symbol Resolution
 
-When you pass a symbol name, sdbex resolves it in this order:
+sdbex resolves symbol names in this order:
 
 1. **Exact FQN** — `com/example/MyService#` matches directly
-2. **FQN separator swap** — if exact FQN fails, tries `#` ↔ `.` swap (class member ↔ object member) with a hint
+2. **FQN separator swap** — tries `#` ↔ `.` swap with a hint
 3. **Suffix match** — `MyService#` matches `com/example/MyService#`
-4. **Display name** — `MyService` matches by case-insensitive display name
-5. **Partial name** — `Service` matches any symbol containing "Service"
+4. **Display name** — case-insensitive match
+5. **Partial name** — substring match
 
-Results are ranked: non-local before local, source before generated (protobuf/codegen), classes/traits first, then methods/fields, locals last.
+Results ranked: source before generated, classes/traits first, locals last.
 
-SemanticDB fully-qualified names use `/` for packages, `#` for types, `.` for terms:
-- `scala/collection/List#` — type (class/trait)
-- `scala/Predef.println(+1).` — term (method/val), `+1` disambiguates overloads
-- `example/Main.` — term (object)
-- `example/Main.main().` — method
+**FQN syntax**: `/` for packages, `#` for types, `.` for terms:
+- `scala/collection/List#` — type
+- `example/Main.main().` — method on object
+- `example/Main#handle().` — method on class
 
 ## Kind Values
 
-Use with `--kind` flag: `class`, `trait`, `object`, `method`, `field`, `type`, `package`, `packageobj`, `constructor`, `parameter`, `typeparam`, `macro`, `interface`, `local`.
-
-## Daemon Protocol
-
-The daemon listens on a Unix domain socket. Non-daemon CLI commands auto-detect it and forward queries transparently — output is identical whether daemon is running or not.
-
-### Wire protocol
-
-The daemon uses a text-based protocol over the socket:
-
-- **Success**: `SDBEX_OK\n<text output>`
-- **Error**: `SDBEX_ERR\n<error message>`
-
-The client (CLI) parses this internally — users and agents always see clean text output.
-
-### Request format (internal)
-
-The CLI sends JSON requests to the daemon over the socket:
-```json
-{"command":"callers","args":["handleRequest"],"flags":{"kind":"method","depth":"3"}}
-```
-
-### Daemon-specific commands
-
-| Command | Effect |
-|---|---|
-| `heartbeat` | Resets idle timer |
-| `shutdown` | Daemon exits after response |
-| `rebuild` | Force-rebuilds index |
-
-### Auto-rebuild
-
-Before each query, the daemon checks if `.semanticdb` directories have been modified (mtime check, ~7ms). If stale, it automatically rebuilds before dispatching the query.
-
-### Safety guarantees
-
-Seven termination layers ensure the daemon never becomes a zombie:
-
-1. **Idle timeout** — no request for N seconds → exit (default: 300s, configurable)
-2. **Max lifetime** — hard cap regardless of activity (default: 1800s, configurable)
-3. **Shutdown command** — explicit shutdown → exit after response
-4. **Per-query timeout** — query >30s → returns error, daemon stays alive
-5. **Heap pressure** — used heap >85% after GC → exit
-6. **Startup timeout** — index build >120s → exit with code 1
-7. **Shutdown hook** — SIGTERM/SIGINT → clean exit
+Use with `--kind`: `class`, `trait`, `object`, `method`, `field`, `type`, `package`, `constructor`, `parameter`, `typeparam`, `interface`, `local`.
