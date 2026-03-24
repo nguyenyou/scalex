@@ -17,7 +17,7 @@ pub const NO_STRING: StringId = u32::MAX;
 #[rkyv(compare(PartialEq))]
 pub struct KodexIndex {
     pub version: u32,
-    /// Sorted, deduplicated string table. All other string fields are indices here.
+    /// Deduplicated string table (insertion-ordered). All other string fields are indices here.
     pub strings: Vec<String>,
     /// Source files in the project.
     pub files: Vec<FileEntry>,

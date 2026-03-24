@@ -35,7 +35,7 @@ pub fn cmd_refs(index: &ArchivedKodexIndex, query: &str, limit: usize) {
     println!("{total} occurrences of '{name}'");
     for (line, col, is_def, file) in occs.iter().take(limit) {
         let role_str = if *is_def { "<=" } else { "=>" };
-        println!("  [{line}:{col}] {role_str}");
+        println!("  [{}:{}] {role_str}", line + 1, col + 1);
         println!("    {file}:{}", line + 1);
     }
     if total > limit {

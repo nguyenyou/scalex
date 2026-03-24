@@ -16,4 +16,3 @@ scalex-workspace/
 profiling/*.html
 profiling/*.jfr
 *.jfr
-target

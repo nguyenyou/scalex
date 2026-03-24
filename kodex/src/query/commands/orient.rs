@@ -10,7 +10,7 @@ pub fn cmd_orient(index: &ArchivedKodexIndex) {
     let total_symbols = index.symbols.len();
     let test_files = index.files.iter().filter(|f| f.is_test).count();
     let gen_files = index.files.iter().filter(|f| f.is_generated).count();
-    let src_files = total_files - test_files - gen_files;
+    let src_files = index.files.iter().filter(|f| !f.is_test && !f.is_generated).count();
 
     println!("Project overview");
     println!();

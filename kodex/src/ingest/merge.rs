@@ -226,7 +226,9 @@ pub fn build_index(docs: Vec<IntermediateDoc>) -> KodexIndex {
     }
 
     fn to_edge_lists(map: FxHashMap<u32, Vec<u32>>) -> Vec<EdgeList> {
-        dedup_edges(map)
+        let mut edges = dedup_edges(map);
+        edges.sort_by_key(|e| e.from); // sort by `from` for binary search at query time
+        edges
     }
 
     // Sort the string table and rewrite all IDs
@@ -347,7 +349,6 @@ fn classify_test(uri: &str) -> bool {
 
 fn classify_generated(uri: &str) -> bool {
     let lower = uri.to_lowercase();
-    uri.starts_with("out/") ||
     lower.contains("compilescalapb.dest") || lower.contains("compilepb.dest") ||
     lower.contains("/generated/") || lower.contains("/src_managed/") ||
     lower.contains("generatedsources") ||
@@ -361,7 +362,7 @@ fn classify_generated(uri: &str) -> bool {
 /// Uses the first meaningful path segment(s). Examples:
 ///   "modules/billing/billing/jvm/src/..." → "billing"
 ///   "platform/database/src/..." → "database"
-///   "itools/admin/jvm/src/..." → "admin"
+///   "services/admin/jvm/src/..." → "admin"
 fn detect_module(
     uri: &str,
     module_map: &mut FxHashMap<String, u32>,
@@ -392,7 +393,7 @@ fn extract_module_name(uri: &str) -> String {
     if parts.len() < 2 { return String::new(); }
 
     // Skip common prefixes to find the module name
-    // "modules/X/..." → X, "platform/X/..." → X, "itools/X/..." → X
+    // "modules/X/..." → X, "platform/X/..." → X, "services/X/..." → X
     // For "out/modules/X/..." paths, skip "out" first
     let start = if parts[0] == "out" { 1 } else { 0 };
     if start >= parts.len() { return String::new(); }
