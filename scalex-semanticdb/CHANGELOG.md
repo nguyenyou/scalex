@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Changed
+- Daemon now returns text output instead of JSON — identical output whether daemon is running or not
+- Wire protocol changed from JSON envelope to `SDBX_OK`/`SDBX_ERR` text protocol
+- Ready signal changed from JSON to human-readable text
+- Stderr (disambiguation warnings) now passes through from daemon to client
+
+### Removed
+- `--json` flag — all output is now text-only
+- `renderJson`, `symbolToJson`, `jsonStr` functions
+- `jsonOutput` field from `SemCommandContext` and `SemParsedFlags`
+- 4 JSON-specific tests
+
 ## [0.6.0] — 2026-03-24
 
 ### Added

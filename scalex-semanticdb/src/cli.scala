@@ -39,8 +39,7 @@ private def run(argList: List[String]): Unit =
       Files.exists(sockPath) && {
         trySocketForward(cmd, flags, sockPath) match
           case Some(response) =>
-            if !flags.jsonOutput then System.err.println("(via daemon — output is JSON)")
-            println(response)
+            if response.nonEmpty then print(response)
             true
           case None => false
       }
@@ -113,7 +112,6 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
         val subCtx = ctx.copy(
           limit = if hasExplicitLimit then (if subFlags.limit == 0 then Int.MaxValue else subFlags.limit) else ctx.limit,
           verbose = subFlags.verbose || ctx.verbose,
-          jsonOutput = ctx.jsonOutput,
           kindFilter = subFlags.kindFilter.orElse(ctx.kindFilter),
           roleFilter = subFlags.roleFilter.orElse(ctx.roleFilter),
           depth = if hasExplicitDepth then subFlags.depth else ctx.depth,  // both are Option[Int]
@@ -145,7 +143,6 @@ def cmdStats(args: List[String], ctx: SemCommandContext): SemCmdResult =
 case class SemParsedFlags(
   limit: Int = 50,
   verbose: Boolean = false,
-  jsonOutput: Boolean = false,
   kindFilter: Option[String] = None,
   roleFilter: Option[String] = None,
   depth: Option[Int] = None,
@@ -187,9 +184,6 @@ def parseFlags(args: List[String]): SemParsedFlags =
       case "--verbose" | "-v" =>
         flags = flags.copy(verbose = true)
         i += 1
-      case "--json" =>
-        flags = flags.copy(jsonOutput = true)
-        i += 1
       case "--timings" =>
         flags = flags.copy(timingsEnabled = true)
         i += 1
@@ -229,7 +223,6 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
     workspace = workspace,
     limit = if flags.limit == 0 then Int.MaxValue else flags.limit,
     verbose = flags.verbose,
-    jsonOutput = flags.jsonOutput,
     kindFilter = flags.kindFilter,
     roleFilter = flags.roleFilter,
     depth = flags.depth,
@@ -259,8 +252,20 @@ private def trySocketForward(cmd: String, flags: SemParsedFlags, sockPath: Path)
       val reader = java.io.BufferedReader(
         java.io.InputStreamReader(java.nio.channels.Channels.newInputStream(ch))
       )
-      val response = reader.readLine()
-      if response != null then Some(response) else None
+      val firstLine = reader.readLine()
+      if firstLine == null then None
+      else if firstLine == "SDBX_OK" then
+        val sb = StringBuilder()
+        var line = reader.readLine()
+        while line != null do
+          sb.append(line).append('\n')
+          line = reader.readLine()
+        Some(sb.toString)
+      else if firstLine == "SDBX_ERR" then
+        val errMsg = reader.readLine()
+        if errMsg != null then System.err.println(errMsg)
+        Some("")
+      else None // unknown protocol, fall through to local
     finally ch.close()
   catch
     case _: Exception => None // stale socket, connection refused, Java <16 — fall through
@@ -273,7 +278,6 @@ private def buildDaemonRequest(cmd: String, flags: SemParsedFlags): String =
   val parts = scala.collection.mutable.ListBuffer.empty[String]
   if flags.limit != 50 then parts += s""""limit":${flags.limit}"""
   if flags.verbose then parts += s""""verbose":"true""""
-  if flags.jsonOutput then parts += s""""json":"true""""
   flags.kindFilter.foreach(k => parts += s""""kind":"${escapeJson(k)}"""")
   flags.roleFilter.foreach(r => parts += s""""role":"${escapeJson(r)}"""")
   flags.depth.foreach(d => parts += s""""depth":$d""")
@@ -336,7 +340,6 @@ def printUsage(): Unit =
     |Options:
     |  -w, --workspace PATH         Set workspace (default: cwd, must be a Mill project root)
     |  --limit N                    Max results (default: 50, 0=unlimited)
-    |  --json                       JSON output
     |  --verbose, -v                Full signatures and properties
     |  --kind K                     Filter by kind and narrow symbol resolution
     |  --role R                     Filter occurrences (def/ref)

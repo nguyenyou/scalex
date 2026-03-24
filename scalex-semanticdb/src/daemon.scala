@@ -120,7 +120,7 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit
 
   // Ready signal
   resetIdleTimer()
-  println(s"""{"ok":true,"event":"ready","files":${index.fileCount},"symbols":${index.symbolCount},"occurrences":${index.occurrenceCount},"buildTimeMs":${index.buildTimeMs}}""")
+  println(s"sdbx daemon ready (${index.fileCount} files, ${index.symbolCount} symbols, ${index.occurrenceCount} occurrences, ${index.buildTimeMs}ms)")
   System.out.flush()
 
   runSocketLoop(server, index, workspace, queryExecutor, resetIdleTimer, lastBuildMs)
@@ -203,7 +203,7 @@ private def runSocketLoop(
         if result.rebuilt then lastBuildMs = System.currentTimeMillis()
 
         val out = java.nio.channels.Channels.newOutputStream(client)
-        out.write((result.json + "\n").getBytes("UTF-8"))
+        out.write(result.text.getBytes("UTF-8"))
         out.flush()
 
         if result.shutdown then
@@ -217,9 +217,9 @@ private def runSocketLoop(
 
 // ── Request handling ──────────────────────────────────────────────────────
 
-private case class DaemonResponse(json: String, rebuilt: Boolean = false, shutdown: Boolean = false)
+private case class DaemonResponse(text: String, rebuilt: Boolean = false, shutdown: Boolean = false)
 
-private case class QueryResult(json: String, rebuilt: Boolean = false, shutdown: Boolean = false)
+private case class QueryResult(text: String, rebuilt: Boolean = false, shutdown: Boolean = false)
 
 private def processQuery(
   line: String, index: SemIndex, workspace: Path, lastBuildMs: Long,
@@ -235,45 +235,53 @@ private def processQuery(
       catch
         case _: java.util.concurrent.TimeoutException =>
           future.cancel(true)
-          DaemonResponse(s"""{"ok":false,"error":"timeout","message":"Query timed out after ${QueryTimeoutSec}s"}""")
-    QueryResult(response.json, response.rebuilt, response.shutdown)
+          DaemonResponse(s"SDBX_ERR\nQuery timed out after ${QueryTimeoutSec}s\n")
+    QueryResult(response.text, response.rebuilt, response.shutdown)
   catch
     case e: java.util.concurrent.ExecutionException =>
       val cause = if e.getCause != null then e.getCause else e
       System.err.println(s"Error: ${cause.getMessage}")
-      QueryResult(s"""{"ok":false,"error":"internal","message":${jsonStr(cause.getMessage)}}""")
+      QueryResult(s"SDBX_ERR\n${cause.getMessage}\n")
     case e: Exception =>
       System.err.println(s"Error: ${e.getMessage}")
-      QueryResult(s"""{"ok":false,"error":"internal","message":${jsonStr(e.getMessage)}}""")
+      QueryResult(s"SDBX_ERR\n${e.getMessage}\n")
 
 private def handleDaemonRequest(line: String, index: SemIndex, workspace: Path, lastBuildMs: Long): DaemonResponse =
   parseDaemonRequest(line) match
     case Left(err) =>
-      DaemonResponse(s"""{"ok":false,"error":"parse_error","message":${jsonStr(err)}}""")
+      DaemonResponse(s"SDBX_ERR\n$err\n")
     case Right(req) =>
       dispatchDaemonCommand(req, index, workspace, lastBuildMs)
 
 private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace: Path, lastBuildMs: Long): DaemonResponse =
   req.command match
     case "heartbeat" =>
-      DaemonResponse("""{"ok":true}""")
+      DaemonResponse("SDBX_OK\n")
 
     case "shutdown" =>
-      DaemonResponse("""{"ok":true}""", shutdown = true)
+      DaemonResponse("SDBX_OK\n", shutdown = true)
 
     case "rebuild" | "index" =>
       index.rebuild()
-      val stats = s"""{"ok":true,"event":"rebuilt","files":${index.fileCount},"symbols":${index.symbolCount},"occurrences":${index.occurrenceCount},"buildTimeMs":${index.buildTimeMs}}"""
-      DaemonResponse(stats, rebuilt = true)
+      val statsResult = SemCmdResult.Stats(
+        index.fileCount, index.symbolCount, index.occurrenceCount,
+        index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
+      )
+      val text = captureText(statsResult, SemCommandContext(index, workspace))
+      DaemonResponse(s"SDBX_OK\n$text", rebuilt = true)
 
     case "stats" =>
-      val stats = s"""{"ok":true,"result":{"files":${index.fileCount},"symbols":${index.symbolCount},"occurrences":${index.occurrenceCount},"buildTimeMs":${index.buildTimeMs},"cached":${index.cachedLoad},"parsedCount":${index.parsedCount},"skippedCount":${index.skippedCount}}}"""
-      DaemonResponse(stats)
+      val statsResult = SemCmdResult.Stats(
+        index.fileCount, index.symbolCount, index.occurrenceCount,
+        index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
+      )
+      val text = captureText(statsResult, SemCommandContext(index, workspace))
+      DaemonResponse(s"SDBX_OK\n$text")
 
     case cmd =>
       // Validate command exists before doing any work
       if cmd != "batch" && !commands.contains(cmd) then
-        DaemonResponse(s"""{"ok":false,"error":"unknown_command","message":${jsonStr(s"Unknown command: $cmd")}}""")
+        DaemonResponse(s"SDBX_ERR\nUnknown command: $cmd\n")
       else
         // Check staleness before query (~7ms)
         val rebuilt = if index.isStale(lastBuildMs) then
@@ -285,21 +293,23 @@ private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace
         // Translate daemon request to CLI-style args and dispatch
         val argList = flagsToArgList(req.flags) ++ req.args
         val flags = parseFlags(argList)
-        val ctx = flagsToContext(flags, index, workspace).copy(jsonOutput = true)
+        val ctx = flagsToContext(flags, index, workspace)
 
         val result =
           if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
           else commands(cmd)(flags.cleanArgs, ctx)
 
-        // Capture JSON output
-        val buf = java.io.ByteArrayOutputStream()
-        Console.withOut(buf) {
-          Console.withErr(java.io.ByteArrayOutputStream()) {
-            renderJson(result, ctx)
-          }
-        }
-        val jsonResult = buf.toString("UTF-8").trim
-        DaemonResponse(s"""{"ok":true,"result":$jsonResult}""", rebuilt = rebuilt)
+        val text = captureText(result, ctx)
+        DaemonResponse(s"SDBX_OK\n$text", rebuilt = rebuilt)
+
+private def captureText(result: SemCmdResult, ctx: SemCommandContext): String =
+  val buf = java.io.ByteArrayOutputStream()
+  Console.withOut(buf) {
+    Console.withErr(System.err) {
+      renderText(result, ctx)
+    }
+  }
+  buf.toString("UTF-8")
 
 // ── Flag translation ──────────────────────────────────────────────────────
 

@@ -59,7 +59,6 @@ abstract class SemTestBase extends FunSuite:
   protected def makeCtx(
     limit: Int = 100,
     verbose: Boolean = false,
-    json: Boolean = false,
     kindFilter: Option[String] = None,
     roleFilter: Option[String] = None,
     depth: Option[Int] = None,
@@ -76,7 +75,6 @@ abstract class SemTestBase extends FunSuite:
       workspace = workspace,
       limit = limit,
       verbose = verbose,
-      jsonOutput = json,
       kindFilter = kindFilter,
       roleFilter = roleFilter,
       depth = depth,

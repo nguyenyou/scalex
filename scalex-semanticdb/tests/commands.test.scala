@@ -318,18 +318,6 @@ class CommandsTest extends SemTestBase:
         fail(s"unexpected result: $other")
   }
 
-  // ── JSON output ──────────────────────────────────────────────────────────
-
-  test("json output is valid") {
-    val ctx = makeCtx(json = true)
-    val output = captureOut {
-      val result = cmdStats(Nil, ctx)
-      render(result, ctx)
-    }
-    assert(output.contains("\"files\""), s"json should have files key: $output")
-    assert(output.contains("\"symbols\""), s"json should have symbols key: $output")
-  }
-
   // ── batch ────────────────────────────────────────────────────────────────
 
   test("batch runs multiple commands") {
@@ -404,17 +392,6 @@ class CommandsTest extends SemTestBase:
     }
     assert(output.contains("--- lookup Dog ---"), s"missing delimiter: $output")
     assert(output.contains("--- stats ---"), s"missing delimiter: $output")
-  }
-
-  test("batch json output wraps results") {
-    val ctx = makeCtx(json = true)
-    val output = captureOut {
-      val result = runBatch(List("lookup Dog", "stats"), ctx)
-      render(result, ctx)
-    }
-    assert(output.contains("\"batch\""), s"json should have batch key: $output")
-    assert(output.contains("\"command\""), s"json should have command key: $output")
-    assert(output.contains("lookup Dog"), s"json should include command string: $output")
   }
 
   test("batch with --no-accessors flag in sub-command") {
@@ -1022,15 +999,6 @@ class CommandsTest extends SemTestBase:
     assert(output.contains("Defined:"), s"should contain Defined section: $output")
   }
 
-  test("explain JSON output is valid") {
-    val ctx = makeCtx(json = true)
-    val result = cmdExplain(List("example/Animal#greet()."), ctx)
-    val output = captureOut { renderJson(result, ctx) }
-    assert(output.contains("\"symbol\""), s"JSON should contain symbol field: $output")
-    assert(output.contains("\"totalCallers\""), s"JSON should contain totalCallers: $output")
-    assert(output.contains("\"totalCallees\""), s"JSON should contain totalCallees: $output")
-  }
-
   // ── --in flag (#303) ──────────────────────────────────────────────────────
 
   test("--in scopes resolution to owner class") {
@@ -1262,14 +1230,6 @@ class CommandsTest extends SemTestBase:
     val result = cmdExplain(List("Shape"), ctx)
     val output = captureOut { renderText(result, ctx) }
     assert(output.contains("Subtypes:"), s"should contain Subtypes section: $output")
-  }
-
-  test("explain JSON includes subtypes") {
-    val ctx = makeCtx(json = true)
-    val result = cmdExplain(List("Shape"), ctx)
-    val output = captureOut { renderJson(result, ctx) }
-    assert(output.contains("\"totalSubtypes\""), s"JSON should contain totalSubtypes: $output")
-    assert(output.contains("\"subtypes\""), s"JSON should contain subtypes array: $output")
   }
 
   test("explain member filtering hides case class synthetics") {

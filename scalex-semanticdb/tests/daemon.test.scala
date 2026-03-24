@@ -36,8 +36,8 @@ class DaemonLifecycleTest extends FunSuite:
       val sockPath = socketPath(workspace)
       assert(Files.exists(sockPath), s"Socket file not created at $sockPath")
       val response = socketQuery(sockPath, """{"command":"stats"}""")
-      assert(response.contains("\"ok\":true"), s"Expected ok stats response, got: $response")
-      assert(response.contains("\"files\""), s"Expected files in stats, got: $response")
+      assert(response.startsWith("SDBX_OK"), s"Expected SDBX_OK stats response, got: $response")
+      assert(response.contains("Files:"), s"Expected Files: in stats, got: $response")
     finally
       sendSocketCommand(workspace, """{"command":"shutdown"}""")
       proc.waitFor(10, TimeUnit.SECONDS)
@@ -48,7 +48,7 @@ class DaemonLifecycleTest extends FunSuite:
     waitForReady(proc)
     val sockPath = socketPath(workspace)
     val response = socketQuery(sockPath, """{"command":"shutdown"}""")
-    assert(response.contains("\"ok\":true"), s"Expected ok response, got: $response")
+    assert(response.startsWith("SDBX_OK"), s"Expected SDBX_OK response, got: $response")
     val exited = proc.waitFor(10, TimeUnit.SECONDS)
     assert(exited, "Daemon did not exit after shutdown command")
     assertEquals(proc.exitValue(), 0)
@@ -91,7 +91,7 @@ class DaemonLifecycleTest extends FunSuite:
     // Send heartbeat at ~1s to reset idle timer
     Thread.sleep(1000)
     val hbResponse = socketQuery(sockPath, """{"command":"heartbeat"}""")
-    assert(hbResponse.contains("\"ok\":true"))
+    assert(hbResponse.startsWith("SDBX_OK"))
     // At ~3s total (past original idle timeout of 2s), daemon should still be alive
     Thread.sleep(2000)
     assert(proc.isAlive, "Daemon died prematurely despite heartbeat activity")
@@ -106,11 +106,11 @@ class DaemonLifecycleTest extends FunSuite:
     val sockPath = socketPath(workspace)
     try
       val r1 = socketQuery(sockPath, """{"command":"stats"}""")
-      assert(r1.contains("\"ok\":true"), s"First query failed: $r1")
+      assert(r1.startsWith("SDBX_OK"), s"First query failed: $r1")
       val r2 = socketQuery(sockPath, """{"command":"heartbeat"}""")
-      assert(r2.contains("\"ok\":true"), s"Second query failed: $r2")
+      assert(r2.startsWith("SDBX_OK"), s"Second query failed: $r2")
       val r3 = socketQuery(sockPath, """{"command":"stats"}""")
-      assert(r3.contains("\"ok\":true"), s"Third query failed: $r3")
+      assert(r3.startsWith("SDBX_OK"), s"Third query failed: $r3")
     finally
       sendSocketCommand(workspace, """{"command":"shutdown"}""")
       proc.waitFor(10, TimeUnit.SECONDS)
@@ -122,11 +122,10 @@ class DaemonLifecycleTest extends FunSuite:
     val sockPath = socketPath(workspace)
     try
       val errResponse = socketQuery(sockPath, "this is not json")
-      assert(errResponse.contains("\"ok\":false"), s"Expected error response, got: $errResponse")
-      assert(errResponse.contains("parse_error"), s"Expected parse_error, got: $errResponse")
+      assert(errResponse.startsWith("SDBX_ERR"), s"Expected SDBX_ERR response, got: $errResponse")
       // Daemon should still accept connections
       val okResponse = socketQuery(sockPath, """{"command":"heartbeat"}""")
-      assert(okResponse.contains("\"ok\":true"), s"Expected ok after recovery, got: $okResponse")
+      assert(okResponse.startsWith("SDBX_OK"), s"Expected SDBX_OK after recovery, got: $okResponse")
     finally
       sendSocketCommand(workspace, """{"command":"shutdown"}""")
       proc.waitFor(10, TimeUnit.SECONDS)
@@ -154,7 +153,7 @@ class DaemonLifecycleTest extends FunSuite:
     val reader = BufferedReader(InputStreamReader(proc.getInputStream))
     val ready = reader.readLine()
     assert(ready != null, "Daemon exited before sending ready signal")
-    assert(ready.contains("\"event\":\"ready\""), s"Expected ready signal, got: $ready")
+    assert(ready.contains("sdbx daemon ready"), s"Expected ready signal, got: $ready")
 
   // ── Fixture setup ──────────────────────────────────────────────────────
 
@@ -201,9 +200,14 @@ class DaemonLifecycleTest extends FunSuite:
       ch.shutdownOutput()
       val reader = BufferedReader(InputStreamReader(
         java.nio.channels.Channels.newInputStream(ch)))
-      val line = reader.readLine()
-      assert(line != null, "Daemon closed connection without response")
-      line
+      val sb = StringBuilder()
+      var line = reader.readLine()
+      while line != null do
+        sb.append(line).append('\n')
+        line = reader.readLine()
+      val response = sb.toString.trim
+      assert(response.nonEmpty, "Daemon closed connection without response")
+      response
     finally ch.close()
 
   private def sendSocketCommand(workspace: Path, json: String): Unit =

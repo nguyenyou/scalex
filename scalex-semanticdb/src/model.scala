@@ -161,7 +161,6 @@ case class SemCommandContext(
   workspace: Path,
   limit: Int = 50,
   verbose: Boolean = false,
-  jsonOutput: Boolean = false,
   kindFilter: Option[String] = None,
   roleFilter: Option[String] = None,
   depth: Option[Int] = None,

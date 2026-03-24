@@ -118,8 +118,7 @@ def resolveOne(query: String, index: SemIndex, kindFilter: Option[String], inSco
 // ── Output rendering ───────────────────────────────────────────────────────
 
 def render(result: SemCmdResult, ctx: SemCommandContext): Unit =
-  if ctx.jsonOutput then renderJson(result, ctx)
-  else renderText(result, ctx)
+  renderText(result, ctx)
 
 def renderText(result: SemCmdResult, ctx: SemCommandContext): Unit =
   result match
@@ -249,79 +248,3 @@ def formatSymbolDetail(s: SemSymbol, verbose: Boolean): String =
     sb.append(s"  owner: ${s.owner}\n")
   sb.result()
 
-// ── JSON rendering ─────────────────────────────────────────────────────────
-
-def renderJson(result: SemCmdResult, ctx: SemCommandContext): Unit =
-  result match
-    case SemCmdResult.SymbolDetail(sym) =>
-      println(symbolToJson(sym))
-
-    case SemCmdResult.SymbolList(header, symbols, total) =>
-      println(s"""{"header":${jsonStr(header)},"total":$total,"symbols":[${symbols.map(symbolToJson).mkString(",")}]}""")
-
-    case SemCmdResult.OccurrenceList(header, occs, total) =>
-      val items = occs.map { o =>
-        s"""{"file":${jsonStr(o.file)},"line":${o.range.startLine + 1},"symbol":${jsonStr(o.symbol)},"role":${jsonStr(o.role.toString)}}"""
-      }
-      println(s"""{"header":${jsonStr(header)},"total":$total,"occurrences":[${items.mkString(",")}]}""")
-
-    case SemCmdResult.TypeResult(symbol, typeString) =>
-      println(s"""{"symbol":${jsonStr(symbol)},"type":${jsonStr(typeString)}}""")
-
-    case SemCmdResult.Tree(header, lines) =>
-      println(s"""{"header":${jsonStr(header)},"lines":[${lines.map(jsonStr).mkString(",")}]}""")
-
-    case SemCmdResult.FlowTree(header, lines) =>
-      println(s"""{"header":${jsonStr(header)},"lines":[${lines.map(jsonStr).mkString(",")}]}""")
-
-    case SemCmdResult.RelatedList(header, entries, total) =>
-      val items = entries.map { entry =>
-        s"""{"symbol":${jsonStr(entry.sym.fqn)},"name":${jsonStr(entry.sym.displayName)},"kind":${jsonStr(entry.sym.kind.toString)},"count":${entry.count}}"""
-      }
-      println(s"""{"header":${jsonStr(header)},"total":$total,"related":[${items.mkString(",")}]}""")
-
-    case SemCmdResult.ExplainResult(sym, definedAt, callers, totalCallers, callees, totalCallees, parents, members, totalMembers, subtypes, totalSubtypes) =>
-      val locJson = definedAt.map((f, l) => s""","file":${jsonStr(f)},"line":$l""").getOrElse("")
-      val callerJson = callers.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)}}""").mkString(",")
-      val calleeJson = callees.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)}}""").mkString(",")
-      val memberJson = members.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)}}""").mkString(",")
-      val parentsJson = parents.map(jsonStr).mkString(",")
-      val subtypeJson = subtypes.map(s => s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)}}""").mkString(",")
-      println(s"""{"symbol":${symbolToJson(sym)}$locJson,"callers":[$callerJson],"totalCallers":$totalCallers,"callees":[$calleeJson],"totalCallees":$totalCallees,"parents":[$parentsJson],"subtypes":[$subtypeJson],"totalSubtypes":$totalSubtypes,"members":[$memberJson],"totalMembers":$totalMembers}""")
-
-    case SemCmdResult.Stats(fc, sc, oc, ms, cached, parsed, skipped) =>
-      println(s"""{"files":$fc,"symbols":$sc,"occurrences":$oc,"buildTimeMs":$ms,"cached":$cached,"parsedCount":$parsed,"skippedCount":$skipped}""")
-
-    case SemCmdResult.Batch(results) =>
-      val items = results.map { entry =>
-        val buf = java.io.ByteArrayOutputStream()
-        Console.withOut(buf) { Console.withErr(java.io.ByteArrayOutputStream()) { renderJson(entry.result, ctx) } }
-        s"""{"command":${jsonStr(entry.command)},"result":${buf.toString("UTF-8").trim}}"""
-      }
-      println(s"""{"batch":[${items.mkString(",")}]}""")
-
-    case SemCmdResult.NotFound(msg) =>
-      println(s"""{"error":"not_found","message":${jsonStr(msg)}}""")
-
-    case SemCmdResult.UsageError(msg) =>
-      println(s"""{"error":"usage","message":${jsonStr(msg)}}""")
-
-private def symbolToJson(s: SemSymbol): String =
-  val parents = s.parents.map(jsonStr).mkString(",")
-  val overridden = s.overriddenSymbols.map(jsonStr).mkString(",")
-  val annots = s.annotations.map(jsonStr).mkString(",")
-  s"""{"fqn":${jsonStr(s.fqn)},"name":${jsonStr(s.displayName)},"kind":${jsonStr(s.kind.toString)},"file":${jsonStr(s.sourceUri)},"signature":${jsonStr(s.signature)},"parents":[$parents],"overriddenSymbols":[$overridden],"annotations":[$annots]}"""
-
-def jsonStr(s: String): String =
-  val sb = StringBuilder("\"")
-  s.foreach {
-    case '"'  => sb.append("\\\"")
-    case '\\' => sb.append("\\\\")
-    case '\n' => sb.append("\\n")
-    case '\r' => sb.append("\\r")
-    case '\t' => sb.append("\\t")
-    case c if c < ' ' => sb.append(f"\\u${c.toInt}%04x")
-    case c    => sb.append(c)
-  }
-  sb.append('"')
-  sb.result()
