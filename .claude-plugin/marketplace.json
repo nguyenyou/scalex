@@ -27,7 +27,7 @@
       "name": "scalex-semanticdb",
       "source": "./plugins/scalex-semanticdb",
       "description": "Compiler-precise Scala code intelligence from SemanticDB — call graphs, precise references, resolved types, flow analysis. Companion to scalex for compiled codebases.",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "author": {
         "name": "Tu Nguyen"
       },
