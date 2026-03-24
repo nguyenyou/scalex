@@ -7,12 +7,12 @@ if [ -z "${BASH_VERSION:-}" ] && [ -f "$0" ]; then
 fi
 set -euo pipefail
 
-EXPECTED_VERSION="0.4.0"
+EXPECTED_VERSION="0.5.0"
 REPO="nguyenyou/scalex"
 ARTIFACT="sdbx"
 
 # Expected SHA-256 checksum (updated each release alongside EXPECTED_VERSION)
-CHECKSUM_sdbx="d2a77f9ac1417c56a2776f4cfd327b196257029fd5b308529a90161e82bf1997"
+CHECKSUM_sdbx="b3d2b276bab2e79dc3f3a17246fd5f2d180ea10887645e550a16faea30983b5a"
 
 # Cache location: follow XDG spec
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/scalex-semanticdb"
