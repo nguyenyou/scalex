@@ -5,110 +5,108 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
     case Nil => SemCmdResult.UsageError("Usage: callers <symbol> [--depth N]")
     case query :: _ =>
       val symbols = ctx.index.resolveSymbol(query)
-      if symbols.isEmpty then
-        return SemCmdResult.NotFound(s"No symbol found matching '$query'")
-
-      val resolved = filterByKind(symbols, ctx.kindFilter)
-      val afterKind = if resolved.nonEmpty then resolved else symbols
-      // Apply --in scope filter
-      val candidates = ctx.inScope match
-        case Some(scope) =>
-          val scopeLower = scope.toLowerCase
-          val scopeFqnLower = scope.replace(".", "/").toLowerCase
-          val scoped = afterKind.filter { s =>
-            s.owner.toLowerCase.contains(scopeLower) ||
-            s.fqn.toLowerCase.contains(scopeFqnLower) ||
-            s.sourceUri.toLowerCase.contains(scopeLower)
-          }
-          if scoped.nonEmpty then scoped
-          else
-            System.err.println(s"Warning: --in '$scope' matched no candidates, falling back to unscoped resolution")
-            afterKind
-        case None => afterKind
-      val maxDepth = ctx.depth.getOrElse(1)
-
-      if maxDepth <= 1 then
-        // Flat mode (default): show direct callers as a list
-        val fqns = candidates.map(_.fqn).toSet
-        val callerSymbols = fqns.toList.flatMap(fqn => findCallersTraitAware(fqn, ctx.index))
-          .distinctBy(_.fqn)
-          .filterNot(s => fqns.contains(s.fqn))
-          .filterNot(s => ctx.smart && isInfraNoise(s))
-          .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
-          .filterNot(s => ctx.smart && isMonadicCombinator(s))
-          .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
-        val filtered = filterByExcludePkg(filterByExclude(callerSymbols, ctx.excludePatterns), ctx.excludePkgPatterns)
-        val limited = filtered.take(ctx.limit)
-        val name = candidates.head.displayName
-
-        if ctx.groupByFile then
-          val grouped = limited.groupBy(_.sourceUri).toList.sortBy(-_._2.size)
-          val lines = grouped.flatMap { (file, syms) =>
-            val header = s"  $file (${syms.size})"
-            header :: syms.map { s =>
-              val props = s.propertyNames
-              val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
-              val memberOf = formatMemberOf(s)
-              s"    ${s.kind.toString.toLowerCase} ${s.displayName}$propsStr$memberOf"
-            }
-          }
-          val truncation = if filtered.size > limited.size then
-            List(s"... and ${filtered.size - limited.size} more (use --limit 0 for all)")
-          else Nil
-          SemCmdResult.Tree(
-            s"${filtered.size} callers of '$name' (grouped by file)",
-            lines ++ truncation,
-          )
-        else
-          SemCmdResult.SymbolList(
-            s"${filtered.size} callers of '$name'",
-            limited,
-            filtered.size,
-          )
+      if symbols.isEmpty then SemCmdResult.NotFound(s"No symbol found matching '$query'")
       else
-        // Transitive tree mode: recursive caller traversal (single root)
-        val sym = resolveOne(query, ctx.index, ctx.kindFilter, ctx.inScope) match
-          case None => return SemCmdResult.NotFound(s"No symbol found matching '$query'")
-          case Some(s) => s
-        val lines = scala.collection.mutable.ListBuffer.empty[String]
-        val visited = scala.collection.mutable.Set.empty[String]
-        val rootModule = if ctx.smart then Some(modulePrefix(sym.sourceUri)) else None
+        val resolved = filterByKind(symbols, ctx.kindFilter)
+        val afterKind = if resolved.nonEmpty then resolved else symbols
+        // Apply --in scope filter
+        val candidates = ctx.inScope match
+          case Some(scope) =>
+            val scopeLower = scope.toLowerCase
+            val scopeFqnLower = scope.replace(".", "/").toLowerCase
+            val scoped = afterKind.filter { s =>
+              s.owner.toLowerCase.contains(scopeLower) ||
+              s.fqn.toLowerCase.contains(scopeFqnLower) ||
+              s.sourceUri.toLowerCase.contains(scopeLower)
+            }
+            if scoped.nonEmpty then scoped
+            else
+              System.err.println(s"Warning: --in '$scope' matched no candidates, falling back to unscoped resolution")
+              afterKind
+          case None => afterKind
+        val maxDepth = ctx.depth.getOrElse(1)
 
-        def walk(fqn: String, indent: Int): Unit = {
-          if indent > maxDepth || visited.contains(fqn) then return
-          visited += fqn
+        if maxDepth <= 1 then
+          // Flat mode (default): show callers as a list or grouped by file
+          val fqns = candidates.map(_.fqn).toSet
+          val callerSymbols = fqns.toList.flatMap(fqn => findCallersTraitAware(fqn, ctx.index))
+            .distinctBy(_.fqn)
+            .filterNot(s => fqns.contains(s.fqn))
+            .filterNot(s => ctx.smart && isInfraNoise(s))
+            .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
+            .filterNot(s => ctx.smart && isMonadicCombinator(s))
+            .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
+          val filtered = filterByExcludePkg(filterByExclude(callerSymbols, ctx.excludePatterns), ctx.excludePkgPatterns)
+          val limited = filtered.take(ctx.limit)
+          val name = candidates.head.displayName
 
-          val callers = filterByExcludePkg(
-            findCallersTraitAware(fqn, ctx.index)
-              .filterNot(s => isTrivial(s.fqn))
-              .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
-              .filterNot(s => ctx.smart && isInfraNoise(s))
-              .filterNot(s => ctx.smart && isMonadicCombinator(s))
-              .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
-              .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p))),
-            ctx.excludePkgPatterns,
-          )
+          if ctx.groupByFile then
+            val grouped = limited.groupBy(_.sourceUri).toList.sortBy { (_, syms) => -syms.size }
+            val lines = grouped.flatMap { (file, syms) =>
+              val header = s"  $file (${syms.size})"
+              header :: syms.map { s =>
+                val props = s.propertyNames
+                val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
+                val memberOf = formatMemberOf(s)
+                s"    ${s.kind.toString.toLowerCase} ${s.displayName}$propsStr$memberOf"
+              }
+            }
+            val truncation = if filtered.size > limited.size then
+              List(s"... and ${filtered.size - limited.size} more (use --limit 0 for all)")
+            else Nil
+            SemCmdResult.Tree(
+              s"${filtered.size} callers of '$name' (grouped by file)",
+              lines ++ truncation,
+            )
+          else
+            SemCmdResult.SymbolList(
+              s"${filtered.size} callers of '$name'",
+              limited,
+              filtered.size,
+            )
+        else
+          // Transitive tree mode: recursive caller traversal (single root)
+          resolveOne(query, ctx.index, ctx.kindFilter, ctx.inScope) match
+            case None => SemCmdResult.NotFound(s"No symbol found matching '$query'")
+            case Some(sym) =>
+              val lines = scala.collection.mutable.ListBuffer.empty[String]
+              val visited = scala.collection.mutable.Set.empty[String]
+              val rootModule = if ctx.smart then Some(modulePrefix(sym.sourceUri)) else None
 
-          callers.foreach { caller =>
-            if !visited.contains(caller.fqn) then
-              val prefix = "  " * indent
-              val loc = ctx.index.definitionRanges.get(caller.fqn) match
+              def walk(fqn: String, indent: Int): Unit =
+                if indent <= maxDepth && !visited.contains(fqn) then
+                  visited += fqn
+
+                  val callers = filterByExcludePkg(
+                    findCallersTraitAware(fqn, ctx.index)
+                      .filterNot(s => isTrivial(s.fqn))
+                      .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
+                      .filterNot(s => ctx.smart && isInfraNoise(s))
+                      .filterNot(s => ctx.smart && isMonadicCombinator(s))
+                      .filterNot(s => ctx.excludeTest && isTestSource(s.sourceUri))
+                      .filterNot(s => ctx.excludePatterns.exists(p => s.fqn.contains(p) || s.sourceUri.contains(p))),
+                    ctx.excludePkgPatterns,
+                  )
+
+                  callers.foreach { caller =>
+                    if !visited.contains(caller.fqn) then
+                      val prefix = "  " * indent
+                      val loc = ctx.index.definitionRanges.get(caller.fqn) match
+                        case Some((file, range)) => s" ($file:${range.startLine + 1})"
+                        case None => ""
+                      lines += s"$prefix${caller.kind.toString.toLowerCase} ${caller.displayName}$loc"
+                      val sameModule = rootModule.forall(rm => caller.sourceUri.startsWith(rm))
+                      if sameModule then walk(caller.fqn, indent + 1)
+                      else visited += caller.fqn // mark cross-module leaves to prevent duplicates
+                  }
+
+              val rootLoc = ctx.index.definitionRanges.get(sym.fqn) match
                 case Some((file, range)) => s" ($file:${range.startLine + 1})"
                 case None => ""
-              lines += s"$prefix${caller.kind.toString.toLowerCase} ${caller.displayName}$loc"
-              val sameModule = rootModule.forall(rm => caller.sourceUri.startsWith(rm))
-              if sameModule then walk(caller.fqn, indent + 1)
-              else visited += caller.fqn // mark cross-module leaves to prevent duplicates
-          }
-        }
+              lines.prepend(s"${sym.kind.toString.toLowerCase} ${sym.displayName}$rootLoc")
+              walk(sym.fqn, 1)
 
-        val rootLoc = ctx.index.definitionRanges.get(sym.fqn) match
-          case Some((file, range)) => s" ($file:${range.startLine + 1})"
-          case None => ""
-        lines.prepend(s"${sym.kind.toString.toLowerCase} ${sym.displayName}$rootLoc")
-        walk(sym.fqn, 1)
-
-        SemCmdResult.FlowTree(s"Caller tree of '${sym.displayName}' (depth=$maxDepth)", lines.toList)
+              SemCmdResult.FlowTree(s"Caller tree of '${sym.displayName}' (depth=$maxDepth)", lines.toList)
 
 // ── findCallers helpers ───────────────────────────────────────────────────
 

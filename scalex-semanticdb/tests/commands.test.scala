@@ -671,53 +671,51 @@ class CommandsTest extends SemTestBase:
 
   test("findCallersTraitAware includes callers through trait indirection") {
     // TraitCaller.viaTrait calls register through the AnimalService trait type
-    // Direct findCallers on the impl should NOT include trait-typed callers
     val implFqn = index.resolveSymbol("register").find(_.owner.contains("AnimalServiceImpl")).map(_.fqn)
     val traitFqn = index.resolveSymbol("register").find(_.owner.contains("AnimalService#")).map(_.fqn)
-    implFqn.foreach { fqn =>
-      val directCallers = findCallers(fqn, index)
-      val traitAwareCallers = findCallersTraitAware(fqn, index)
-      // Trait-aware should find at least as many callers
-      assert(traitAwareCallers.size >= directCallers.size,
-        s"trait-aware callers (${traitAwareCallers.size}) should be >= direct callers (${directCallers.size})")
-    }
-    // Also verify trait callers are found through the trait FQN
-    traitFqn.foreach { fqn =>
-      val traitCallers = findCallers(fqn, index)
-      val traitCallerNames = traitCallers.map(_.displayName)
-      assert(traitCallerNames.contains("viaTrait"),
-        s"viaTrait should call trait's register: $traitCallerNames")
-    }
+    assert(implFqn.isDefined, "fixture AnimalServiceImpl#register should resolve")
+    assert(traitFqn.isDefined, "fixture AnimalService#register should resolve")
+    val fqn = implFqn.get
+    val directCallers = findCallers(fqn, index)
+    val traitAwareCallers = findCallersTraitAware(fqn, index)
+    // Trait-aware should find strictly more callers (trait-typed call sites)
+    assert(traitAwareCallers.size > directCallers.size,
+      s"trait-aware callers (${traitAwareCallers.size}) should be > direct callers (${directCallers.size})")
+    // Verify trait callers are found through the trait FQN
+    val traitCallers = findCallers(traitFqn.get, index)
+    val traitCallerNames = traitCallers.map(_.displayName)
+    assert(traitCallerNames.contains("viaTrait"),
+      s"viaTrait should call trait's register: $traitCallerNames")
   }
 
   test("callers command uses trait-aware resolution by default") {
     // Query callers of register scoped to impl — should include TraitCaller.viaTrait
     val implSymbols = index.resolveSymbol("register").filter(_.owner.contains("AnimalServiceImpl"))
-    if implSymbols.nonEmpty then
-      val ctx = makeCtx(inScope = Some("AnimalServiceImpl"))
-      val result = cmdCallers(List("register"), ctx)
-      result match
-        case SemCmdResult.SymbolList(_, callers, _) =>
-          val names = callers.map(_.displayName)
-          // viaTrait calls register through trait type — trait-aware callers should find it
-          assert(names.contains("viaTrait"),
-            s"trait-aware callers should include viaTrait: $names")
-        case other =>
-          fail(s"expected SymbolList, got: $other")
+    assert(implSymbols.nonEmpty, "fixture AnimalServiceImpl#register should resolve")
+    val ctx = makeCtx(inScope = Some("AnimalServiceImpl"))
+    val result = cmdCallers(List("register"), ctx)
+    result match
+      case SemCmdResult.SymbolList(_, callers, _) =>
+        val names = callers.map(_.displayName)
+        // viaTrait calls register through trait type — trait-aware callers should find it
+        assert(names.contains("viaTrait"),
+          s"trait-aware callers should include viaTrait: $names")
+      case other =>
+        fail(s"expected SymbolList, got: $other")
   }
 
   test("callers --depth 2 traverses through trait indirection") {
     val implSymbols = index.resolveSymbol("register").filter(_.owner.contains("AnimalServiceImpl"))
-    if implSymbols.nonEmpty then
-      val ctx = makeCtx(depth = Some(2), inScope = Some("AnimalServiceImpl"))
-      val result = cmdCallers(List("register"), ctx)
-      result match
-        case SemCmdResult.FlowTree(_, lines) =>
-          val text = lines.mkString("\n")
-          assert(text.contains("viaTrait"),
-            s"transitive callers should include viaTrait through trait: $text")
-        case other =>
-          fail(s"expected FlowTree, got: $other")
+    assert(implSymbols.nonEmpty, "fixture AnimalServiceImpl#register should resolve")
+    val ctx = makeCtx(depth = Some(2), inScope = Some("AnimalServiceImpl"))
+    val result = cmdCallers(List("register"), ctx)
+    result match
+      case SemCmdResult.FlowTree(_, lines) =>
+        val text = lines.mkString("\n")
+        assert(text.contains("viaTrait"),
+          s"transitive callers should include viaTrait through trait: $text")
+      case other =>
+        fail(s"expected FlowTree, got: $other")
   }
 
   // ── group-by-file ─────────────────────────────────────────────────────

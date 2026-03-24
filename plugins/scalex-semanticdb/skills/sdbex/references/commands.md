@@ -64,6 +64,7 @@
 | `--source-only` | — | off | Exclude generated sources from lookup |
 | `--no-accessors` | — | off | Exclude val/var accessors from flow/callees |
 | `--timings` | — | off | Print timing breakdown to stderr |
+| `--version` | — | — | Print version |
 
 ## Symbol Resolution
 
