@@ -7,19 +7,27 @@ Backgrounding the daemon with `&` closes stdin, triggering immediate exit (Layer
 **Option A: `--fifo` flag (recommended)** — reads from a named pipe instead of stdin:
 
 ```bash
-mkfifo .scalex/daemon.fifo
-bash "/path/to/sdbx-cli" daemon --fifo .scalex/daemon.fifo --parent-pid $$ -w /project > .scalex/daemon.out &
+mkfifo .scalex/daemon.fifo .scalex/daemon.out
+bash "/path/to/sdbx-cli" daemon --fifo .scalex/daemon.fifo --parent-pid $$ -w /project \
+  > .scalex/daemon.out &
+
+# Open persistent file descriptors (avoids re-reading from byte 0)
+exec 3>.scalex/daemon.fifo 4<.scalex/daemon.out
 
 # Wait for ready signal
-head -1 .scalex/daemon.out
+read -t 30 ready <&4
 
-# Send queries by holding the FIFO open
-exec 3>.scalex/daemon.fifo
+# Send a query and read the response
 echo '{"command":"callers","args":["handleRequest"]}' >&3
-head -1 .scalex/daemon.out
+read -t 10 resp <&4
+
+# Clean up
 echo '{"command":"shutdown"}' >&3
-exec 3>&-
+exec 3>&- 4<&-
+rm -f .scalex/daemon.fifo .scalex/daemon.out
 ```
+
+For simpler plumbing, prefer `coproc` (Option B below) — it keeps bidirectional pipes alive natively without FIFOs.
 
 **Option B: `coproc`** — keeps bidirectional pipes alive without a FIFO:
 
