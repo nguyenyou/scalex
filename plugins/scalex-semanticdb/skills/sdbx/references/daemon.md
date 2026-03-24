@@ -1,38 +1,26 @@
 # Daemon Reference
 
-## Non-interactive shells (backgrounding with &)
+## Socket mode (recommended for coding agents)
 
-Backgrounding the daemon with `&` closes stdin, triggering immediate exit (Layer 1: stdin EOF). Two workarounds:
-
-**Option A: `--fifo` flag (recommended)** — reads from a named pipe instead of stdin:
+Socket mode lets any process connect to a running daemon, send a query, and read the response — no persistent shell needed.
 
 ```bash
-mkfifo .scalex/daemon.fifo .scalex/daemon.out
-bash "/path/to/sdbx-cli" daemon --fifo .scalex/daemon.fifo --parent-pid $$ -w /project \
-  > .scalex/daemon.out &
+# Start daemon in socket mode (backgrounding is fine)
+bash "/path/to/sdbx-cli" daemon --socket --parent-pid $$ -w /project &
 
-# Open persistent file descriptors (avoids re-reading from byte 0)
-exec 3>.scalex/daemon.fifo 4<.scalex/daemon.out
-
-# Wait for ready signal
-read -t 30 ready <&4
-
-# Send a query and read the response
-echo '{"command":"callers","args":["handleRequest"]}' >&3
-read -t 10 resp <&4
-
-# Clean up
-echo '{"command":"shutdown"}' >&3
-exec 3>&- 4<&-
-rm -f .scalex/daemon.fifo .scalex/daemon.out
+# Wait for ready signal on stdout
+# Non-daemon commands auto-detect the socket and forward queries transparently:
+sdbx callers handleRequest -w /project  # <10ms via socket, falls back to local index if no daemon
 ```
 
-For simpler plumbing, prefer `coproc` (Option B below) — it keeps bidirectional pipes alive natively without FIFOs.
+The socket is created at a short path under `/tmp/` (hashed from workspace path) to respect the macOS 104-byte limit on Unix domain socket paths. Requires Java 16+.
 
-**Option B: `coproc`** — keeps bidirectional pipes alive without a FIFO:
+## Stdin mode
 
-```zsh
-# zsh
+The default mode reads JSON-lines from stdin and writes responses to stdout. Useful with `coproc` or heredoc when all queries happen in a single shell:
+
+```bash
+# coproc (zsh)
 coproc bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null
 read -t 30 ready <&p          # wait for ready signal
 print -p '{"command":"callers","args":["handleRequest"]}'
@@ -41,16 +29,24 @@ print -p '{"command":"shutdown"}'
 ```
 
 ```bash
-# bash
+# coproc (bash)
 coproc SDBX { bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null; }
 read -t 30 ready <&${SDBX[0]}
 echo '{"command":"callers","args":["handleRequest"]}' >&${SDBX[1]}
 read -t 10 resp <&${SDBX[0]}
 ```
 
-## Request/response protocol (JSON-lines on stdin/stdout)
+```bash
+# heredoc — all queries known upfront
+bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project <<'QUERIES'
+{"command":"callers","args":["handleRequest"]}
+{"command":"subtypes","args":["Repository"]}
+QUERIES
+```
 
-Send one JSON object per line to stdin. The daemon responds with one JSON line on stdout per request.
+## Request/response protocol (JSON-lines)
+
+Send one JSON object per line. The daemon responds with one JSON line per request.
 
 **Request format:**
 ```json
@@ -95,13 +91,13 @@ The daemon checks if `.semanticdb` files have changed before each query (~7ms ch
 
 The daemon is designed to self-terminate aggressively — it will never become a zombie process. Eight independent termination layers ensure this:
 
-1. **Stdin/FIFO EOF** — if you close stdin or the FIFO (or your process dies), the daemon exits immediately
+1. **Stdin EOF** — if you close stdin (or your process dies), the daemon exits immediately
 2. **Parent PID monitoring** — pass `--parent-pid <PID>` and the daemon exits when that process dies (works even if stdin stays open)
 3. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
 4. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)
 5. **Per-query timeout** — any query taking >30s returns a timeout error instead of hanging
 6. **Heap pressure** — exits if JVM memory usage exceeds 85% after GC
 7. **Startup timeout** — exits if index building takes >120s
-8. **Shutdown hook** — SIGTERM/SIGINT triggers clean exit
+8. **Shutdown hook** — SIGTERM/SIGINT triggers clean exit (socket file cleaned up automatically)
 
 You do not need to worry about cleanup — the daemon handles it. But you can send `{"command":"shutdown"}` for explicit clean shutdown.

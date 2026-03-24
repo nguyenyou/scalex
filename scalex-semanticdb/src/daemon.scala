@@ -6,7 +6,7 @@ import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, Time
 // TERMINATION CONTRACT — every code path MUST lead to eventual JVM exit.
 //
 // Eight defensive layers (ordered by reliability):
-//   1.   Stdin/FIFO EOF     — pipe closure on parent death (even SIGKILL)
+//   1.   Stdin EOF           — pipe closure on parent death (even SIGKILL)
 //   1.5  Parent PID exit    — ProcessHandle.onExit() backup (optional --parent-pid)
 //   2.   Idle timeout       — no request for N seconds (resettable, default 300)
 //   3.   Max lifetime       — hard cap regardless of activity (default 1800)
@@ -33,18 +33,15 @@ private val QueryTimeoutSec = 30L
 private val StartupTimeoutSec = 120L
 private val HeapCheckIntervalSec = 60L
 
-def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None, fifoPath: Option[Path] = None): Unit =
-  System.err.println("sdbx daemon starting...")
+def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None, socketMode: Boolean = false): Unit =
+  // Socket mode doesn't read stdin, so Layer 1 (stdin EOF) is inactive.
+  // --parent-pid is the only reliable orphan guard — require it.
+  if socketMode && parentPid.isEmpty then
+    System.err.println("Error: --socket requires --parent-pid to prevent orphan processes.")
+    System.err.println("Usage: sdbx daemon --socket --parent-pid $$ -w /project")
+    System.exit(1)
 
-  // Fail fast: validate FIFO path before any expensive work
-  fifoPath.foreach { fifo =>
-    if !Files.exists(fifo) then
-      System.err.println(s"FIFO not found: $fifo")
-      System.exit(1)
-    if Files.isRegularFile(fifo) || Files.isDirectory(fifo) then
-      System.err.println(s"Not a FIFO (expected named pipe): $fifo")
-      System.exit(1)
-  }
+  System.err.println("sdbx daemon starting...")
 
   // Self-termination timers (created early so startup timeout works)
   val scheduler = Executors.newSingleThreadScheduledExecutor { r =>
@@ -131,57 +128,167 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
       queryExecutor.shutdownNow()
   Runtime.getRuntime().addShutdownHook(shutdownThread)
 
+  // Set up socket server before ready signal (so it's accepting when clients connect)
+  val serverOpt = if socketMode then
+    val server = setupSocketServer(workspace)
+    Some(server)
+  else None
+
   // Ready signal
   resetIdleTimer()
   println(s"""{"ok":true,"event":"ready","files":${index.fileCount},"symbols":${index.symbolCount},"occurrences":${index.occurrenceCount},"buildTimeMs":${index.buildTimeMs}}""")
   System.out.flush()
 
-  // Layer 1: Stdin/FIFO EOF — main loop
-  val reader = fifoPath match
-    case Some(fifo) =>
-      System.err.println(s"Reading from FIFO: $fifo")
-      java.io.BufferedReader(java.io.InputStreamReader(java.io.FileInputStream(fifo.toFile)))
-    case None =>
-      java.io.BufferedReader(java.io.InputStreamReader(System.in))
+  if socketMode then
+    runSocketLoop(serverOpt.get, index, workspace, queryExecutor, resetIdleTimer, lastBuildMs)
+  else
+    // Layer 1: Stdin EOF — main loop
+    val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in))
+    runStdinLoop(reader, index, workspace, queryExecutor, resetIdleTimer, lastBuildMs)
+
+// ── Stdin loop ───────────────────────────────────────────────────────────
+
+private def runStdinLoop(
+  reader: java.io.BufferedReader, index: SemIndex, workspace: Path,
+  queryExecutor: java.util.concurrent.ExecutorService,
+  resetIdleTimer: () => Unit, initialLastBuildMs: Long,
+): Unit =
+  var lastBuildMs = initialLastBuildMs
   while true do
     val line = reader.readLine()
     if line == null then
-      System.err.println(s"${if fifoPath.isDefined then "FIFO" else "Stdin"} closed, exiting.")
+      System.err.println("Stdin closed, exiting.")
       System.exit(0)
 
     val trimmed = line.trim
     if trimmed.nonEmpty then
       resetIdleTimer()
       SemTimings.reset()
-      try
-        // Layer 5: Per-query timeout — 30s max per query
-        // Uses dedicated single-thread queryExecutor (not ForkJoinPool) to serialize
-        // all queries and prevent concurrent mutation of SemIndex on timeout.
-        val future = CompletableFuture.supplyAsync(
-          { () => handleDaemonRequest(trimmed, index, workspace, lastBuildMs) },
-          queryExecutor,
-        )
-        val response =
-          try future.get(QueryTimeoutSec, TimeUnit.SECONDS)
-          catch
-            case _: java.util.concurrent.TimeoutException =>
-              future.cancel(true)
-              DaemonResponse(s"""{"ok":false,"error":"timeout","message":"Query timed out after ${QueryTimeoutSec}s"}""")
-        if response.rebuilt then lastBuildMs = System.currentTimeMillis()
-        println(response.json)
-      catch
-        case e: java.util.concurrent.ExecutionException =>
-          val cause = if e.getCause != null then e.getCause else e
-          System.err.println(s"Error: ${cause.getMessage}")
-          println(s"""{"ok":false,"error":"internal","message":${jsonStr(cause.getMessage)}}""")
-        case e: Exception =>
-          System.err.println(s"Error: ${e.getMessage}")
-          println(s"""{"ok":false,"error":"internal","message":${jsonStr(e.getMessage)}}""")
+      val result = processQuery(trimmed, index, workspace, lastBuildMs, queryExecutor)
+      if result.rebuilt then lastBuildMs = System.currentTimeMillis()
+      println(result.json)
       System.out.flush()
+      if result.shutdown then System.exit(0)
+
+// ── Socket loop ──────────────────────────────────────────────────────────
+
+private def socketPath(workspace: Path): Path =
+  // Unix domain sockets have a 104-byte path limit on macOS.
+  // Use /tmp with a hash of the workspace to keep it short.
+  val hash = Integer.toHexString(workspace.toAbsolutePath.normalize.toString.hashCode & 0x7fffffff)
+  Path.of(System.getProperty("java.io.tmpdir")).resolve(s"sdbx-$hash.sock")
+
+private def cleanupSocket(sockPath: java.nio.file.Path): Unit =
+  try java.nio.file.Files.deleteIfExists(sockPath) catch case _: Exception => ()
+
+private def isStaleSocket(sockPath: java.nio.file.Path): Boolean =
+  if !java.nio.file.Files.exists(sockPath) then return false
+  try
+    val addr = java.net.UnixDomainSocketAddress.of(sockPath)
+    val ch = java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)
+    try
+      ch.connect(addr)
+      ch.close()
+      false // connected successfully — daemon is running, NOT stale
+    catch
+      case _: java.net.ConnectException | _: java.io.IOException =>
+        true // can't connect — stale socket file
+  catch
+    case _: Exception => true
+
+private def setupSocketServer(workspace: Path): java.nio.channels.ServerSocketChannel =
+  val sockPath = socketPath(workspace)
+
+  if isStaleSocket(sockPath) then
+    System.err.println(s"Removing stale socket: $sockPath")
+    cleanupSocket(sockPath)
+  else if java.nio.file.Files.exists(sockPath) then
+    System.err.println(s"Socket already exists and daemon is running: $sockPath")
+    System.exit(1)
+
+  java.nio.file.Files.createDirectories(sockPath.getParent)
+
+  val addr = java.net.UnixDomainSocketAddress.of(sockPath)
+  val server = java.nio.channels.ServerSocketChannel.open(java.net.StandardProtocolFamily.UNIX)
+  server.bind(addr)
+
+  // Lock down permissions — owner-only (rwx------) to prevent other local users
+  // from reading codebase data or sending shutdown commands.
+  java.nio.file.Files.setPosixFilePermissions(sockPath,
+    java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"))
+
+  Runtime.getRuntime().addShutdownHook(new Thread {
+    override def run(): Unit = cleanupSocket(sockPath)
+  })
+
+  System.err.println(s"Listening on socket: $sockPath")
+  server
+
+private def runSocketLoop(
+  server: java.nio.channels.ServerSocketChannel, index: SemIndex, workspace: Path,
+  queryExecutor: java.util.concurrent.ExecutorService,
+  resetIdleTimer: () => Unit, initialLastBuildMs: Long,
+): Unit =
+  var lastBuildMs = initialLastBuildMs
+
+  while true do
+    val client = server.accept()
+    try
+      resetIdleTimer()
+      SemTimings.reset()
+
+      val reader = java.io.BufferedReader(
+        java.io.InputStreamReader(java.nio.channels.Channels.newInputStream(client))
+      )
+      val line = reader.readLine()
+
+      if line != null && line.trim.nonEmpty then
+        val result = processQuery(line.trim, index, workspace, lastBuildMs, queryExecutor)
+        if result.rebuilt then lastBuildMs = System.currentTimeMillis()
+
+        val out = java.nio.channels.Channels.newOutputStream(client)
+        out.write((result.json + "\n").getBytes("UTF-8"))
+        out.flush()
+
+        if result.shutdown then
+          try client.close() catch case _: Exception => ()
+          System.exit(0)
+    catch
+      case e: Exception =>
+        System.err.println(s"Socket client error: ${e.getMessage}")
+    finally
+      try client.close() catch case _: Exception => ()
 
 // ── Request handling ──────────────────────────────────────────────────────
 
-private case class DaemonResponse(json: String, rebuilt: Boolean = false)
+private case class DaemonResponse(json: String, rebuilt: Boolean = false, shutdown: Boolean = false)
+
+private case class QueryResult(json: String, rebuilt: Boolean = false, shutdown: Boolean = false)
+
+private def processQuery(
+  line: String, index: SemIndex, workspace: Path, lastBuildMs: Long,
+  queryExecutor: java.util.concurrent.ExecutorService,
+): QueryResult =
+  try
+    val future = CompletableFuture.supplyAsync(
+      { () => handleDaemonRequest(line, index, workspace, lastBuildMs) },
+      queryExecutor,
+    )
+    val response =
+      try future.get(QueryTimeoutSec, TimeUnit.SECONDS)
+      catch
+        case _: java.util.concurrent.TimeoutException =>
+          future.cancel(true)
+          DaemonResponse(s"""{"ok":false,"error":"timeout","message":"Query timed out after ${QueryTimeoutSec}s"}""")
+    QueryResult(response.json, response.rebuilt, response.shutdown)
+  catch
+    case e: java.util.concurrent.ExecutionException =>
+      val cause = if e.getCause != null then e.getCause else e
+      System.err.println(s"Error: ${cause.getMessage}")
+      QueryResult(s"""{"ok":false,"error":"internal","message":${jsonStr(cause.getMessage)}}""")
+    case e: Exception =>
+      System.err.println(s"Error: ${e.getMessage}")
+      QueryResult(s"""{"ok":false,"error":"internal","message":${jsonStr(e.getMessage)}}""")
 
 private def handleDaemonRequest(line: String, index: SemIndex, workspace: Path, lastBuildMs: Long): DaemonResponse =
   parseDaemonRequest(line) match
@@ -196,10 +303,7 @@ private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace
       DaemonResponse("""{"ok":true}""")
 
     case "shutdown" =>
-      println("""{"ok":true}""")
-      System.out.flush()
-      System.exit(0)
-      DaemonResponse("""{"ok":true}""") // unreachable
+      DaemonResponse("""{"ok":true}""", shutdown = true)
 
     case "rebuild" | "index" =>
       index.rebuild()

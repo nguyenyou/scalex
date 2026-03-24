@@ -26,15 +26,26 @@ private def run(argList: List[String]): Unit =
 
   if cmd == "daemon" then
     val (parentPid, daemonArgs) = extractDaemonParentPid(rest)
-    val (fifoPath, daemonArgs2) = extractDaemonFifo(daemonArgs)
+    val (socketMode, daemonArgs2) = extractDaemonSocket(daemonArgs)
     val daemonFlags = parseFlags(daemonArgs2)
     val daemonWorkspace = daemonFlags.explicitWorkspace match
       case Some(w) => Path.of(w).toAbsolutePath.normalize
       case None    => workspace
     val idleTimeout = daemonFlags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
     val maxLifetime = daemonFlags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
-    runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid, fifoPath)
-  else if cmd == "index" then
+    runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid, socketMode)
+  else if cmd != "index" then
+    // Transparent daemon forwarding: check for running socket daemon before loading index
+    val sockPath = socketPath(workspace)
+    if Files.exists(sockPath) then
+      trySocketForward(cmd, flags, sockPath) match
+        case Some(response) =>
+          println(response)
+          return
+        case None => () // fall through to local index
+  // fall through for all commands (index or forwarding failed)
+
+  if cmd == "index" then
     index.rebuild()
     val result = SemCmdResult.Stats(
       index.fileCount, index.symbolCount, index.occurrenceCount,
@@ -157,14 +168,12 @@ private def extractDaemonParentPid(args: List[String]): (parentPid: Option[Long]
   else
     (parentPid = None, remaining = args)
 
-private def extractDaemonFifo(args: List[String]): (fifoPath: Option[Path], remaining: List[String]) =
-  val idx = args.indexOf("--fifo")
-  if idx >= 0 && idx + 1 < args.length then
-    val path = Path.of(args(idx + 1)).toAbsolutePath.normalize
-    val remaining = args.take(idx) ++ args.drop(idx + 2)
-    (fifoPath = Some(path), remaining = remaining)
+private def extractDaemonSocket(args: List[String]): (socketMode: Boolean, remaining: List[String]) =
+  val idx = args.indexOf("--socket")
+  if idx >= 0 then
+    (socketMode = true, remaining = args.take(idx) ++ args.drop(idx + 1))
   else
-    (fifoPath = None, remaining = args)
+    (socketMode = false, remaining = args)
 
 def parseFlags(args: List[String]): SemParsedFlags =
   var flags = SemParsedFlags()
@@ -248,6 +257,47 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
     sourceOnly = flags.sourceOnly,
   )
 
+// ── Socket forwarding ────────────────────────────────────────────────────
+
+private def trySocketForward(cmd: String, flags: SemParsedFlags, sockPath: Path): Option[String] =
+  try
+    val addr = java.net.UnixDomainSocketAddress.of(sockPath)
+    val ch = java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)
+    try
+      ch.connect(addr)
+      val request = buildDaemonRequest(cmd, flags)
+      val out = java.nio.channels.Channels.newOutputStream(ch)
+      out.write((request + "\n").getBytes("UTF-8"))
+      out.flush()
+      ch.shutdownOutput()
+      val reader = java.io.BufferedReader(
+        java.io.InputStreamReader(java.nio.channels.Channels.newInputStream(ch))
+      )
+      val response = reader.readLine()
+      if response != null then Some(response) else None
+    finally ch.close()
+  catch
+    case _: Exception => None // stale socket, connection refused, Java <16 — fall through
+
+private def buildDaemonRequest(cmd: String, flags: SemParsedFlags): String =
+  val argsJson = flags.cleanArgs.map(a => s""""${a.replace("\"", "\\\"")}"""").mkString("[", ",", "]")
+  val parts = scala.collection.mutable.ListBuffer.empty[String]
+  if flags.limit != 50 then parts += s""""limit":"${flags.limit}""""
+  if flags.verbose then parts += s""""verbose":"true""""
+  if flags.jsonOutput then parts += s""""json":"true""""
+  flags.kindFilter.foreach(k => parts += s""""kind":"$k"""")
+  flags.roleFilter.foreach(r => parts += s""""role":"$r"""")
+  flags.depth.foreach(d => parts += s""""depth":"$d"""")
+  if flags.noAccessors then parts += s""""no-accessors":"true""""
+  if flags.excludePatterns.nonEmpty then parts += s""""exclude":"${flags.excludePatterns.mkString(",")}""""
+  if flags.smart then parts += s""""smart":"true""""
+  flags.inScope.foreach(s => parts += s""""in":"$s"""")
+  if flags.excludeTest then parts += s""""exclude-test":"true""""
+  if flags.excludePkgPatterns.nonEmpty then parts += s""""exclude-pkg":"${flags.excludePkgPatterns.map(_.replace("/", ".")).mkString(",")}""""
+  if flags.sourceOnly then parts += s""""source-only":"true""""
+  val flagsJson = "{" + parts.mkString(",") + "}"
+  s"""{"command":"$cmd","args":$argsJson,"flags":$flagsJson}"""
+
 // ── Usage ──────────────────────────────────────────────────────────────────
 
 def printUsage(): Unit =
@@ -285,9 +335,11 @@ def printUsage(): Unit =
     |                        idle = idle timeout seconds (default: 300)
     |                        max  = max lifetime seconds (default: 1800)
     |                        --parent-pid PID  Monitor parent process (auto-exit on parent death)
-    |                        --fifo PATH       Read requests from named pipe instead of stdin
-    |                                          (use when backgrounding with & closes stdin)
-    |                        Self-terminates on: stdin/fifo EOF, parent PID exit, idle timeout,
+    |                        --socket          Listen on Unix domain socket (requires Java 16+)
+    |                                          Clients connect, send JSON-line, read response, disconnect.
+    |                        Non-daemon commands auto-detect a running socket daemon and forward
+    |                        queries transparently (<10ms). Falls back to local index if unavailable.
+    |                        Self-terminates on: stdin EOF, parent PID exit, idle timeout,
     |                        max lifetime, query timeout (30s), heap pressure, startup timeout (120s)
     |
     |Index:
