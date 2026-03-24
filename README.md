@@ -6,6 +6,8 @@
   </picture>
   <br>
   <em>Grep knows text. Scalex knows Scala.</em>
+  <br>
+  <sub>Think grep, but it understands Scala's AST — so it finds symbols, not just strings.</sub>
 </p>
 
 ---
