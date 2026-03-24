@@ -317,6 +317,9 @@ bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project
 
 # With custom timeouts (idle=120s, max-lifetime=600s):
 bash "/path/to/sdbx-cli" daemon --parent-pid $$ 120 600 -w /project
+
+# Read from a named pipe instead of stdin (for non-interactive shells):
+bash "/path/to/sdbx-cli" daemon --fifo /tmp/sdbx_in --parent-pid $$ -w /project
 ```
 
 The daemon emits a ready signal on stdout when the index is loaded:
@@ -325,6 +328,46 @@ The daemon emits a ready signal on stdout when the index is loaded:
 ```
 
 Wait for this line before sending queries.
+
+#### Non-interactive shells (backgrounding with &)
+
+Backgrounding the daemon with `&` closes stdin, triggering immediate exit (Layer 1: stdin EOF). Two workarounds:
+
+**Option A: `--fifo` flag (recommended)** — reads from a named pipe instead of stdin:
+
+```bash
+mkfifo /tmp/sdbx_in
+bash "/path/to/sdbx-cli" daemon --fifo /tmp/sdbx_in --parent-pid $$ -w /project > /tmp/sdbx_out &
+
+# Wait for ready signal
+head -1 /tmp/sdbx_out
+
+# Send queries by holding the FIFO open
+exec 3>/tmp/sdbx_in
+echo '{"command":"callers","args":["handleRequest"]}' >&3
+head -1 /tmp/sdbx_out
+echo '{"command":"shutdown"}' >&3
+exec 3>&-
+```
+
+**Option B: `coproc`** — keeps bidirectional pipes alive without a FIFO:
+
+```zsh
+# zsh
+coproc bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null
+read -t 30 ready <&p          # wait for ready signal
+print -p '{"command":"callers","args":["handleRequest"]}'
+read -t 10 resp <&p
+print -p '{"command":"shutdown"}'
+```
+
+```bash
+# bash
+coproc SDBX { bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null; }
+read -t 30 ready <&${SDBX[0]}
+echo '{"command":"callers","args":["handleRequest"]}' >&${SDBX[1]}
+read -t 10 resp <&${SDBX[0]}
+```
 
 #### Request/response protocol (JSON-lines on stdin/stdout)
 
@@ -373,7 +416,7 @@ The daemon checks if `.semanticdb` files have changed before each query (~7ms ch
 
 The daemon is designed to self-terminate aggressively — it will never become a zombie process. Eight independent termination layers ensure this:
 
-1. **Stdin EOF** — if you close stdin (or your process dies), the daemon exits immediately
+1. **Stdin/FIFO EOF** — if you close stdin or the FIFO (or your process dies), the daemon exits immediately
 2. **Parent PID monitoring** — pass `--parent-pid <PID>` and the daemon exits when that process dies (works even if stdin stays open)
 3. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
 4. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)

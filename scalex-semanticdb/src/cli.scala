@@ -25,13 +25,14 @@ import java.nio.file.{Files, Path}
 
   if cmd == "daemon" then
     val (parentPid, daemonArgs) = extractDaemonParentPid(rest)
-    val daemonFlags = parseFlags(daemonArgs)
+    val (fifoPath, daemonArgs2) = extractDaemonFifo(daemonArgs)
+    val daemonFlags = parseFlags(daemonArgs2)
     val daemonWorkspace = daemonFlags.explicitWorkspace match
       case Some(w) => Path.of(w).toAbsolutePath.normalize
       case None    => workspace
     val idleTimeout = daemonFlags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
     val maxLifetime = daemonFlags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
-    runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid)
+    runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid, fifoPath)
   else if cmd == "index" then
     index.rebuild()
     val result = SemCmdResult.Stats(
@@ -155,6 +156,15 @@ private def extractDaemonParentPid(args: List[String]): (parentPid: Option[Long]
   else
     (parentPid = None, remaining = args)
 
+private def extractDaemonFifo(args: List[String]): (fifoPath: Option[Path], remaining: List[String]) =
+  val idx = args.indexOf("--fifo")
+  if idx >= 0 && idx + 1 < args.length then
+    val path = Path.of(args(idx + 1)).toAbsolutePath.normalize
+    val remaining = args.take(idx) ++ args.drop(idx + 2)
+    (fifoPath = Some(path), remaining = remaining)
+  else
+    (fifoPath = None, remaining = args)
+
 def parseFlags(args: List[String]): SemParsedFlags =
   var flags = SemParsedFlags()
   val clean = scala.collection.mutable.ListBuffer.empty[String]
@@ -274,7 +284,9 @@ def printUsage(): Unit =
     |                        idle = idle timeout seconds (default: 300)
     |                        max  = max lifetime seconds (default: 1800)
     |                        --parent-pid PID  Monitor parent process (auto-exit on parent death)
-    |                        Self-terminates on: stdin EOF, parent PID exit, idle timeout,
+    |                        --fifo PATH       Read requests from named pipe instead of stdin
+    |                                          (use when backgrounding with & closes stdin)
+    |                        Self-terminates on: stdin/fifo EOF, parent PID exit, idle timeout,
     |                        max lifetime, query timeout (30s), heap pressure, startup timeout (120s)
     |
     |Index:

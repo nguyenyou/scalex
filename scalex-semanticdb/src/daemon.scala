@@ -1,4 +1,4 @@
-import java.nio.file.Path
+import java.nio.file.{Files, Path}
 import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, TimeUnit}
 
 // ── Daemon mode ───────────────────────────────────────────────────────────
@@ -6,7 +6,7 @@ import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, Time
 // TERMINATION CONTRACT — every code path MUST lead to eventual JVM exit.
 //
 // Eight defensive layers (ordered by reliability):
-//   1.   Stdin EOF          — pipe closure on parent death (even SIGKILL)
+//   1.   Stdin/FIFO EOF     — pipe closure on parent death (even SIGKILL)
 //   1.5  Parent PID exit    — ProcessHandle.onExit() backup (optional --parent-pid)
 //   2.   Idle timeout       — no request for N seconds (resettable, default 300)
 //   3.   Max lifetime       — hard cap regardless of activity (default 1800)
@@ -33,7 +33,7 @@ private val QueryTimeoutSec = 30L
 private val StartupTimeoutSec = 120L
 private val HeapCheckIntervalSec = 60L
 
-def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None): Unit =
+def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None, fifoPath: Option[Path] = None): Unit =
   System.err.println("sdbx daemon starting...")
 
   // Self-termination timers (created early so startup timeout works)
@@ -126,12 +126,20 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
   println(s"""{"ok":true,"event":"ready","files":${index.fileCount},"symbols":${index.symbolCount},"occurrences":${index.occurrenceCount},"buildTimeMs":${index.buildTimeMs}}""")
   System.out.flush()
 
-  // Layer 1: Stdin EOF — main loop
-  val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in))
+  // Layer 1: Stdin/FIFO EOF — main loop
+  val reader = fifoPath match
+    case Some(fifo) =>
+      if !Files.exists(fifo) then
+        System.err.println(s"FIFO not found: $fifo")
+        System.exit(1)
+      System.err.println(s"Reading from FIFO: $fifo")
+      java.io.BufferedReader(java.io.InputStreamReader(java.io.FileInputStream(fifo.toFile)))
+    case None =>
+      java.io.BufferedReader(java.io.InputStreamReader(System.in))
   while true do
     val line = reader.readLine()
     if line == null then
-      System.err.println("Stdin closed, exiting.")
+      System.err.println(s"${if fifoPath.isDefined then "FIFO" else "Stdin"} closed, exiting.")
       System.exit(0)
 
     val trimmed = line.trim
