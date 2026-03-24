@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-03-24
+
 ### Changed
 - Renamed CLI tool from `sdbx` to `sdbex` — binary, bootstrap script, version constant, wire protocol markers (`SDBEX_OK`/`SDBEX_ERR`), socket path prefix, all documentation and references updated. The module directory (`scalex-semanticdb/`) and plugin name are unchanged.
 
