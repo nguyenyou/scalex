@@ -1,0 +1,27 @@
+[package]
+name = "kodex"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Compiler-precise Scala code intelligence. Index once, query in microseconds."
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+bstr = "1"
+clap = { version = "4", features = ["derive"] }
+memchr = "2"
+memmap2 = "0.9"
+prost = "0.14"
+rayon = "1"
+rkyv = { version = "0.8", features = ["bytecheck"] }
+rustc-hash = "2"
+walkdir = "2"
+
+[build-dependencies]
+prost-build = "0.14"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
