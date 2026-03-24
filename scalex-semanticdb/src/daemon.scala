@@ -41,8 +41,8 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
     if !Files.exists(fifo) then
       System.err.println(s"FIFO not found: $fifo")
       System.exit(1)
-    if Files.isRegularFile(fifo) then
-      System.err.println(s"Not a FIFO (regular file): $fifo")
+    if Files.isRegularFile(fifo) || Files.isDirectory(fifo) then
+      System.err.println(s"Not a FIFO (expected named pipe): $fifo")
       System.exit(1)
   }
 

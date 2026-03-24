@@ -132,8 +132,8 @@ class DaemonLifecycleTest extends FunSuite:
     mkfifo(fifo)
     try
       val proc = startDaemon(fifoPath = Some(fifo))
-      // Open FIFO for writing (must happen after daemon opens it for reading)
-      // Use a thread because opening a FIFO for writing blocks until a reader exists
+      // Writer thread opens the FIFO for writing — blocks until the daemon opens
+      // the read end (standard FIFO handshake, enforced by OS, not by test ordering).
       val writerThread = new Thread:
         override def run(): Unit =
           val fos = java.io.FileOutputStream(fifo.toFile)
@@ -163,9 +163,9 @@ class DaemonLifecycleTest extends FunSuite:
     mkfifo(fifo)
     try
       val proc = startDaemon(fifoPath = Some(fifo))
-      // Open FIFO for writing (unblocks when daemon opens read end, which happens
-      // after the ready signal is already emitted). Sleep briefly to let the main
-      // thread read the ready signal from stdout, then close to trigger EOF.
+      // Writer opens the FIFO (blocks until daemon opens read end — FIFO handshake).
+      // By then the ready signal is already on stdout. Sleep gives a buffer before
+      // closing to trigger EOF.
       val writerThread = new Thread:
         override def run(): Unit =
           val fos = java.io.FileOutputStream(fifo.toFile)
@@ -198,6 +198,17 @@ class DaemonLifecycleTest extends FunSuite:
       assert(exited, "Daemon did not exit for regular file as FIFO")
       assert(proc.exitValue() != 0, s"Expected non-zero exit for regular file, got: ${proc.exitValue()}")
     finally Files.deleteIfExists(regularFile)
+  }
+
+  test("fifo-directory: directory instead of FIFO exits with error") {
+    val dir = workspace.resolve("not_a_fifo_dir")
+    Files.createDirectories(dir)
+    try
+      val proc = startDaemon(fifoPath = Some(dir))
+      val exited = proc.waitFor(30, TimeUnit.SECONDS)
+      assert(exited, "Daemon did not exit for directory as FIFO")
+      assert(proc.exitValue() != 0, s"Expected non-zero exit for directory, got: ${proc.exitValue()}")
+    finally Files.deleteIfExists(dir)
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
