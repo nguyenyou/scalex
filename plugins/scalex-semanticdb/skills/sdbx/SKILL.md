@@ -310,13 +310,13 @@ The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1
 
 ```bash
 # Start — reads JSON-lines from stdin, writes JSON to stdout
-bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project
+bash "/path/to/sdbx-cli" daemon -w /project
 
 # With custom timeouts (idle=120s, max-lifetime=600s):
-bash "/path/to/sdbx-cli" daemon --parent-pid $$ 120 600 -w /project
+bash "/path/to/sdbx-cli" daemon 120 600 -w /project
 
 # Socket mode — listen on Unix domain socket (requires Java 16+):
-bash "/path/to/sdbx-cli" daemon --socket --parent-pid $$ -w /project
+bash "/path/to/sdbx-cli" daemon --socket -w /project
 # Any process can connect, send a JSON-line query, read a JSON-line response, disconnect.
 # Non-daemon commands auto-detect a running socket daemon and forward queries transparently.
 ```

@@ -6,7 +6,7 @@ Socket mode lets any process connect to a running daemon, send a query, and read
 
 ```bash
 # Start daemon in socket mode (backgrounding is fine)
-bash "/path/to/sdbx-cli" daemon --socket --parent-pid $$ -w /project &
+bash "/path/to/sdbx-cli" daemon --socket -w /project &
 
 # Wait for ready signal on stdout
 # Non-daemon commands auto-detect the socket and forward queries transparently:
@@ -21,7 +21,7 @@ The default mode reads JSON-lines from stdin and writes responses to stdout. Use
 
 ```bash
 # coproc (zsh)
-coproc bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null
+coproc bash "/path/to/sdbx-cli" daemon -w /project 2>/dev/null
 read -t 30 ready <&p          # wait for ready signal
 print -p '{"command":"callers","args":["handleRequest"]}'
 read -t 10 resp <&p
@@ -30,7 +30,7 @@ print -p '{"command":"shutdown"}'
 
 ```bash
 # coproc (bash)
-coproc SDBX { bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null; }
+coproc SDBX { bash "/path/to/sdbx-cli" daemon -w /project 2>/dev/null; }
 read -t 30 ready <&${SDBX[0]}
 echo '{"command":"callers","args":["handleRequest"]}' >&${SDBX[1]}
 read -t 10 resp <&${SDBX[0]}
@@ -38,7 +38,7 @@ read -t 10 resp <&${SDBX[0]}
 
 ```bash
 # heredoc — all queries known upfront
-bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project <<'QUERIES'
+bash "/path/to/sdbx-cli" daemon -w /project <<'QUERIES'
 {"command":"callers","args":["handleRequest"]}
 {"command":"subtypes","args":["Repository"]}
 QUERIES
@@ -91,8 +91,7 @@ The daemon checks if `.semanticdb` files have changed before each query (~7ms ch
 
 The daemon is designed to self-terminate aggressively — it will never become a zombie process. Eight independent termination layers ensure this:
 
-1. **Stdin EOF** — if you close stdin (or your process dies), the daemon exits immediately
-2. **Parent PID monitoring** — pass `--parent-pid <PID>` and the daemon exits when that process dies (works even if stdin stays open)
+1. **Stdin EOF** (stdin mode only) — if you close stdin (or your process dies), the daemon exits immediately
 3. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
 4. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)
 5. **Per-query timeout** — any query taking >30s returns a timeout error instead of hanging

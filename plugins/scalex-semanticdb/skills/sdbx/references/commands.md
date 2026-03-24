@@ -48,7 +48,7 @@
 |---|---|---|
 | `daemon` | `[idle] [max]` | Stdin/stdout JSON-lines server (keeps index hot, <10ms/query) |
 
-Daemon-only options: `--parent-pid PID` (monitor parent process, auto-exit on parent death), `--socket` (listen on Unix domain socket, requires Java 16+).
+Daemon-only options: `--socket` (listen on Unix domain socket, requires Java 16+).
 Positional args: idle timeout seconds (default: 300), max lifetime seconds (default: 1800).
 Non-daemon commands auto-detect a running socket daemon and forward queries transparently.
 
@@ -162,8 +162,7 @@ Before each query, the daemon checks if `.semanticdb` directories have been modi
 
 Eight termination layers ensure the daemon never becomes a zombie:
 
-1. **Stdin EOF** — parent dies → pipe closes → daemon exits immediately
-2. **Parent PID exit** — `--parent-pid PID` → `ProcessHandle.onExit()` → daemon exits when parent dies
+1. **Stdin EOF** (stdin mode only) — parent dies → pipe closes → daemon exits immediately
 3. **Idle timeout** — no request for N seconds → exit (default: 300s, configurable)
 4. **Max lifetime** — hard cap regardless of activity (default: 1800s, configurable)
 5. **Per-query timeout** — query >30s → returns `{"ok":false,"error":"timeout",...}`, daemon stays alive
