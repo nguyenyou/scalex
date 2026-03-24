@@ -1,4 +1,4 @@
-# sdbx Command Reference
+# sdbex Command Reference
 
 ## All Commands
 
@@ -81,7 +81,7 @@ Output is identical whether daemon is running or not — always human-readable t
 
 ## Symbol Resolution
 
-When you pass a symbol name, sdbx resolves it in this order:
+When you pass a symbol name, sdbex resolves it in this order:
 
 1. **Exact FQN** — `com/example/MyService#` matches directly
 2. **FQN separator swap** — if exact FQN fails, tries `#` ↔ `.` swap (class member ↔ object member) with a hint
@@ -109,8 +109,8 @@ The daemon listens on a Unix domain socket. Non-daemon CLI commands auto-detect 
 
 The daemon uses a text-based protocol over the socket:
 
-- **Success**: `SDBX_OK\n<text output>`
-- **Error**: `SDBX_ERR\n<error message>`
+- **Success**: `SDBEX_OK\n<text output>`
+- **Error**: `SDBEX_ERR\n<error message>`
 
 The client (CLI) parses this internally — users and agents always see clean text output.
 

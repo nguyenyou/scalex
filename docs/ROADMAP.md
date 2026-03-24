@@ -4,7 +4,7 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
-### sdbx: daemon --fifo for non-interactive shells (#317)
+### sdbex: daemon --fifo for non-interactive shells (#317)
 
 - [x] `--fifo <path>` flag — daemon reads from named pipe instead of stdin; solves immediate exit when backgrounding with `&` in non-interactive shells
 - [x] Document `coproc` workaround in SKILL.md for shells that prefer keeping bidirectional pipes
@@ -170,7 +170,7 @@
 - ~~`scalex sealed <trait>`~~ — `hierarchy --down --depth 1` already serves this use case; marginal
 - ~~Smarter default limits~~ — auto-summarize is hard to get right universally; better to give users explicit flags (`--members-limit`, `--definitions-only`)
 
-### sdbx: noise filtering for flow/callees/callers
+### sdbex: noise filtering for flow/callees/callers
 
 - [x] `--no-accessors` flag — filter val/var field accessors from flow/callees
 - [x] `--exclude "p1,p2,..."` flag — filter symbols by FQN or file path from flow/callees/callers
@@ -179,7 +179,7 @@
 - [x] `resolveSymbol` prefers source over generated code in ranking
 - [x] `batch` command — run multiple queries in one invocation
 
-### sdbx: agent UX improvements (#303)
+### sdbex: agent UX improvements (#303)
 
 - [x] Fix `batch` FQN quoting — strip surrounding quotes in `runBatch()`
 - [x] `--in <scope>` flag — scope symbol resolution by owner, FQN, or file without full FQN
@@ -189,7 +189,7 @@
 - [x] `lookup` shows `[object]`/`[class/trait]` annotations for method/field members
 - [x] FQN resolution `#`↔`.` fallback with stderr hint
 
-### sdbx: reduce noise in members/lookup output (#307)
+### sdbex: reduce noise in members/lookup output (#307)
 
 - [x] `members` synthetic filtering — hide compiler-generated case class members (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `canEqual`, `apply`, `unapply`) by default; show with `--verbose`. Note: `hashCode`/`toString`/`equals` are not filtered because Scala 3 SemanticDB only emits them when user-overridden.
 - [x] `--smart` on `members` — consistent with `--smart` on flow/callees/callers; filters synthetic case class methods + val accessors, showing only user-declared members
@@ -197,7 +197,7 @@
 - [x] `explain` subtypes — add `subtypes: N` line + first 3 names for traits/abstract classes; new field in `ExplainResult`, `findSubtypes()` call, formatter update
 - Discarded: SKILL.md daemon nudge — already documented with decision tree (lines 374-382) recommending daemon for 3+ queries and exploratory sessions
 
-### sdbx: daemon mode & Mill-only discovery
+### sdbex: daemon mode & Mill-only discovery
 
 - [x] `daemon` command — Unix domain socket server, keeps index hot in memory (<10ms queries vs ~1.5s CLI). Text output identical to CLI mode.
 - [x] 8 defensive termination layers: stdin EOF, parent PID monitoring, idle timeout, max lifetime, shutdown command, per-query timeout, heap pressure, shutdown hook

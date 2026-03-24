@@ -7,7 +7,7 @@ import java.nio.file.{Files, Path}
   if argList.isEmpty || argList.head == "--help" || argList.head == "-h" then
     printUsage()
   else if argList.head == "--version" then
-    println(s"sdbx $SdbxVersion")
+    println(s"sdbex $SdbexVersion")
   else
     run(argList)
 
@@ -263,14 +263,14 @@ private def trySocketForward(cmd: String, flags: SemParsedFlags, sockPath: Path)
       )
       val firstLine = reader.readLine()
       if firstLine == null then SocketResult.None
-      else if firstLine == "SDBX_OK" then
+      else if firstLine == "SDBEX_OK" then
         val sb = StringBuilder()
         var line = reader.readLine()
         while line != null do
           sb.append(line).append('\n')
           line = reader.readLine()
         SocketResult.Ok(sb.toString)
-      else if firstLine == "SDBX_ERR" then
+      else if firstLine == "SDBEX_ERR" then
         val errMsg = reader.readLine()
         SocketResult.Err(if errMsg != null then errMsg else "unknown error")
       else SocketResult.None // unknown protocol, fall through to local
@@ -302,9 +302,9 @@ private def buildDaemonRequest(cmd: String, flags: SemParsedFlags): String =
 // ── Usage ──────────────────────────────────────────────────────────────────
 
 def printUsage(): Unit =
-  println("""sdbx — Compiler-precise code intelligence from SemanticDB
+  println("""sdbex — Compiler-precise code intelligence from SemanticDB
     |
-    |Usage: sdbx <command> [args] [options]
+    |Usage: sdbex <command> [args] [options]
     |
     |Call graph (compiler-only):
     |  callers <symbol>      Who calls this method (reverse call graph, --depth N for transitive)

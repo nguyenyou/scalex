@@ -32,7 +32,7 @@ private val StartupTimeoutSec = 120L
 private val HeapCheckIntervalSec = 60L
 
 def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit =
-  System.err.println("sdbx daemon starting...")
+  System.err.println("sdbex daemon starting...")
 
   // Fail fast: check if a socket daemon is already running before expensive index build
   val sockPath = socketPath(workspace)
@@ -120,7 +120,7 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit
 
   // Ready signal
   resetIdleTimer()
-  println(s"sdbx daemon ready (${index.fileCount} files, ${index.symbolCount} symbols, ${index.occurrenceCount} occurrences, ${index.buildTimeMs}ms)")
+  println(s"sdbex daemon ready (${index.fileCount} files, ${index.symbolCount} symbols, ${index.occurrenceCount} occurrences, ${index.buildTimeMs}ms)")
   System.out.flush()
 
   runSocketLoop(server, index, workspace, queryExecutor, resetIdleTimer, lastBuildMs)
@@ -131,7 +131,7 @@ private def socketPath(workspace: Path): Path =
   // Unix domain sockets have a 104-byte path limit on macOS.
   // Use /tmp with a hash of the workspace to keep it short.
   val hash = Integer.toHexString(workspace.toAbsolutePath.normalize.toString.hashCode & 0x7fffffff)
-  Path.of(System.getProperty("java.io.tmpdir")).resolve(s"sdbx-$hash.sock")
+  Path.of(System.getProperty("java.io.tmpdir")).resolve(s"sdbex-$hash.sock")
 
 private def cleanupSocket(sockPath: java.nio.file.Path): Unit =
   try java.nio.file.Files.deleteIfExists(sockPath) catch case _: Exception => ()
@@ -235,31 +235,31 @@ private def processQuery(
       catch
         case _: java.util.concurrent.TimeoutException =>
           future.cancel(true)
-          DaemonResponse(s"SDBX_ERR\nQuery timed out after ${QueryTimeoutSec}s\n")
+          DaemonResponse(s"SDBEX_ERR\nQuery timed out after ${QueryTimeoutSec}s\n")
     QueryResult(response.text, response.rebuilt, response.shutdown)
   catch
     case e: java.util.concurrent.ExecutionException =>
       val cause = if e.getCause != null then e.getCause else e
       System.err.println(s"Error: ${cause.getMessage}")
-      QueryResult(s"SDBX_ERR\n${cause.getMessage}\n")
+      QueryResult(s"SDBEX_ERR\n${cause.getMessage}\n")
     case e: Exception =>
       System.err.println(s"Error: ${e.getMessage}")
-      QueryResult(s"SDBX_ERR\n${e.getMessage}\n")
+      QueryResult(s"SDBEX_ERR\n${e.getMessage}\n")
 
 private def handleDaemonRequest(line: String, index: SemIndex, workspace: Path, lastBuildMs: Long): DaemonResponse =
   parseDaemonRequest(line) match
     case Left(err) =>
-      DaemonResponse(s"SDBX_ERR\n$err\n")
+      DaemonResponse(s"SDBEX_ERR\n$err\n")
     case Right(req) =>
       dispatchDaemonCommand(req, index, workspace, lastBuildMs)
 
 private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace: Path, lastBuildMs: Long): DaemonResponse =
   req.command match
     case "heartbeat" =>
-      DaemonResponse("SDBX_OK\n")
+      DaemonResponse("SDBEX_OK\n")
 
     case "shutdown" =>
-      DaemonResponse("SDBX_OK\n", shutdown = true)
+      DaemonResponse("SDBEX_OK\n", shutdown = true)
 
     case "rebuild" | "index" =>
       index.rebuild()
@@ -268,7 +268,7 @@ private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace
         index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
       )
       val text = captureText(statsResult, SemCommandContext(index, workspace))
-      DaemonResponse(s"SDBX_OK\n$text", rebuilt = true)
+      DaemonResponse(s"SDBEX_OK\n$text", rebuilt = true)
 
     case "stats" =>
       val statsResult = SemCmdResult.Stats(
@@ -276,12 +276,12 @@ private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace
         index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
       )
       val text = captureText(statsResult, SemCommandContext(index, workspace))
-      DaemonResponse(s"SDBX_OK\n$text")
+      DaemonResponse(s"SDBEX_OK\n$text")
 
     case cmd =>
       // Validate command exists before doing any work
       if cmd != "batch" && !commands.contains(cmd) then
-        DaemonResponse(s"SDBX_ERR\nUnknown command: $cmd\n")
+        DaemonResponse(s"SDBEX_ERR\nUnknown command: $cmd\n")
       else
         // Check staleness before query (~7ms)
         val rebuilt = if index.isStale(lastBuildMs) then
@@ -301,13 +301,13 @@ private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace
 
         result match
           case SemCmdResult.UsageError(msg) =>
-            DaemonResponse(s"SDBX_ERR\n$msg\n", rebuilt = rebuilt)
+            DaemonResponse(s"SDBEX_ERR\n$msg\n", rebuilt = rebuilt)
           case SemCmdResult.NotFound(msg) =>
             val text = captureText(result, ctx)
-            DaemonResponse(s"SDBX_OK\n$text", rebuilt = rebuilt)
+            DaemonResponse(s"SDBEX_OK\n$text", rebuilt = rebuilt)
           case _ =>
             val text = captureText(result, ctx)
-            DaemonResponse(s"SDBX_OK\n$text", rebuilt = rebuilt)
+            DaemonResponse(s"SDBEX_OK\n$text", rebuilt = rebuilt)
 
 private def captureText(result: SemCmdResult, ctx: SemCommandContext): String =
   val buf = java.io.ByteArrayOutputStream()

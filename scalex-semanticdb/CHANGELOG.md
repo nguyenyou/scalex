@@ -2,13 +2,16 @@
 
 ## [Unreleased]
 
+### Changed
+- Renamed CLI tool from `sdbx` to `sdbex` — binary, bootstrap script, version constant, wire protocol markers (`SDBEX_OK`/`SDBEX_ERR`), socket path prefix, all documentation and references updated. The module directory (`scalex-semanticdb/`) and plugin name are unchanged.
+
 ## [0.7.0] — 2026-03-24
 
 ### Changed
 - Daemon now returns text output instead of JSON — identical output whether daemon is running or not
-- Wire protocol changed from JSON envelope to `SDBX_OK`/`SDBX_ERR` text protocol
+- Wire protocol changed from JSON envelope to `SDBEX_OK`/`SDBEX_ERR` text protocol
 - Ready signal changed from JSON to human-readable text
-- Daemon errors (`SDBX_ERR`) now cause CLI to exit with code 1
+- Daemon errors (`SDBEX_ERR`) now cause CLI to exit with code 1
 
 ### Removed
 - `--json` flag — all output is now text-only
@@ -18,7 +21,7 @@
 ## [0.6.0] — 2026-03-24
 
 ### Added
-- Unix domain socket daemon — `daemon` now listens on a socket at `/tmp/sdbx-<hash>.sock` instead of stdin/stdout. Any process can connect, send a JSON-line query, read a response, and disconnect. Designed for coding agent environments (like Claude Code) where each shell invocation is independent. (#323)
+- Unix domain socket daemon — `daemon` now listens on a socket at `/tmp/sdbex-<hash>.sock` instead of stdin/stdout. Any process can connect, send a JSON-line query, read a response, and disconnect. Designed for coding agent environments (like Claude Code) where each shell invocation is independent. (#323)
 - Transparent daemon forwarding — non-daemon CLI commands auto-detect a running socket daemon and forward queries transparently (<10ms). Falls back to local index loading if no daemon is available. (#323)
 - Socket file permissions locked to `rwx------` (owner-only) for security (#323)
 - Stale socket detection — daemon cleans up leftover socket files from crashed daemons (#323)
@@ -43,7 +46,7 @@
 ## [0.4.0] — 2026-03-24
 
 ### Changed
-- Renamed CLI tool from `scalex-sdb` to `sdbx` — binary, bootstrap script, version constant, all documentation and references updated. The module directory (`scalex-semanticdb/`) and plugin name are unchanged.
+- Renamed CLI tool from `scalex-sdb` to `sdbex` — binary, bootstrap script, version constant, all documentation and references updated. The module directory (`scalex-semanticdb/`) and plugin name are unchanged.
 - Added `scalex-semanticdb/CLAUDE.md` documenting the release workflow and feature checklist
 
 ## [0.3.0] — 2026-03-24

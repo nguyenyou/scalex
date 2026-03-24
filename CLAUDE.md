@@ -120,7 +120,7 @@ scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
 ```
 
 ### Mill-only discovery
-sdbx auto-discovers `.semanticdb` files from Mill's `out/` directory only. It finds `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directories and walks them in parallel. No sbt/Bloop/generic fallback — other build tools are not supported yet. See `docs/MILL-SEMANTICDB.md` for the full `out/` layout.
+sdbex auto-discovers `.semanticdb` files from Mill's `out/` directory only. It finds `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directories and walks them in parallel. No sbt/Bloop/generic fallback — other build tools are not supported yet. See `docs/MILL-SEMANTICDB.md` for the full `out/` layout.
 
 ### Daemon mode
 The `daemon` command keeps the index hot in memory so queries take <10ms instead of ~3.2s. It listens on a Unix domain socket. Non-daemon CLI commands auto-detect the daemon and forward queries transparently — output is identical whether the daemon is running or not.
