@@ -15,7 +15,7 @@ def cmdExplain(args: List[String], ctx: SemCommandContext): SemCmdResult =
           // Callers (for callable symbols)
           val (callerList: List[SemSymbol], totalCallers: Int) =
             if isCallable then
-              val all = findCallers(sym.fqn, ctx.index)
+              val all = findCallersTraitAware(sym.fqn, ctx.index)
               val f1 = if ctx.smart then all.filterNot(isInfraNoise).filterNot(isMonadicCombinator) else all
               val f2 = if ctx.excludeTest then f1.filterNot(s => isTestSource(s.sourceUri)) else f1
               val filtered = filterByExcludePkg(f2, ctx.excludePkgPatterns)

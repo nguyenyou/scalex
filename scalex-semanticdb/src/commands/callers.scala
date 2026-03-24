@@ -30,7 +30,7 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
       if maxDepth <= 1 then
         // Flat mode (default): show direct callers as a list
         val fqns = candidates.map(_.fqn).toSet
-        val callerSymbols = fqns.toList.flatMap(fqn => findCallers(fqn, ctx.index))
+        val callerSymbols = fqns.toList.flatMap(fqn => findCallersTraitAware(fqn, ctx.index))
           .distinctBy(_.fqn)
           .filterNot(s => fqns.contains(s.fqn))
           .filterNot(s => ctx.smart && isInfraNoise(s))
@@ -41,11 +41,30 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
         val limited = filtered.take(ctx.limit)
         val name = candidates.head.displayName
 
-        SemCmdResult.SymbolList(
-          s"${filtered.size} callers of '$name'",
-          limited,
-          filtered.size,
-        )
+        if ctx.groupByFile then
+          val grouped = limited.groupBy(_.sourceUri).toList.sortBy(-_._2.size)
+          val lines = grouped.flatMap { (file, syms) =>
+            val header = s"  $file (${syms.size})"
+            header :: syms.map { s =>
+              val props = s.propertyNames
+              val propsStr = if props.isEmpty then "" else s" [${props.mkString(", ")}]"
+              val memberOf = formatMemberOf(s)
+              s"    ${s.kind.toString.toLowerCase} ${s.displayName}$propsStr$memberOf"
+            }
+          }
+          val truncation = if filtered.size > limited.size then
+            List(s"... and ${filtered.size - limited.size} more (use --limit 0 for all)")
+          else Nil
+          SemCmdResult.Tree(
+            s"${filtered.size} callers of '$name' (grouped by file)",
+            lines ++ truncation,
+          )
+        else
+          SemCmdResult.SymbolList(
+            s"${filtered.size} callers of '$name'",
+            limited,
+            filtered.size,
+          )
       else
         // Transitive tree mode: recursive caller traversal (single root)
         val sym = resolveOne(query, ctx.index, ctx.kindFilter, ctx.inScope) match
@@ -60,7 +79,7 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
           visited += fqn
 
           val callers = filterByExcludePkg(
-            findCallers(fqn, ctx.index)
+            findCallersTraitAware(fqn, ctx.index)
               .filterNot(s => isTrivial(s.fqn))
               .filterNot(s => (ctx.noAccessors || ctx.smart) && isAccessor(s))
               .filterNot(s => ctx.smart && isInfraNoise(s))
@@ -91,7 +110,18 @@ def cmdCallers(args: List[String], ctx: SemCommandContext): SemCmdResult =
 
         SemCmdResult.FlowTree(s"Caller tree of '${sym.displayName}' (depth=$maxDepth)", lines.toList)
 
-// ── findCallers helper ────────────────────────────────────────────────────
+// ── findCallers helpers ───────────────────────────────────────────────────
+
+/** Find callers of a symbol, including callers of overridden trait/abstract methods.
+  * When an impl method overrides a trait method, call sites often reference the trait's
+  * FQN, not the impl's. This unions callers of both to avoid missing results. */
+def findCallersTraitAware(fqn: String, index: SemIndex): List[SemSymbol] =
+  val directCallers = findCallers(fqn, index)
+  val traitFqns = index.symbolByFqn.get(fqn).toList.flatMap(_.overriddenSymbols)
+  if traitFqns.isEmpty then directCallers
+  else
+    val traitCallers = traitFqns.flatMap(findCallers(_, index))
+    (directCallers ++ traitCallers).distinctBy(_.fqn)
 
 /** Find all methods/fields that call the given symbol (direct callers only). */
 def findCallers(fqn: String, index: SemIndex): List[SemSymbol] =

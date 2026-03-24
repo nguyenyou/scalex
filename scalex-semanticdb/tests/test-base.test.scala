@@ -69,6 +69,7 @@ abstract class SemTestBase extends FunSuite:
     excludeTest: Boolean = false,
     excludePkgPatterns: List[String] = Nil,
     sourceOnly: Boolean = false,
+    groupByFile: Boolean = false,
   ): SemCommandContext =
     SemCommandContext(
       index = index,
@@ -85,6 +86,7 @@ abstract class SemTestBase extends FunSuite:
       excludeTest = excludeTest,
       excludePkgPatterns = excludePkgPatterns,
       sourceOnly = sourceOnly,
+      groupByFile = groupByFile,
     )
 
   private def deleteRecursive(path: Path): Unit =
@@ -280,6 +282,19 @@ abstract class SemTestBase extends FunSuite:
         |    val d = example.Dog("Rex")
         |    println(d.sound)
         |    println(d.fetch("ball"))
+        |""".stripMargin)
+
+    // Trait-typed caller for trait-aware callers testing
+    // Calls go through trait type, so SemanticDB resolves to trait method FQN
+    writeFile(srcDir, "example/TraitCaller.scala",
+      """package example
+        |
+        |object TraitCaller:
+        |  def viaTrait(): Unit =
+        |    val svc: AnimalService = AnimalServiceImpl()
+        |    svc.register(Dog("Buddy"))
+        |    svc.findByName("Buddy")
+        |    svc.listAll()
         |""".stripMargin)
 
     // Companion + extension for related tests

@@ -4,6 +4,12 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### sdbex: trait-aware callers & group-by-file (#331)
+
+- [x] Trait-aware callers — when querying callers of an impl method, automatically include callers of the overridden trait/abstract method; uses `overriddenSymbols` to find parent methods, unions their callers; default behavior (no flag needed)
+- [x] Transitive trait-aware callers — `--depth N` walks through trait indirection automatically
+- [x] `callers --group-by-file` — group caller output by source file for readability
+
 ### sdbex: daemon --fifo for non-interactive shells (#317)
 
 - [x] `--fifo <path>` flag — daemon reads from named pipe instead of stdin; solves immediate exit when backgrounding with `&` in non-interactive shells

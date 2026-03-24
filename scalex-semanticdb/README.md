@@ -154,7 +154,7 @@ sdbex related UserService
 | Command | Description |
 |---|---|
 | `flow <method>` | Downstream call tree with `--depth N` (default 3) |
-| `callers <symbol>` | Reverse call graph — who calls this |
+| `callers <symbol>` | Reverse call graph — who calls this (trait-aware, `--group-by-file`) |
 | `callees <symbol>` | Forward call graph — what does this call |
 
 **Compiler-precise queries:**

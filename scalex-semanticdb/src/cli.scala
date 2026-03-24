@@ -126,6 +126,7 @@ def runBatch(args: List[String], ctx: SemCommandContext): SemCmdResult =
           excludeTest = subFlags.excludeTest || ctx.excludeTest,
           excludePkgPatterns = if subFlags.excludePkgPatterns.nonEmpty then subFlags.excludePkgPatterns else ctx.excludePkgPatterns,
           sourceOnly = subFlags.sourceOnly || ctx.sourceOnly,
+          groupByFile = subFlags.groupByFile || ctx.groupByFile,
         )
         val result = commands.get(subCmd) match
           case Some(handler) => handler(subFlags.cleanArgs, subCtx)
@@ -159,6 +160,7 @@ case class SemParsedFlags(
   excludeTest: Boolean = false,
   excludePkgPatterns: List[String] = Nil,
   sourceOnly: Boolean = false,
+  groupByFile: Boolean = false,
   cleanArgs: List[String] = Nil,
 )
 
@@ -203,6 +205,9 @@ def parseFlags(args: List[String]): SemParsedFlags =
       case "--source-only" =>
         flags = flags.copy(sourceOnly = true)
         i += 1
+      case "--group-by-file" =>
+        flags = flags.copy(groupByFile = true)
+        i += 1
       case "--in" if i + 1 < arr.length =>
         flags = flags.copy(inScope = Some(arr(i + 1)))
         i += 2
@@ -238,6 +243,7 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
     excludeTest = flags.excludeTest,
     excludePkgPatterns = flags.excludePkgPatterns,
     sourceOnly = flags.sourceOnly,
+    groupByFile = flags.groupByFile,
   )
 
 // ── Socket forwarding ────────────────────────────────────────────────────
@@ -296,6 +302,7 @@ private def buildDaemonRequest(cmd: String, flags: SemParsedFlags): String =
   if flags.excludeTest then parts += s""""exclude-test":"true""""
   if flags.excludePkgPatterns.nonEmpty then parts += s""""exclude-pkg":"${escapeJson(flags.excludePkgPatterns.map(_.replace("/", ".")).mkString(","))}""""
   if flags.sourceOnly then parts += s""""source-only":"true""""
+  if flags.groupByFile then parts += s""""group-by-file":"true""""
   val flagsJson = "{" + parts.mkString(",") + "}"
   s"""{"command":"${escapeJson(cmd)}","args":$argsJson,"flags":$flagsJson}"""
 
@@ -359,6 +366,7 @@ def printUsage(): Unit =
     |  --in <scope>                 Scope symbol resolution by owner class, file, or package
     |  --smart                       Auto-filter noise (synthetics, accessors, protobuf, combinators)
     |  --source-only                 Exclude generated/compiled sources from lookup results
+    |  --group-by-file               Group callers output by source file
     |  --timings                    Print timing info to stderr
     |  --version                    Print version
     |""".stripMargin)
