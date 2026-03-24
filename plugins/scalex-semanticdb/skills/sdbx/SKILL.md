@@ -14,7 +14,7 @@ You have access to `sdbx`, a compiler-precise Scala code intelligence CLI. It re
 
 **Use scalex as your primary tool** for exploration — it's zero-setup and fast. Reach for sdbx when you need precision: `callers`, precise `refs`, exhaustive `subtypes`, or resolved types.
 
-First run discovers and indexes `.semanticdb` files from build output (~10s for large codebases). Subsequent CLI runs load from cache (~1.5s). For agents making many queries, the **daemon mode** keeps the index hot in memory — queries take **<10ms** instead of 1.5s. Index is stored at `.scalex/semanticdb.bin`.
+First run discovers and indexes `.semanticdb` files from build output (~10s for large codebases). Subsequent CLI runs load from cache (~1.5s). For agents making many queries, start the **socket daemon** once (`daemon --socket &`) — all subsequent queries auto-detect it and take **<10ms** instead of 1.5s. Index is stored at `.scalex/semanticdb.bin`.
 
 ## Setup
 
@@ -306,27 +306,27 @@ sdbx batch "callers handleRequest" "callees processPayment --smart" -w /project
 
 ### Daemon mode (for coding agents)
 
-The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1.5s.
+The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1.5s. In coding agent environments (like Claude Code) where each shell invocation is independent, use **socket mode** — the daemon listens on a Unix domain socket so any process can connect.
+
+**Start the daemon once at the beginning of a session:**
 
 ```bash
-# Start — reads JSON-lines from stdin, writes JSON to stdout
-bash "/path/to/sdbx-cli" daemon -w /project
-
-# With custom timeouts (idle=120s, max-lifetime=600s):
-bash "/path/to/sdbx-cli" daemon 120 600 -w /project
-
-# Socket mode — listen on Unix domain socket (requires Java 16+):
-bash "/path/to/sdbx-cli" daemon --socket -w /project
-# Any process can connect, send a JSON-line query, read a JSON-line response, disconnect.
-# Non-daemon commands auto-detect a running socket daemon and forward queries transparently.
+bash "/path/to/sdbx-cli" daemon --socket -w /project &
 ```
 
-Wait for the ready signal on stdout before sending queries:
-```json
-{"ok":true,"event":"ready","files":142,"symbols":3580,"occurrences":28400,"buildTimeMs":1823}
+The daemon builds the index, binds the socket, and runs in the background. It self-terminates after 5 minutes of inactivity (or 30 minutes max lifetime). No cleanup needed.
+
+**All subsequent queries auto-detect the daemon — no special handling:**
+
+```bash
+bash "/path/to/sdbx-cli" callers handleRequest -w /project   # <10ms via socket
+bash "/path/to/sdbx-cli" refs Config -w /project              # <10ms via socket
+bash "/path/to/sdbx-cli" subtypes Repository -w /project      # <10ms via socket
 ```
 
-Send JSON-line requests to stdin (stdin mode), one per line: `{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method"}}`. The daemon auto-rebuilds when `.semanticdb` files change (~7ms check). It self-terminates aggressively (stdin EOF, idle timeout, max lifetime, heap pressure) — no cleanup needed.
+If the daemon isn't running yet (still building index, or not started), queries fall back to local index loading (~1.5s) transparently.
+
+**Safety**: The daemon self-terminates aggressively — idle timeout, max lifetime, heap pressure, shutdown hook. One daemon max per workspace (socket file acts as lock). Socket is owner-only (`rwx------`). No orphan risk.
 
 #### When to use daemon vs CLI vs batch
 
@@ -334,8 +334,7 @@ Send JSON-line requests to stdin (stdin mode), one per line: `{"command":"caller
 |---|---|---|
 | 1-2 queries | CLI (`sdbx callers ...`) | Simplest, no setup |
 | 3-5 related queries | `batch` | Amortizes 1.5s load |
-| Many queries, single shell | Daemon (stdin) | <10ms per query after initial load |
-| Many queries, multiple shells | Daemon (`--socket`) | <10ms, any process can connect |
+| Many queries across a session | Daemon (`--socket`) | <10ms, works across independent shell calls |
 
 ### Index management
 
