@@ -82,20 +82,19 @@ sdbx currently discovers `.semanticdb` files from Mill's `out/` directory struct
 
 ## When to use sdbx vs scalex
 
-| Need | Use |
-|---|---|
-| Zero-setup exploration, no compilation | `scalex` |
-| Source body extraction, scaladoc, grep | `scalex` |
-| AST patterns, test discovery, overview | `scalex` |
-| **"Who calls this method?"** | `sdbx callers` |
-| **"Who transitively calls this?"** | `sdbx callers --depth 3` |
-| **"How does A reach B?"** | `sdbx path A B` |
-| **Quick method/type summary** | `sdbx explain` |
-| **Precise references (zero false positives)** | `sdbx refs` |
-| **Exhaustive subtypes** | `sdbx subtypes` |
-| **"What does this method call?"** | `sdbx callees --smart` |
-| **Resolved type signatures** | `sdbx type` |
-| **Related symbol discovery** | `sdbx related` |
+scalex is the better default — zero setup, fast, good enough for 90% of queries. Reach for sdbx only when scalex fundamentally can't answer your question:
+
+| Question | scalex can't because... | sdbx command |
+|---|---|---|
+| "Who calls `processPayment`?" | Text search finds the name but can't identify which *method* contains the call | `callers processPayment` |
+| "Who transitively calls this?" | No call graph | `callers X --depth 3` |
+| "How does A reach B?" | No call graph | `path A B` |
+| "All references to this specific `Config`" | `refs Config` matches every `Config` in every package | `refs Config` (resolves to exact FQN) |
+| "Every class implementing `Repository`" | Text-based `impl` misses implementations in unexpected packages | `subtypes Repository` |
+| "What type does `val result = ...` have?" | Inferred types aren't written in source | `type result` |
+| "What service methods does `createOrder` call?" | Text search can't resolve which overload is being called | `callees createOrder --smart` |
+
+For everything else — grep, body extraction, scaladoc, AST patterns, test discovery, overview — use scalex.
 
 ## Commands
 
@@ -307,12 +306,10 @@ sdbx batch "callers handleRequest" "callees processPayment --smart" -w /project
 
 ### Daemon mode (for coding agents)
 
-The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1.5s. If you're making multiple queries in a session, the daemon is dramatically faster than repeated CLI invocations or even `batch`.
-
-#### Starting the daemon
+The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1.5s.
 
 ```bash
-# Start as a subprocess — reads JSON-lines from stdin, writes JSON to stdout
+# Start — reads JSON-lines from stdin, writes JSON to stdout
 bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project
 
 # With custom timeouts (idle=120s, max-lifetime=600s):
@@ -322,119 +319,22 @@ bash "/path/to/sdbx-cli" daemon --parent-pid $$ 120 600 -w /project
 bash "/path/to/sdbx-cli" daemon --fifo /tmp/sdbx_in --parent-pid $$ -w /project
 ```
 
-The daemon emits a ready signal on stdout when the index is loaded:
+Wait for the ready signal on stdout before sending queries:
 ```json
 {"ok":true,"event":"ready","files":142,"symbols":3580,"occurrences":28400,"buildTimeMs":1823}
 ```
 
-Wait for this line before sending queries.
+Send JSON-line requests to stdin, one per line: `{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method"}}`. The daemon auto-rebuilds when `.semanticdb` files change (~7ms check). It self-terminates aggressively (stdin/FIFO EOF, idle timeout, max lifetime, heap pressure) — no cleanup needed.
 
-#### Non-interactive shells (backgrounding with &)
-
-Backgrounding the daemon with `&` closes stdin, triggering immediate exit (Layer 1: stdin EOF). Two workarounds:
-
-**Option A: `--fifo` flag (recommended)** — reads from a named pipe instead of stdin:
-
-```bash
-mkfifo /tmp/sdbx_in
-bash "/path/to/sdbx-cli" daemon --fifo /tmp/sdbx_in --parent-pid $$ -w /project > /tmp/sdbx_out &
-
-# Wait for ready signal
-head -1 /tmp/sdbx_out
-
-# Send queries by holding the FIFO open
-exec 3>/tmp/sdbx_in
-echo '{"command":"callers","args":["handleRequest"]}' >&3
-head -1 /tmp/sdbx_out
-echo '{"command":"shutdown"}' >&3
-exec 3>&-
-```
-
-**Option B: `coproc`** — keeps bidirectional pipes alive without a FIFO:
-
-```zsh
-# zsh
-coproc bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null
-read -t 30 ready <&p          # wait for ready signal
-print -p '{"command":"callers","args":["handleRequest"]}'
-read -t 10 resp <&p
-print -p '{"command":"shutdown"}'
-```
-
-```bash
-# bash
-coproc SDBX { bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project 2>/dev/null; }
-read -t 30 ready <&${SDBX[0]}
-echo '{"command":"callers","args":["handleRequest"]}' >&${SDBX[1]}
-read -t 10 resp <&${SDBX[0]}
-```
-
-#### Request/response protocol (JSON-lines on stdin/stdout)
-
-Send one JSON object per line to stdin. The daemon responds with one JSON line on stdout per request.
-
-**Request format:**
-```json
-{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method","--depth":"3"}}
-```
-
-- `command` (required): any command name (`callers`, `refs`, `lookup`, `stats`, `heartbeat`, `shutdown`, etc.)
-- `args` (optional): list of positional arguments
-- `flags` (optional): map of flags to values. Boolean flags use `"true"` as value. Keys can include `--` prefix or not.
-
-**Response format:**
-```json
-{"ok":true,"result":{...}}
-{"ok":false,"error":"parse_error","message":"missing 'command' field"}
-{"ok":false,"error":"unknown_command","message":"Unknown command: foo"}
-{"ok":false,"error":"timeout","message":"Query timed out after 30s"}
-{"ok":false,"error":"internal","message":"..."}
-```
-
-**Special daemon commands:**
-- `{"command":"heartbeat"}` — returns `{"ok":true}`, resets idle timer
-- `{"command":"shutdown"}` — returns `{"ok":true}`, then exits cleanly
-- `{"command":"rebuild"}` — force-rebuilds the index, returns stats with `"event":"rebuilt"`
-- `{"command":"stats"}` — returns index statistics
-
-**Examples:**
-```json
-{"command":"callers","args":["processPayment"],"flags":{"--kind":"method","--exclude":"test"}}
-{"command":"refs","args":["Config"]}
-{"command":"callees","args":["createOrder"],"flags":{"--smart":"true","--kind":"method"}}
-{"command":"explain","args":["processPayment"],"flags":{"--kind":"method"}}
-{"command":"batch","args":["callers handleRequest","subtypes Repository","members Config"]}
-{"command":"stats"}
-{"command":"heartbeat"}
-```
-
-#### Auto-rebuild on staleness
-
-The daemon checks if `.semanticdb` files have changed before each query (~7ms check). If files are newer than the last build, it automatically rebuilds — no need to send `rebuild` manually after recompilation.
-
-#### Safety guarantees
-
-The daemon is designed to self-terminate aggressively — it will never become a zombie process. Eight independent termination layers ensure this:
-
-1. **Stdin/FIFO EOF** — if you close stdin or the FIFO (or your process dies), the daemon exits immediately
-2. **Parent PID monitoring** — pass `--parent-pid <PID>` and the daemon exits when that process dies (works even if stdin stays open)
-3. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
-4. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)
-5. **Per-query timeout** — any query taking >30s returns a timeout error instead of hanging
-6. **Heap pressure** — exits if JVM memory usage exceeds 85% after GC
-7. **Startup timeout** — exits if index building takes >120s
-8. **Shutdown hook** — SIGTERM/SIGINT triggers clean exit
-
-You do not need to worry about cleanup — the daemon handles it. But you can send `{"command":"shutdown"}` for explicit clean shutdown.
+For the full protocol, non-interactive shell workarounds (`--fifo`, `coproc`), and safety guarantees, see `references/daemon.md`.
 
 #### When to use daemon vs CLI vs batch
 
 | Scenario | Best approach | Why |
 |---|---|---|
-| 1-2 queries in a session | CLI (`sdbx callers ...`) | Simplest, no setup overhead |
-| 3-5 related queries | `batch` | Amortizes 1.5s load, single command |
+| 1-2 queries | CLI (`sdbx callers ...`) | Simplest, no setup |
+| 3-5 related queries | `batch` | Amortizes 1.5s load |
 | Many queries over time | Daemon | <10ms per query after initial load |
-| Exploratory session (asking 10+ questions) | Daemon | Dramatically faster iteration |
 
 ### Index management
 
@@ -465,21 +365,9 @@ sdbx stats -w /project              # Show counts
 
 ## Getting the most out of sdbx
 
-### When to reach for sdbx (and when not to)
-
-scalex is the better default — zero setup, fast, good enough for 90% of queries. Reach for sdbx only when scalex fundamentally can't answer your question:
-
-| Question | scalex can't because... | sdbx command |
-|---|---|---|
-| "Who calls `processPayment`?" | Text search finds the name but can't identify which *method* contains the call | `callers processPayment` |
-| "All references to this specific `Config`" | `refs Config` matches every `Config` in every package | `refs Config` (resolves to exact FQN) |
-| "Every class implementing `Repository`" | Text-based `impl` misses implementations in unexpected packages | `subtypes Repository` |
-| "What type does `val result = ...` have?" | Inferred types aren't written in source | `type result` |
-| "What service methods does `createOrder` call?" | Text search can't resolve which overload of `validate` is being called | `callees createOrder --smart` |
-
 ### Avoiding the biggest pitfalls
 
-**Pitfall 1: Ambiguous symbol names.** If a name matches multiple symbols (e.g., `createOrder` matches both a case object and a method), sdbx picks the first by rank (classes before methods) and prints a disambiguation hint to stderr listing candidates with their FQNs. Watch for these hints — they tell you exactly how to narrow your query. Add `--kind method` to disambiguate, or use the full FQN from `lookup`:
+**Pitfall 1: Ambiguous symbol names.** If a name matches multiple symbols, sdbx picks the first by rank and prints a disambiguation hint to stderr. Add `--kind method` to disambiguate, or use the full FQN from `lookup`:
 
 ```bash
 # Bad: might match the wrong symbol
@@ -492,23 +380,9 @@ sdbx callees createOrder --kind method
 sdbx callees "com/example/OrderService#createOrder()."
 ```
 
-**Pitfall 2: Using `flow` without `--smart` on large codebases.** Raw `flow` at depth 3 can produce thousands of lines because it follows every val accessor, generated method, and utility call. On large codebases, always use `--smart`. If still too verbose, fall back to `callees --smart` (flat list, same signal, no depth explosion).
+**Pitfall 2: Using `flow` without `--smart` on large codebases.** Raw `flow` at depth 3 can produce thousands of lines. On large codebases, always use `--smart`. If still too verbose, fall back to `callees --smart` (flat list, no depth explosion).
 
-**Pitfall 3: Paying 1.5s index load per query.** Each CLI invocation reloads the index. For a handful of queries, use `batch`. For many queries across a session, use the daemon (keeps index in memory, <10ms per query):
-
-```bash
-# Bad: 3 invocations = ~4.5s of index loading
-sdbx callers handleRequest -w /project
-sdbx subtypes Repository -w /project
-sdbx members Config -w /project
-
-# Good for a few queries: batch amortizes the load
-sdbx batch "callers handleRequest" "subtypes Repository" "members Config" -w /project
-
-# Best for many queries: daemon keeps index hot (<10ms per query)
-# Start once, query many times via stdin JSON-lines
-bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project
-```
+**Pitfall 3: Paying 1.5s index load per query.** Use `batch` for a handful of queries, or the daemon for many (see "When to use daemon vs CLI vs batch" above).
 
 ### Decision tree: which command to use
 
