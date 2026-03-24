@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-03-24
+
+### Added
+- Unix domain socket daemon — `daemon` now listens on a socket at `/tmp/sdbx-<hash>.sock` instead of stdin/stdout. Any process can connect, send a JSON-line query, read a response, and disconnect. Designed for coding agent environments (like Claude Code) where each shell invocation is independent. (#323)
+- Transparent daemon forwarding — non-daemon CLI commands auto-detect a running socket daemon and forward queries transparently (<10ms). Falls back to local index loading if no daemon is available. (#323)
+- Socket file permissions locked to `rwx------` (owner-only) for security (#323)
+- Stale socket detection — daemon cleans up leftover socket files from crashed daemons (#323)
+- Fail-fast socket check — if a daemon is already running, new daemon exits immediately before building the index (#323)
+- JSON escaping in daemon request forwarding — backslashes, newlines, control chars properly escaped (#323)
+
+### Removed
+- `--fifo` flag (superseded by socket daemon) (#323)
+- `--parent-pid` flag (idle timeout and max lifetime are sufficient orphan guards) (#323)
+- `--socket` flag (daemon is socket-only now, no flag needed) (#323)
+- Stdin mode for daemon (socket is the only mode) (#323)
+
+### Changed
+- Termination contract reduced from 8 to 7 layers (removed stdin EOF and parent PID monitoring, both unnecessary for socket-only daemon) (#323)
+- `limit` and `depth` serialized as JSON numbers (not strings) in daemon forwarding (#323)
+
 ## [0.5.0] — 2026-03-24
 
 ### Added
