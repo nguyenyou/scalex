@@ -34,44 +34,45 @@ private def run(argList: List[String]): Unit =
     val idleTimeout = daemonFlags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
     val maxLifetime = daemonFlags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
     runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid, socketMode)
-  else if cmd != "index" then
-    // Transparent daemon forwarding: check for running socket daemon before loading index
-    val sockPath = socketPath(workspace)
-    if Files.exists(sockPath) then
-      trySocketForward(cmd, flags, sockPath) match
-        case Some(response) =>
-          println(response)
-          return
-        case None => () // fall through to local index
-  // fall through for all commands (index or forwarding failed)
-
-  if cmd == "index" then
-    index.rebuild()
-    val result = SemCmdResult.Stats(
-      index.fileCount, index.symbolCount, index.occurrenceCount,
-      index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
-    )
-    val ctx = flagsToContext(flags, index, workspace)
-    render(result, ctx)
-    SemTimings.report()
   else
-    // For all other commands, build/load the index first.
-    // Symbol-only commands skip loading occurrences (~70% faster on large projects).
-    val needOccs = cmd match
-      case "lookup" | "symbols" | "members" | "subtypes" | "supertypes" | "type" => false
-      case _ => true // refs, callers, callees, flow, path, explain, related, occurrences, batch
-    index.build(needOccs)
+    // Transparent daemon forwarding: try socket before loading index
+    val forwarded = cmd != "index" && {
+      val sockPath = socketPath(workspace)
+      Files.exists(sockPath) && {
+        trySocketForward(cmd, flags, sockPath) match
+          case Some(response) => println(response); true
+          case None => false
+      }
+    }
 
-    val ctx = flagsToContext(flags, index, workspace)
-
-    val result =
-      if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
+    if !forwarded then
+      if cmd == "index" then
+        index.rebuild()
+        val result = SemCmdResult.Stats(
+          index.fileCount, index.symbolCount, index.occurrenceCount,
+          index.buildTimeMs, index.cachedLoad, index.parsedCount, index.skippedCount,
+        )
+        val ctx = flagsToContext(flags, index, workspace)
+        render(result, ctx)
       else
-        commands.get(cmd) match
-          case Some(handler) => handler(flags.cleanArgs, ctx)
-          case None => SemCmdResult.UsageError(s"Unknown command: $cmd\nRun with --help for usage.")
+        // For all other commands, build/load the index first.
+        // Symbol-only commands skip loading occurrences (~70% faster on large projects).
+        val needOccs = cmd match
+          case "lookup" | "symbols" | "members" | "subtypes" | "supertypes" | "type" => false
+          case _ => true // refs, callers, callees, flow, path, explain, related, occurrences, batch
+        index.build(needOccs)
 
-    render(result, ctx)
+        val ctx = flagsToContext(flags, index, workspace)
+
+        val result =
+          if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
+          else
+            commands.get(cmd) match
+              case Some(handler) => handler(flags.cleanArgs, ctx)
+              case None => SemCmdResult.UsageError(s"Unknown command: $cmd\nRun with --help for usage.")
+
+        render(result, ctx)
+
     SemTimings.report()
 
 // ── Command dispatch ───────────────────────────────────────────────────────
@@ -279,24 +280,27 @@ private def trySocketForward(cmd: String, flags: SemParsedFlags, sockPath: Path)
   catch
     case _: Exception => None // stale socket, connection refused, Java <16 — fall through
 
+private def escapeJson(s: String): String =
+  s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+
 private def buildDaemonRequest(cmd: String, flags: SemParsedFlags): String =
-  val argsJson = flags.cleanArgs.map(a => s""""${a.replace("\"", "\\\"")}"""").mkString("[", ",", "]")
+  val argsJson = flags.cleanArgs.map(a => s""""${escapeJson(a)}"""").mkString("[", ",", "]")
   val parts = scala.collection.mutable.ListBuffer.empty[String]
-  if flags.limit != 50 then parts += s""""limit":"${flags.limit}""""
+  if flags.limit != 50 then parts += s""""limit":${flags.limit}"""
   if flags.verbose then parts += s""""verbose":"true""""
   if flags.jsonOutput then parts += s""""json":"true""""
-  flags.kindFilter.foreach(k => parts += s""""kind":"$k"""")
-  flags.roleFilter.foreach(r => parts += s""""role":"$r"""")
-  flags.depth.foreach(d => parts += s""""depth":"$d"""")
+  flags.kindFilter.foreach(k => parts += s""""kind":"${escapeJson(k)}"""")
+  flags.roleFilter.foreach(r => parts += s""""role":"${escapeJson(r)}"""")
+  flags.depth.foreach(d => parts += s""""depth":$d""")
   if flags.noAccessors then parts += s""""no-accessors":"true""""
-  if flags.excludePatterns.nonEmpty then parts += s""""exclude":"${flags.excludePatterns.mkString(",")}""""
+  if flags.excludePatterns.nonEmpty then parts += s""""exclude":"${escapeJson(flags.excludePatterns.mkString(","))}""""
   if flags.smart then parts += s""""smart":"true""""
-  flags.inScope.foreach(s => parts += s""""in":"$s"""")
+  flags.inScope.foreach(s => parts += s""""in":"${escapeJson(s)}"""")
   if flags.excludeTest then parts += s""""exclude-test":"true""""
-  if flags.excludePkgPatterns.nonEmpty then parts += s""""exclude-pkg":"${flags.excludePkgPatterns.map(_.replace("/", ".")).mkString(",")}""""
+  if flags.excludePkgPatterns.nonEmpty then parts += s""""exclude-pkg":"${escapeJson(flags.excludePkgPatterns.map(_.replace("/", ".")).mkString(","))}""""
   if flags.sourceOnly then parts += s""""source-only":"true""""
   val flagsJson = "{" + parts.mkString(",") + "}"
-  s"""{"command":"$cmd","args":$argsJson,"flags":$flagsJson}"""
+  s"""{"command":"${escapeJson(cmd)}","args":$argsJson,"flags":$flagsJson}"""
 
 // ── Usage ──────────────────────────────────────────────────────────────────
 
@@ -335,7 +339,8 @@ def printUsage(): Unit =
     |                        idle = idle timeout seconds (default: 300)
     |                        max  = max lifetime seconds (default: 1800)
     |                        --parent-pid PID  Monitor parent process (auto-exit on parent death)
-    |                        --socket          Listen on Unix domain socket (requires Java 16+)
+    |                        --socket          Listen on Unix domain socket (requires Java 16+
+    |                                          and --parent-pid to prevent orphan processes)
     |                                          Clients connect, send JSON-line, read response, disconnect.
     |                        Non-daemon commands auto-detect a running socket daemon and forward
     |                        queries transparently (<10ms). Falls back to local index if unavailable.
