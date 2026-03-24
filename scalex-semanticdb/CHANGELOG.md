@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- `daemon --fifo <path>` flag — read requests from a named pipe instead of stdin, for non-interactive shells where backgrounding with `&` closes stdin (#317)
+
 ## [0.4.0] — 2026-03-24
 
 ### Changed

@@ -4,6 +4,11 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### sdbx: daemon --fifo for non-interactive shells (#317)
+
+- [x] `--fifo <path>` flag — daemon reads from named pipe instead of stdin; solves immediate exit when backgrounding with `&` in non-interactive shells
+- [x] Document `coproc` workaround in SKILL.md for shells that prefer keeping bidirectional pipes
+
 ### Community feedback: output budgets & package-scoped refs (#252)
 
 - [x] `--max-output N` global output budget — truncate any command's output at N characters with pagination hint; wraps `render()` centrally via `BudgetPrintStream` in `runCommand`; also serves as per-query budget in `batch` mode

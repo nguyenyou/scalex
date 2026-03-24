@@ -125,6 +125,69 @@ class DaemonLifecycleTest extends FunSuite:
     proc.waitFor(15, TimeUnit.SECONDS)
   }
 
+  // ── FIFO tests ──────────────────────────────────────────────────────
+
+  test("fifo-query-response: daemon reads from named pipe and responds") {
+    val fifo = workspace.resolve("sdbx_test.fifo")
+    mkfifo(fifo)
+    try
+      val proc = startDaemon(fifoPath = Some(fifo))
+      // Open FIFO for writing (must happen after daemon opens it for reading)
+      // Use a thread because opening a FIFO for writing blocks until a reader exists
+      val writerThread = new Thread:
+        override def run(): Unit =
+          val fos = java.io.FileOutputStream(fifo.toFile)
+          try
+            fos.write(("""{"command":"stats"}""" + "\n").getBytes)
+            fos.flush()
+            // Keep pipe open long enough for response
+            Thread.sleep(3000)
+            fos.write(("""{"command":"shutdown"}""" + "\n").getBytes)
+            fos.flush()
+          finally fos.close()
+      writerThread.setDaemon(true)
+      writerThread.start()
+
+      val reader = waitForReady(proc)
+      val response = readResponse(reader)
+      assert(response.contains("\"ok\":true"), s"Expected ok stats response via FIFO, got: $response")
+      assert(response.contains("\"files\""), s"Expected files in stats, got: $response")
+      val exited = proc.waitFor(15, TimeUnit.SECONDS)
+      assert(exited, "Daemon did not exit after shutdown via FIFO")
+      assertEquals(proc.exitValue(), 0)
+    finally Files.deleteIfExists(fifo)
+  }
+
+  test("fifo-eof: closing the named pipe terminates daemon") {
+    val fifo = workspace.resolve("sdbx_eof.fifo")
+    mkfifo(fifo)
+    try
+      val proc = startDaemon(fifoPath = Some(fifo))
+      // Open FIFO, let daemon read ready signal, then close to trigger EOF
+      val writerThread = new Thread:
+        override def run(): Unit =
+          val fos = java.io.FileOutputStream(fifo.toFile)
+          // Give daemon time to emit ready signal
+          Thread.sleep(2000)
+          fos.close() // EOF → daemon should exit
+      writerThread.setDaemon(true)
+      writerThread.start()
+
+      val reader = waitForReady(proc)
+      val exited = proc.waitFor(15, TimeUnit.SECONDS)
+      assert(exited, "Daemon did not exit within 15s of FIFO closure")
+      assertEquals(proc.exitValue(), 0)
+    finally Files.deleteIfExists(fifo)
+  }
+
+  test("fifo-not-found: non-existent FIFO path exits with error") {
+    val bogus = workspace.resolve("does_not_exist.fifo")
+    val proc = startDaemon(fifoPath = Some(bogus))
+    val exited = proc.waitFor(30, TimeUnit.SECONDS)
+    assert(exited, "Daemon did not exit for non-existent FIFO")
+    assert(proc.exitValue() != 0, s"Expected non-zero exit for missing FIFO, got: ${proc.exitValue()}")
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────
 
   private val sdbxSrcDir = Path.of("scalex-semanticdb/src").toAbsolutePath.toString
@@ -133,14 +196,16 @@ class DaemonLifecycleTest extends FunSuite:
     idleTimeout: Int = 300,
     maxLifetime: Int = 1800,
     parentPid: Option[Long] = None,
+    fifoPath: Option[Path] = None,
   ): Process =
     val baseArgs = List("scala-cli", "run", sdbxSrcDir, "--")
     val daemonArgs = List("daemon")
     val pidArgs = parentPid.map(p => List("--parent-pid", p.toString)).getOrElse(Nil)
+    val fifoArgs = fifoPath.map(f => List("--fifo", f.toString)).getOrElse(Nil)
     val positionalArgs = List(idleTimeout.toString, maxLifetime.toString)
     val wsArgs = List("--workspace", workspace.toString)
 
-    val cmd = baseArgs ++ daemonArgs ++ pidArgs ++ positionalArgs ++ wsArgs
+    val cmd = baseArgs ++ daemonArgs ++ pidArgs ++ fifoArgs ++ positionalArgs ++ wsArgs
     val pb = ProcessBuilder(cmd*)
     pb.redirectErrorStream(false)
     pb.start()
@@ -195,6 +260,11 @@ class DaemonLifecycleTest extends FunSuite:
     val output = String(proc.getInputStream.readAllBytes())
     val exit = proc.waitFor()
     assert(exit == 0, s"Test fixture compilation failed:\n$output")
+
+  private def mkfifo(path: Path): Unit =
+    val proc = ProcessBuilder("mkfifo", path.toString).start()
+    val exit = proc.waitFor()
+    assert(exit == 0, s"mkfifo failed with exit code $exit")
 
   private def deleteRecursive(path: Path): Unit =
     if Files.isDirectory(path) then
