@@ -17,7 +17,7 @@
    gh release download sdb-vX.Y.Z -p "sdbx.sha256" -O -
    ```
 7. Bump `version` for the `scalex-semanticdb` entry in `.claude-plugin/marketplace.json` (at repo root, NOT inside `plugins/`)
-8. Commit, push to main
+8. Commit, create PR, merge to main (main is protected — cannot push directly)
 
 ## Feature checklist
 

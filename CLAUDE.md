@@ -177,7 +177,7 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 5. Bump `EXPECTED_VERSION` in `plugins/scalex/skills/scalex/scripts/scalex-cli`
 6. Update `CHECKSUM_scalex_*` values in `scalex-cli` — get hashes from individual `.sha256` release assets (iterate: `gh release view vX.Y.Z --json assets --jq '.assets[] | select(.name | endswith(".sha256")) | .name'` then download each with `gh release download vX.Y.Z -p <name> -O -`)
 7. Bump `version` in `.claude-plugin/marketplace.json` (plugin version is only managed here, not in `plugins/scalex/.claude-plugin/plugin.json`)
-8. Commit, push to main
+8. Commit, create PR, merge to main (main is protected — cannot push directly)
 
 Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`), NOT inside `plugins/`.
 
