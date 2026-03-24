@@ -14,7 +14,7 @@ You have access to `sdbx`, a compiler-precise Scala code intelligence CLI. It re
 
 **Use scalex as your primary tool** for exploration — it's zero-setup and fast. Reach for sdbx when you need precision: `callers`, precise `refs`, exhaustive `subtypes`, or resolved types.
 
-First run discovers and indexes `.semanticdb` files from build output (~10s for large codebases). Subsequent CLI runs load from cache (~1.5s). For agents making many queries, start the **socket daemon** once (`daemon --socket &`) — all subsequent queries auto-detect it and take **<10ms** instead of 1.5s. Index is stored at `.scalex/semanticdb.bin`.
+First run discovers and indexes `.semanticdb` files from build output (~10s for large codebases). Subsequent CLI runs load from cache (~1.5s). For agents making many queries, start the **daemon** once (`daemon -w /project &`) — all subsequent queries auto-detect it and take **<10ms** instead of 1.5s. Index is stored at `.scalex/semanticdb.bin`.
 
 ## Setup
 
@@ -306,12 +306,12 @@ sdbx batch "callers handleRequest" "callees processPayment --smart" -w /project
 
 ### Daemon mode (for coding agents)
 
-The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1.5s. In coding agent environments (like Claude Code) where each shell invocation is independent, use **socket mode** — the daemon listens on a Unix domain socket so any process can connect.
+The daemon keeps the index hot in memory so queries take **<10ms** instead of ~1.5s. It listens on a Unix domain socket so any process can connect — perfect for coding agent environments (like Claude Code) where each shell invocation is independent.
 
 **Start the daemon once at the beginning of a session:**
 
 ```bash
-bash "/path/to/sdbx-cli" daemon --socket -w /project &
+bash "/path/to/sdbx-cli" daemon -w /project &
 ```
 
 The daemon builds the index, binds the socket, and runs in the background. It self-terminates after 5 minutes of inactivity (or 30 minutes max lifetime). No cleanup needed.
@@ -334,7 +334,7 @@ If the daemon isn't running yet (still building index, or not started), queries 
 |---|---|---|
 | 1-2 queries | CLI (`sdbx callers ...`) | Simplest, no setup |
 | 3-5 related queries | `batch` | Amortizes 1.5s load |
-| Many queries across a session | Daemon (`--socket`) | <10ms, works across independent shell calls |
+| Many queries across a session | Daemon | <10ms, works across independent shell calls |
 
 ### Index management
 
