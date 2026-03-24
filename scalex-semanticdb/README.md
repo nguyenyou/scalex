@@ -20,7 +20,7 @@ For everything else — grep, body extraction, scaladoc, AST patterns, test disc
 
 ```
                     ┌────────────┐
-                    │scalex-sdb  │
+                    │sdbx  │
                     │    CLI     │
                     └─────┬──────┘
                           │
@@ -38,7 +38,7 @@ For everything else — grep, body extraction, scaladoc, AST patterns, test disc
   └──────────────┘  └────────────────┘  └────────────────┘
 ```
 
-- **scalex-sdb CLI** — 15 commands focused on compiler-unique capabilities
+- **sdbx CLI** — 15 commands focused on compiler-unique capabilities
 - **SemIndex** — lazy indexes: symbolByFqn, occurrencesBySymbol, subtypeIndex, memberIndex, definitionRanges
 - **Discovery** — targeted scan of Mill's `out/` for `semanticDbDataDetailed.dest` directories (fast, Mill-only for now)
 - **.semanticdb protobuf** — compiler output: symbols with resolved types, every occurrence with DEFINITION/REFERENCE role
@@ -126,25 +126,25 @@ This produces `.semanticdb` files under `out/` in each module's `semanticDbDataD
 ## Usage
 
 ```bash
-scalex-sdb <command> [args] [options]
+sdbx <command> [args] [options]
 
 # Call flow tree — the killer feature
-scalex-sdb flow processPayment --depth 3
+sdbx flow processPayment --depth 3
 
 # Who calls this method?
-scalex-sdb callers handleRequest
+sdbx callers handleRequest
 
 # What does this method call?
-scalex-sdb callees main
+sdbx callees main
 
 # Zero-false-positive references
-scalex-sdb refs MyService
+sdbx refs MyService
 
 # Resolved type signature
-scalex-sdb type myFunction
+sdbx type myFunction
 
 # Co-occurring symbols
-scalex-sdb related UserService
+sdbx related UserService
 ```
 
 ## Commands
@@ -203,7 +203,7 @@ scalex-sdb related UserService
 
 Tested on a production Scala monorepo (15k files, 2M symbols). Each scenario shows how many round-trip tool calls a coding agent needs:
 
-| Scenario | grep | scalex | scalex-sdb |
+| Scenario | grep | scalex | sdbx |
 |---|---|---|---|
 | **"What happens when `createRouter` is called?"** (depth 2, 25 callees) | Impossible | Impossible | **1 call** (`flow`) |
 | **"Full call chain from `start()` depth 3"** (40+ nodes across 4 services) | ~30+ calls | ~15+ calls | **1 call** (`flow`) |
@@ -213,9 +213,9 @@ Tested on a production Scala monorepo (15k files, 2M symbols). Each scenario sho
 | **"What symbols are related to `TokenService`?"** | Cannot answer | Cannot answer | **1 call** (`related`) — 1,048 co-occurring symbols ranked |
 | **"Precise refs of `authCheck`"** (no false positives) | 10 lines (includes def) | 10 text matches | **9 exact references** |
 
-The `flow` command is the clearest win: what takes a coding agent **15–30 round trips** with grep/scalex takes **1 call** with scalex-sdb.
+The `flow` command is the clearest win: what takes a coding agent **15–30 round trips** with grep/scalex takes **1 call** with sdbx.
 
-For a 3-level deep trace like `start() → checkToken → getTokenClaim → loadContext`, the agent would need to `def` → `Read` → `def` → `Read` → `def` → `Read` at minimum. scalex-sdb returns the entire tree in a single invocation.
+For a 3-level deep trace like `start() → checkToken → getTokenClaim → loadContext`, the agent would need to `def` → `Read` → `def` → `Read` → `def` → `Read` at minimum. sdbx returns the entire tree in a single invocation.
 
 ## Performance
 
@@ -234,7 +234,7 @@ scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
 
 # Build assembly JAR (requires scala-cli, produces self-executable JAR)
 ./build-native-semanticdb.sh
-# Output: ./scalex-sdb (~49MB, requires Java 11+ at runtime)
+# Output: ./sdbx (~49MB, requires Java 11+ at runtime)
 ```
 
 The assembly JAR is shipped instead of a GraalVM native image because the JVM's JIT compiler is ~11x faster on warm loads for this protobuf-heavy workload (1.8s vs 20s for 3M symbols).

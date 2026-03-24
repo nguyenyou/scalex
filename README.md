@@ -443,10 +443,10 @@ Scalex reads source text. `scalex-semanticdb` reads the compiler's output. The t
 ### How it works
 
 ```
-Scala compiler (-Xsemanticdb) → .semanticdb protobuf files → scalex-sdb indexes → query
+Scala compiler (-Xsemanticdb) → .semanticdb protobuf files → sdbx indexes → query
 ```
 
-The Scala compiler emits `.semanticdb` files containing every symbol definition, every reference with its resolved target, and full type information. `scalex-sdb` indexes this data into `.scalex/semanticdb.bin` and exposes it through 15 commands.
+The Scala compiler emits `.semanticdb` files containing every symbol definition, every reference with its resolved target, and full type information. `sdbx` indexes this data into `.scalex/semanticdb.bin` and exposes it through 15 commands.
 
 **Generate .semanticdb files** (Mill only — other build tools coming later):
 
@@ -459,9 +459,9 @@ The Scala compiler emits `.semanticdb` files containing every symbol definition,
 | | Pros | Cons |
 |---|---|---|
 | **scalex** | Zero setup, works on any git repo. Fast cold start (~3s). Grep, AST patterns, body extraction, scaladoc, test discovery. | No type info. References are text-based (false positives). No call graph. |
-| **scalex-sdb** | Compiler-precise refs. Call graphs (callers/callees/flow). Resolved types. Related symbols. | Requires compilation with SemanticDB. Slower cold start (~50s). No source body extraction, grep, or scaladoc. |
+| **sdbx** | Compiler-precise refs. Call graphs (callers/callees/flow). Resolved types. Related symbols. | Requires compilation with SemanticDB. Slower cold start (~50s). No source body extraction, grep, or scaladoc. |
 
-Use both together: scalex for fast exploration, scalex-sdb for precision queries.
+Use both together: scalex for fast exploration, sdbx for precision queries.
 
 ### Install
 
@@ -485,7 +485,7 @@ If IntelliJ IDEA is already open with your project, you can tap into its compile
 
 **Requirements:** IntelliJ IDEA **2026.1 RC** or later, MCP Server enabled (Settings → Tools → MCP Server). Needs `curl` and `jq`.
 
-| | **scalex** | **scalex-sdb** | **scalex-intellij** |
+| | **scalex** | **sdbx** | **scalex-intellij** |
 |---|---|---|---|
 | **Setup** | Just a binary + git repo | Mill + compiled `.semanticdb` files | IntelliJ running with MCP Server |
 | **Precision** | Source-level | Compiler-level | Compiler-level + IDE features |

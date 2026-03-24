@@ -1,6 +1,6 @@
 # Daemon Safety: Research & Design
 
-Research on safe daemon management across the Scala/JVM ecosystem and beyond, applied to scalex-sdb's daemon mode.
+Research on safe daemon management across the Scala/JVM ecosystem and beyond, applied to sdbx's daemon mode.
 
 ---
 
@@ -60,14 +60,14 @@ Adopted by:
 |------|---------|-------|
 | gopls | 1 min | Shortest — aggressive for shared daemon |
 | sbt server | 5 min | `serverIdleTimeout` setting |
-| scalex-sdb | 5 min | Our current default |
+| sdbx | 5 min | Our current default |
 | Gradle | **3 hours** | Too long — the root cause of many daemon accumulation bugs |
 
 **Lesson**: Shorter is better. A 5-minute idle timeout means at most 5 minutes of wasted memory after the agent session ends. Gradle's 3-hour timeout is directly responsible for their daemon proliferation problems.
 
 ### 2.4 Max Lifetime Cap
 
-Unique to scalex-sdb among the tools surveyed. Most daemons rely only on idle timeout, which fails when:
+Unique to sdbx among the tools surveyed. Most daemons rely only on idle timeout, which fails when:
 - A buggy client sends periodic heartbeats but never actually uses the daemon
 - The agent session runs for hours with sporadic queries (idle timer keeps resetting)
 
@@ -102,7 +102,7 @@ From [Guido Flohr's analysis](https://www.guido-flohr.net/never-delete-your-pid-
 - **Race condition**: Two processes can hold file descriptors to different files with the same name, both acquiring exclusive locks
 - **Correct pattern**: Open and lock; never delete; let kernel reclaim on exit
 
-**For scalex-sdb**: We don't use PID files, which is correct. stdin/stdout pipes are strictly superior for our use case.
+**For sdbx**: We don't use PID files, which is correct. stdin/stdout pipes are strictly superior for our use case.
 
 ---
 
@@ -239,7 +239,7 @@ Every termination layer must have a dedicated test. The daemon is useless if it 
 | **Parent PID exit** | Daemon exits when monitored parent exits | Start with parent PID of a short-lived process, assert daemon exits after it |
 | **Heap pressure** | Daemon exits under memory pressure | (Hard to unit test; integration test with `-Xmx32m` and large index) |
 | **Startup timeout** | Daemon exits if build hangs | (Mock/fault injection on index build) |
-| **Orphan check** | No zombies after test suite | After all tests, `pgrep -f scalex-sdb` finds zero processes |
+| **Orphan check** | No zombies after test suite | After all tests, `pgrep -f sdbx` finds zero processes |
 
 ### 5.2 Implementation Pattern
 
@@ -298,7 +298,7 @@ class DaemonLifecycleTest extends munit.FunSuite:
 
   // After all tests: verify no orphan daemons
   override def afterAll(): Unit =
-    val result = ProcessBuilder("pgrep", "-f", "scalex-sdb.*daemon")
+    val result = ProcessBuilder("pgrep", "-f", "sdbx.*daemon")
       .start().waitFor()
     assertEquals(result, 1, "Orphan daemon processes detected after test suite!")
 ```
@@ -322,9 +322,9 @@ Add to CI pipeline:
 # After running daemon tests:
 - name: Check for orphan processes
   run: |
-    if pgrep -f 'scalex-sdb.*daemon'; then
+    if pgrep -f 'sdbx.*daemon'; then
       echo "FAIL: Orphan daemon processes found"
-      pkill -f 'scalex-sdb.*daemon'
+      pkill -f 'sdbx.*daemon'
       exit 1
     fi
 ```
@@ -354,7 +354,7 @@ Things we must **never** add to the daemon:
 
 ### Comparison Matrix
 
-| Feature | scalex-sdb | sbt server | Bloop | Metals | Gradle | gopls | rust-analyzer |
+| Feature | sdbx | sbt server | Bloop | Metals | Gradle | gopls | rust-analyzer |
 |---------|-----------|------------|-------|--------|--------|-------|---------------|
 | stdin EOF detection | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Parent PID monitoring | ✅ | ❌ | ❌ | ✅ (fixed) | ❌ | ❌ | ❌ |
@@ -365,7 +365,7 @@ Things we must **never** add to the daemon:
 | Heap monitoring | ✅ | ❌ | ❌ | ❌ | ✅ | N/A | N/A |
 | Lifecycle tests | ✅ | ❌ | Partial | Partial | Partial | ❌ | ❌ |
 
-scalex-sdb has more termination layers (8) than any tool surveyed, with full lifecycle test coverage.
+sdbx has more termination layers (8) than any tool surveyed, with full lifecycle test coverage.
 
 ---
 

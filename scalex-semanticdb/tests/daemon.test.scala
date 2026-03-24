@@ -17,7 +17,7 @@ class DaemonLifecycleTest extends FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(180, "s")
 
   override def beforeAll(): Unit =
-    workspace = Files.createTempDirectory("scalex-sdb-daemon-test")
+    workspace = Files.createTempDirectory("sdbx-daemon-test")
     val srcDir = workspace.resolve("src")
     Files.createDirectories(srcDir)
     writeMinimalFixture(srcDir)
@@ -127,14 +127,14 @@ class DaemonLifecycleTest extends FunSuite:
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  private val scalexSdbSrcDir = Path.of("scalex-semanticdb/src").toAbsolutePath.toString
+  private val sdbxSrcDir = Path.of("scalex-semanticdb/src").toAbsolutePath.toString
 
   private def startDaemon(
     idleTimeout: Int = 300,
     maxLifetime: Int = 1800,
     parentPid: Option[Long] = None,
   ): Process =
-    val baseArgs = List("scala-cli", "run", scalexSdbSrcDir, "--")
+    val baseArgs = List("scala-cli", "run", sdbxSrcDir, "--")
     val daemonArgs = List("daemon")
     val pidArgs = parentPid.map(p => List("--parent-pid", p.toString)).getOrElse(Nil)
     val positionalArgs = List(idleTimeout.toString, maxLifetime.toString)

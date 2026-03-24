@@ -34,7 +34,7 @@ private val StartupTimeoutSec = 120L
 private val HeapCheckIntervalSec = 60L
 
 def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None): Unit =
-  System.err.println("scalex-sdb daemon starting...")
+  System.err.println("sdbx daemon starting...")
 
   // Self-termination timers (created early so startup timeout works)
   val scheduler = Executors.newSingleThreadScheduledExecutor { r =>

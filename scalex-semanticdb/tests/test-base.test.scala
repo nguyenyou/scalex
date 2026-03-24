@@ -16,7 +16,7 @@ abstract class SemTestBase extends FunSuite:
   var index: SemIndex = scala.compiletime.uninitialized
 
   override def beforeAll(): Unit =
-    workspace = Files.createTempDirectory("scalex-sdb-test")
+    workspace = Files.createTempDirectory("sdbx-test")
     val srcDir = workspace.resolve("src")
     Files.createDirectories(srcDir)
 

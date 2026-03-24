@@ -8,7 +8,7 @@ import java.nio.file.{Files, Path}
     printUsage()
     return
   if argList.head == "--version" then
-    println(s"scalex-semanticdb $ScalexSdbVersion")
+    println(s"sdbx $SdbxVersion")
     return
 
   val cmd = argList.head
@@ -240,9 +240,9 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
 // ── Usage ──────────────────────────────────────────────────────────────────
 
 def printUsage(): Unit =
-  println("""scalex-semanticdb — Compiler-precise code intelligence from SemanticDB
+  println("""sdbx — Compiler-precise code intelligence from SemanticDB
     |
-    |Usage: scalex-semanticdb <command> [args] [options]
+    |Usage: sdbx <command> [args] [options]
     |
     |Call graph (compiler-only):
     |  callers <symbol>      Who calls this method (reverse call graph, --depth N for transitive)

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+- Renamed CLI tool from `scalex-sdb` to `sdbx` — binary, bootstrap script, version constant, all documentation and references updated. The module directory (`scalex-semanticdb/`) and plugin name are unchanged.
+- Added `scalex-semanticdb/CLAUDE.md` documenting the release workflow and feature checklist
+
 ## [0.3.0] — 2026-03-24
 
 ### Added

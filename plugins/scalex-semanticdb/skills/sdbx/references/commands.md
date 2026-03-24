@@ -1,4 +1,4 @@
-# scalex-sdb Command Reference
+# sdbx Command Reference
 
 ## All Commands
 
@@ -81,7 +81,7 @@ Positional args: idle timeout seconds (default: 300), max lifetime seconds (defa
 
 ## Symbol Resolution
 
-When you pass a symbol name, scalex-sdb resolves it in this order:
+When you pass a symbol name, sdbx resolves it in this order:
 
 1. **Exact FQN** — `com/example/MyService#` matches directly
 2. **FQN separator swap** — if exact FQN fails, tries `#` ↔ `.` swap (class member ↔ object member) with a hint

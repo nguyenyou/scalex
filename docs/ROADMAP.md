@@ -165,7 +165,7 @@
 - ~~`scalex sealed <trait>`~~ — `hierarchy --down --depth 1` already serves this use case; marginal
 - ~~Smarter default limits~~ — auto-summarize is hard to get right universally; better to give users explicit flags (`--members-limit`, `--definitions-only`)
 
-### scalex-sdb: noise filtering for flow/callees/callers
+### sdbx: noise filtering for flow/callees/callers
 
 - [x] `--no-accessors` flag — filter val/var field accessors from flow/callees
 - [x] `--exclude "p1,p2,..."` flag — filter symbols by FQN or file path from flow/callees/callers
@@ -174,7 +174,7 @@
 - [x] `resolveSymbol` prefers source over generated code in ranking
 - [x] `batch` command — run multiple queries in one invocation
 
-### scalex-sdb: agent UX improvements (#303)
+### sdbx: agent UX improvements (#303)
 
 - [x] Fix `batch` FQN quoting — strip surrounding quotes in `runBatch()`
 - [x] `--in <scope>` flag — scope symbol resolution by owner, FQN, or file without full FQN
@@ -184,7 +184,7 @@
 - [x] `lookup` shows `[object]`/`[class/trait]` annotations for method/field members
 - [x] FQN resolution `#`↔`.` fallback with stderr hint
 
-### scalex-sdb: reduce noise in members/lookup output (#307)
+### sdbx: reduce noise in members/lookup output (#307)
 
 - [x] `members` synthetic filtering — hide compiler-generated case class members (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `canEqual`, `apply`, `unapply`) by default; show with `--verbose`. Note: `hashCode`/`toString`/`equals` are not filtered because Scala 3 SemanticDB only emits them when user-overridden.
 - [x] `--smart` on `members` — consistent with `--smart` on flow/callees/callers; filters synthetic case class methods + val accessors, showing only user-declared members
@@ -192,7 +192,7 @@
 - [x] `explain` subtypes — add `subtypes: N` line + first 3 names for traits/abstract classes; new field in `ExplainResult`, `findSubtypes()` call, formatter update
 - Discarded: SKILL.md daemon nudge — already documented with decision tree (lines 374-382) recommending daemon for 3+ queries and exploratory sessions
 
-### scalex-sdb: daemon mode & Mill-only discovery
+### sdbx: daemon mode & Mill-only discovery
 
 - [x] `daemon` command — stdin/stdout JSON-lines server, keeps index hot in memory (<10ms queries vs ~1.5s CLI)
 - [x] 8 defensive termination layers: stdin EOF, parent PID monitoring, idle timeout, max lifetime, shutdown command, per-query timeout, heap pressure, shutdown hook
