@@ -316,7 +316,7 @@ bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project
 bash "/path/to/sdbx-cli" daemon --parent-pid $$ 120 600 -w /project
 
 # Read from a named pipe instead of stdin (for non-interactive shells):
-bash "/path/to/sdbx-cli" daemon --fifo /tmp/sdbx_in --parent-pid $$ -w /project
+bash "/path/to/sdbx-cli" daemon --fifo .scalex/daemon.fifo --parent-pid $$ -w /project
 ```
 
 Wait for the ready signal on stdout before sending queries:

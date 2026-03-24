@@ -7,16 +7,16 @@ Backgrounding the daemon with `&` closes stdin, triggering immediate exit (Layer
 **Option A: `--fifo` flag (recommended)** — reads from a named pipe instead of stdin:
 
 ```bash
-mkfifo /tmp/sdbx_in
-bash "/path/to/sdbx-cli" daemon --fifo /tmp/sdbx_in --parent-pid $$ -w /project > /tmp/sdbx_out &
+mkfifo .scalex/daemon.fifo
+bash "/path/to/sdbx-cli" daemon --fifo .scalex/daemon.fifo --parent-pid $$ -w /project > .scalex/daemon.out &
 
 # Wait for ready signal
-head -1 /tmp/sdbx_out
+head -1 .scalex/daemon.out
 
 # Send queries by holding the FIFO open
-exec 3>/tmp/sdbx_in
+exec 3>.scalex/daemon.fifo
 echo '{"command":"callers","args":["handleRequest"]}' >&3
-head -1 /tmp/sdbx_out
+head -1 .scalex/daemon.out
 echo '{"command":"shutdown"}' >&3
 exec 3>&-
 ```
