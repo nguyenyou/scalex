@@ -5,7 +5,7 @@ import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, Time
 //
 // TERMINATION CONTRACT — every code path MUST lead to eventual JVM exit.
 //
-// Seven defensive layers (ordered by reliability):
+// Eight defensive layers (ordered by reliability):
 //   1.   Stdin EOF           — pipe closure on parent death (stdin mode only)
 //   2.   Idle timeout       — no request for N seconds (resettable, default 300)
 //   3.   Max lifetime       — hard cap regardless of activity (default 1800)

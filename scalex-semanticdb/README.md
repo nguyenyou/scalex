@@ -184,7 +184,7 @@ sdbx related UserService
 | `stats` | Index statistics |
 | `daemon [idle] [max]` | Stdin/stdout JSON-lines server (keeps index hot, <10ms/query) |
 
-Daemon-only options: `--parent-pid PID` (auto-exit on parent death), `--fifo PATH` (read from named pipe instead of stdin — for non-interactive shells where `&` closes stdin).
+Daemon-only options: `--socket` (listen on Unix domain socket instead of stdin — works across independent shell invocations, requires Java 16+).
 
 ### Options
 
