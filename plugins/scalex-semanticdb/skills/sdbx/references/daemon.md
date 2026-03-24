@@ -89,14 +89,14 @@ The daemon checks if `.semanticdb` files have changed before each query (~7ms ch
 
 ## Safety guarantees
 
-The daemon is designed to self-terminate aggressively — it will never become a zombie process. Eight independent termination layers ensure this:
+The daemon is designed to self-terminate aggressively — it will never become a zombie process. Seven independent termination layers ensure this:
 
-1. **Stdin EOF** (stdin mode only) — if you close stdin (or your process dies), the daemon exits immediately
-3. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
-4. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)
-5. **Per-query timeout** — any query taking >30s returns a timeout error instead of hanging
-6. **Heap pressure** — exits if JVM memory usage exceeds 85% after GC
-7. **Startup timeout** — exits if index building takes >120s
-8. **Shutdown hook** — SIGTERM/SIGINT triggers clean exit (socket file cleaned up automatically)
+1. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
+2. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)
+3. **Shutdown command** — explicit `{"command":"shutdown"}` exits after sending response
+4. **Per-query timeout** — any query taking >30s returns a timeout error instead of hanging
+5. **Heap pressure** — exits if JVM memory usage exceeds 85% after GC
+6. **Startup timeout** — exits if index building takes >120s
+7. **Shutdown hook** — SIGTERM/SIGINT triggers clean exit (socket file cleaned up automatically)
 
 You do not need to worry about cleanup — the daemon handles it. But you can send `{"command":"shutdown"}` for explicit clean shutdown.

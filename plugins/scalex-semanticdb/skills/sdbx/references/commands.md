@@ -160,12 +160,12 @@ Before each query, the daemon checks if `.semanticdb` directories have been modi
 
 ### Safety guarantees
 
-Eight termination layers ensure the daemon never becomes a zombie:
+Seven termination layers ensure the daemon never becomes a zombie:
 
-1. **Stdin EOF** (stdin mode only) — parent dies → pipe closes → daemon exits immediately
-3. **Idle timeout** — no request for N seconds → exit (default: 300s, configurable)
-4. **Max lifetime** — hard cap regardless of activity (default: 1800s, configurable)
-5. **Per-query timeout** — query >30s → returns `{"ok":false,"error":"timeout",...}`, daemon stays alive
-6. **Heap pressure** — used heap >85% after GC → exit
-7. **Startup timeout** — index build >120s → exit with code 1
-8. **Shutdown hook** — SIGTERM/SIGINT → clean exit
+1. **Idle timeout** — no request for N seconds → exit (default: 300s, configurable)
+2. **Max lifetime** — hard cap regardless of activity (default: 1800s, configurable)
+3. **Shutdown command** — explicit `{"command":"shutdown"}` → exit after response
+4. **Per-query timeout** — query >30s → returns `{"ok":false,"error":"timeout",...}`, daemon stays alive
+5. **Heap pressure** — used heap >85% after GC → exit
+6. **Startup timeout** — index build >120s → exit with code 1
+7. **Shutdown hook** — SIGTERM/SIGINT → clean exit
