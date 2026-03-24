@@ -9,7 +9,7 @@ import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, Time
 //   1.   Stdin EOF           — pipe closure on parent death (even SIGKILL)
 //                              Inactive in --socket mode (daemon blocks on accept, not stdin)
 //   1.5  Parent PID exit    — ProcessHandle.onExit() backup (--parent-pid)
-//                              Required in --socket mode (only reliable orphan guard)
+//                              Recommended in --socket mode; without it, Layers 2+3 handle cleanup
 //   2.   Idle timeout       — no request for N seconds (resettable, default 300)
 //   3.   Max lifetime       — hard cap regardless of activity (default 1800)
 //   4.   Shutdown command   — explicit {"command":"shutdown"}
@@ -37,11 +37,10 @@ private val HeapCheckIntervalSec = 60L
 
 def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None, socketMode: Boolean = false): Unit =
   // Socket mode doesn't read stdin, so Layer 1 (stdin EOF) is inactive.
-  // --parent-pid is the only reliable orphan guard — require it.
+  // --parent-pid is recommended but not required — idle timeout (Layer 2)
+  // and max lifetime (Layer 3) are sufficient orphan guards.
   if socketMode && parentPid.isEmpty then
-    System.err.println("Error: --socket requires --parent-pid to prevent orphan processes.")
-    System.err.println("Usage: sdbx daemon --socket --parent-pid $$ -w /project")
-    System.exit(1)
+    System.err.println("Warning: --socket without --parent-pid relies on idle/max-lifetime timeouts for cleanup.")
 
   System.err.println("sdbx daemon starting...")
 

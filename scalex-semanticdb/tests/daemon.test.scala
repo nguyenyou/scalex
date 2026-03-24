@@ -209,9 +209,7 @@ class DaemonLifecycleTest extends FunSuite:
   ): Process =
     val baseArgs = List("scala-cli", "run", sdbxSrcDir, "--")
     val daemonArgs = List("daemon")
-    // Socket mode requires --parent-pid; default to current test process PID
-    val effectivePid = parentPid.orElse(if socketMode then Some(ProcessHandle.current().pid()) else None)
-    val pidArgs = effectivePid.map(p => List("--parent-pid", p.toString)).getOrElse(Nil)
+    val pidArgs = parentPid.map(p => List("--parent-pid", p.toString)).getOrElse(Nil)
     val socketArgs = if socketMode then List("--socket") else Nil
     val positionalArgs = List(idleTimeout.toString, maxLifetime.toString)
     val wsArgs = List("--workspace", workspace.toString)
