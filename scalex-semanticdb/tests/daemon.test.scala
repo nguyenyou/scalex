@@ -204,17 +204,15 @@ class DaemonLifecycleTest extends FunSuite:
   private def startDaemon(
     idleTimeout: Int = 300,
     maxLifetime: Int = 1800,
-    parentPid: Option[Long] = None,
     socketMode: Boolean = false,
   ): Process =
     val baseArgs = List("scala-cli", "run", sdbxSrcDir, "--")
     val daemonArgs = List("daemon")
-    val pidArgs = parentPid.map(p => List("--parent-pid", p.toString)).getOrElse(Nil)
     val socketArgs = if socketMode then List("--socket") else Nil
     val positionalArgs = List(idleTimeout.toString, maxLifetime.toString)
     val wsArgs = List("--workspace", workspace.toString)
 
-    val cmd = baseArgs ++ daemonArgs ++ pidArgs ++ socketArgs ++ positionalArgs ++ wsArgs
+    val cmd = baseArgs ++ daemonArgs ++ socketArgs ++ positionalArgs ++ wsArgs
     val pb = ProcessBuilder(cmd*)
     pb.redirectErrorStream(false)
     pb.start()

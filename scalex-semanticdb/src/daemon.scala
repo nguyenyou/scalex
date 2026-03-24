@@ -5,11 +5,8 @@ import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, Time
 //
 // TERMINATION CONTRACT — every code path MUST lead to eventual JVM exit.
 //
-// Eight defensive layers (ordered by reliability):
-//   1.   Stdin EOF           — pipe closure on parent death (even SIGKILL)
-//                              Inactive in --socket mode (daemon blocks on accept, not stdin)
-//   1.5  Parent PID exit    — ProcessHandle.onExit() backup (--parent-pid)
-//                              Recommended in --socket mode; without it, Layers 2+3 handle cleanup
+// Seven defensive layers (ordered by reliability):
+//   1.   Stdin EOF           — pipe closure on parent death (stdin mode only)
 //   2.   Idle timeout       — no request for N seconds (resettable, default 300)
 //   3.   Max lifetime       — hard cap regardless of activity (default 1800)
 //   4.   Shutdown command   — explicit {"command":"shutdown"}
@@ -35,13 +32,7 @@ private val QueryTimeoutSec = 30L
 private val StartupTimeoutSec = 120L
 private val HeapCheckIntervalSec = 60L
 
-def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None, socketMode: Boolean = false): Unit =
-  // Socket mode doesn't read stdin, so Layer 1 (stdin EOF) is inactive.
-  // --parent-pid is recommended but not required — idle timeout (Layer 2)
-  // and max lifetime (Layer 3) are sufficient orphan guards.
-  if socketMode && parentPid.isEmpty then
-    System.err.println("Warning: --socket without --parent-pid relies on idle/max-lifetime timeouts for cleanup.")
-
+def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, socketMode: Boolean = false): Unit =
   System.err.println("sdbx daemon starting...")
 
   // Fail fast: check if a socket daemon is already running before expensive index build
@@ -69,19 +60,6 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
   index.build(needOccurrences = true)
   startupTimer.cancel(false)
   var lastBuildMs = System.currentTimeMillis()
-
-  // Layer 1.5: Parent PID monitoring (required in socket mode)
-  parentPid.foreach { pid =>
-    val handleOpt = ProcessHandle.of(pid)
-    if handleOpt.isEmpty then
-      // Parent already dead — die immediately per termination contract
-      System.err.println(s"Parent process $pid not found (already exited), shutting down.")
-      System.exit(0)
-    handleOpt.get().onExit().thenRun { () =>
-      System.err.println(s"Parent process $pid exited, shutting down.")
-      System.exit(0)
-    }
-  }
 
   // Layer 2: Idle timeout (resettable)
   @volatile var idleTask: ScheduledFuture[?] = null

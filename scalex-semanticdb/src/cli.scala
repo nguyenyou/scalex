@@ -25,15 +25,14 @@ private def run(argList: List[String]): Unit =
   val index = SemIndex(workspace)
 
   if cmd == "daemon" then
-    val (parentPid, daemonArgs) = extractDaemonParentPid(rest)
-    val (socketMode, daemonArgs2) = extractDaemonSocket(daemonArgs)
-    val daemonFlags = parseFlags(daemonArgs2)
+    val (socketMode, daemonArgs) = extractDaemonSocket(rest)
+    val daemonFlags = parseFlags(daemonArgs)
     val daemonWorkspace = daemonFlags.explicitWorkspace match
       case Some(w) => Path.of(w).toAbsolutePath.normalize
       case None    => workspace
     val idleTimeout = daemonFlags.cleanArgs.headOption.flatMap(_.toLongOption).getOrElse(300L)
     val maxLifetime = daemonFlags.cleanArgs.drop(1).headOption.flatMap(_.toLongOption).getOrElse(1800L)
-    runDaemon(daemonWorkspace, idleTimeout, maxLifetime, parentPid, socketMode)
+    runDaemon(daemonWorkspace, idleTimeout, maxLifetime, socketMode)
   else
     // Transparent daemon forwarding: try socket before loading index
     val forwarded = cmd != "index" && {
@@ -162,15 +161,6 @@ case class SemParsedFlags(
   sourceOnly: Boolean = false,
   cleanArgs: List[String] = Nil,
 )
-
-private def extractDaemonParentPid(args: List[String]): (parentPid: Option[Long], remaining: List[String]) =
-  val idx = args.indexOf("--parent-pid")
-  if idx >= 0 && idx + 1 < args.length then
-    val pid = args(idx + 1).toLongOption
-    val remaining = args.take(idx) ++ args.drop(idx + 2)
-    (parentPid = pid, remaining = remaining)
-  else
-    (parentPid = None, remaining = args)
 
 private def extractDaemonSocket(args: List[String]): (socketMode: Boolean, remaining: List[String]) =
   val idx = args.indexOf("--socket")
@@ -341,14 +331,12 @@ def printUsage(): Unit =
     |  daemon [idle] [max]   Stdin/stdout JSON-lines server (keeps index hot in memory)
     |                        idle = idle timeout seconds (default: 300)
     |                        max  = max lifetime seconds (default: 1800)
-    |                        --parent-pid PID  Monitor parent process (auto-exit on parent death)
     |                        --socket          Listen on Unix domain socket (requires Java 16+)
-    |                                          Use with --parent-pid when possible for faster cleanup.
     |                                          Clients connect, send JSON-line, read response, disconnect.
     |                        Non-daemon commands auto-detect a running socket daemon and forward
     |                        queries transparently (<10ms). Falls back to local index if unavailable.
-    |                        Self-terminates on: stdin EOF, parent PID exit, idle timeout,
-    |                        max lifetime, query timeout (30s), heap pressure, startup timeout (120s)
+    |                        Self-terminates on: stdin EOF, idle timeout, max lifetime,
+    |                        query timeout (30s), heap pressure, startup timeout (120s)
     |
     |Index:
     |  index                 Rebuild index (force)
