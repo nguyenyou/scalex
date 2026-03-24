@@ -182,16 +182,15 @@ sdbx related UserService
 |---|---|
 | `index` | Force rebuild |
 | `stats` | Index statistics |
-| `daemon [idle] [max]` | Stdin/stdout JSON-lines server (keeps index hot, <10ms/query) |
+| `daemon [idle] [max]` | Socket daemon — keeps index hot in memory (<10ms/query) |
 
-Daemon-only options: `--socket` (listen on Unix domain socket instead of stdin — works across independent shell invocations, requires Java 16+).
+Listens on a Unix domain socket. Non-daemon commands auto-detect a running daemon and forward queries transparently. Output is identical whether daemon is running or not.
 
 ### Options
 
 ```
 -w, --workspace PATH         Set workspace (default: cwd, must be Mill project root)
 --limit N                    Max results (default: 50, 0=unlimited)
---json                       JSON output
 --verbose, -v                Full signatures and properties
 --kind K                     Filter by kind and narrow symbol resolution
 --role R                     Filter occurrences (def/ref)

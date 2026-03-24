@@ -199,7 +199,7 @@
 
 ### sdbx: daemon mode & Mill-only discovery
 
-- [x] `daemon` command — stdin/stdout JSON-lines server, keeps index hot in memory (<10ms queries vs ~1.5s CLI)
+- [x] `daemon` command — Unix domain socket server, keeps index hot in memory (<10ms queries vs ~1.5s CLI). Text output identical to CLI mode.
 - [x] 8 defensive termination layers: stdin EOF, parent PID monitoring, idle timeout, max lifetime, shutdown command, per-query timeout, heap pressure, shutdown hook
 - [x] `--parent-pid PID` flag — daemon auto-exits when parent process dies
 - [x] Auto-rebuild on staleness — checks `.semanticdb` directory mtimes before each query (~7ms)
@@ -298,9 +298,6 @@
 #### Coding agent ergonomics (#29)
 - `--kind` filter on `def`, `--no-tests` global flag, `--path` filter
 - `refs -C N` context lines, smarter `def` ranking
-
-#### JSON output (#32)
-- `--json` flag on all commands
 
 #### Annotation search (#32)
 - `scalex annotated <annotation>` with filters; annotations stored in binary index (v5)

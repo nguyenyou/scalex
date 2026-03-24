@@ -49,7 +49,7 @@ src/                           # Production source code
 ├── extraction.scala           # AST parsing & single-file extraction functions
 ├── index.scala                # Git integration, persistence, WorkspaceIndex, filtering
 ├── analysis.scala             # Cross-index analysis (hierarchy, overrides, deps, diff, ast-pattern)
-├── format.scala               # JSON + text formatters for symbols and references
+├── format.scala               # Text formatters for symbols and references
 ├── cli.scala                  # Arg parsing, workspace resolution, @main entry point
 ├── command-helpers.scala      # Shared filters: filterSymbols, filterRefs, mkNotFoundWithSuggestions
 ├── dispatch.scala             # Command map + runCommand
@@ -123,12 +123,12 @@ scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
 sdbx auto-discovers `.semanticdb` files from Mill's `out/` directory only. It finds `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directories and walks them in parallel. No sbt/Bloop/generic fallback — other build tools are not supported yet. See `docs/MILL-SEMANTICDB.md` for the full `out/` layout.
 
 ### Daemon mode
-The `daemon` command keeps the index hot in memory so queries take <10ms instead of ~3.2s. Coding agents launch it as a subprocess and communicate via stdin/stdout JSON-lines.
+The `daemon` command keeps the index hot in memory so queries take <10ms instead of ~3.2s. It listens on a Unix domain socket. Non-daemon CLI commands auto-detect the daemon and forward queries transparently — output is identical whether the daemon is running or not.
 
 **The daemon MUST be treated as hostile to long-running processes.** It is designed to self-terminate aggressively — we never want zombie JVM processes consuming memory after the agent session ends. Seven defensive layers enforce this:
 1. **Idle timeout**: no query for 5 min → exit (configurable, default 300s)
 2. **Max lifetime**: 30 min hard cap regardless of activity (configurable, default 1800s)
-3. **Shutdown command**: explicit `{"command":"shutdown"}` message
+3. **Shutdown command**: explicit shutdown via socket
 4. **Per-query timeout**: any query >30s returns timeout error (daemon stays responsive)
 5. **Heap pressure**: >85% heap after GC → exit
 6. **Startup timeout**: index build >120s → exit
