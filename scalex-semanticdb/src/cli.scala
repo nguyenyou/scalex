@@ -342,8 +342,8 @@ def printUsage(): Unit =
     |                        idle = idle timeout seconds (default: 300)
     |                        max  = max lifetime seconds (default: 1800)
     |                        --parent-pid PID  Monitor parent process (auto-exit on parent death)
-    |                        --socket          Listen on Unix domain socket (requires Java 16+
-    |                                          and --parent-pid to prevent orphan processes)
+    |                        --socket          Listen on Unix domain socket (requires Java 16+)
+    |                                          Use with --parent-pid when possible for faster cleanup.
     |                                          Clients connect, send JSON-line, read response, disconnect.
     |                        Non-daemon commands auto-detect a running socket daemon and forward
     |                        queries transparently (<10ms). Falls back to local index if unavailable.
