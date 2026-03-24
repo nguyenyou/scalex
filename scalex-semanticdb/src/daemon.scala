@@ -5,15 +5,14 @@ import java.util.concurrent.{CompletableFuture, Executors, ScheduledFuture, Time
 //
 // TERMINATION CONTRACT — every code path MUST lead to eventual JVM exit.
 //
-// Eight defensive layers (ordered by reliability):
-//   1.   Stdin EOF           — pipe closure on parent death (stdin mode only)
-//   2.   Idle timeout       — no request for N seconds (resettable, default 300)
-//   3.   Max lifetime       — hard cap regardless of activity (default 1800)
-//   4.   Shutdown command   — explicit {"command":"shutdown"}
-//   5.   Per-query timeout  — any query >30s returns error (prevents hung dispatch)
-//   6.   Heap pressure      — >85% heap after GC → exit
-//   7.   Startup timeout    — 120s to build index or die (exit code 1)
-//   8.   Shutdown hook      — SIGTERM/SIGINT cleanup
+// Seven defensive layers (ordered by reliability):
+//   1.   Idle timeout       — no request for N seconds (resettable, default 300)
+//   2.   Max lifetime       — hard cap regardless of activity (default 1800)
+//   3.   Shutdown command   — explicit {"command":"shutdown"}
+//   4.   Per-query timeout  — any query >30s returns error (prevents hung dispatch)
+//   5.   Heap pressure      — >85% heap after GC → exit
+//   6.   Startup timeout    — 120s to build index or die (exit code 1)
+//   7.   Shutdown hook      — SIGTERM/SIGINT cleanup
 //
 // RULES:
 //   - Never add keep-alive logic, reconnection attempts, or retry loops
@@ -32,15 +31,14 @@ private val QueryTimeoutSec = 30L
 private val StartupTimeoutSec = 120L
 private val HeapCheckIntervalSec = 60L
 
-def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, socketMode: Boolean = false): Unit =
+def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long): Unit =
   System.err.println("sdbx daemon starting...")
 
   // Fail fast: check if a socket daemon is already running before expensive index build
-  if socketMode then
-    val sockPath = socketPath(workspace)
-    if !isStaleSocket(sockPath) && java.nio.file.Files.exists(sockPath) then
-      System.err.println(s"Socket already exists and daemon is running: $sockPath")
-      System.exit(1)
+  val sockPath = socketPath(workspace)
+  if !isStaleSocket(sockPath) && java.nio.file.Files.exists(sockPath) then
+    System.err.println(s"Socket already exists and daemon is running: $sockPath")
+    System.exit(1)
 
   // Self-termination timers (created early so startup timeout works)
   val scheduler = Executors.newSingleThreadScheduledExecutor { r =>
@@ -118,46 +116,14 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, socke
   Runtime.getRuntime().addShutdownHook(shutdownThread)
 
   // Set up socket server before ready signal (so it's accepting when clients connect)
-  val serverOpt = if socketMode then
-    val server = setupSocketServer(workspace)
-    Some(server)
-  else None
+  val server = setupSocketServer(workspace)
 
   // Ready signal
   resetIdleTimer()
   println(s"""{"ok":true,"event":"ready","files":${index.fileCount},"symbols":${index.symbolCount},"occurrences":${index.occurrenceCount},"buildTimeMs":${index.buildTimeMs}}""")
   System.out.flush()
 
-  if socketMode then
-    runSocketLoop(serverOpt.get, index, workspace, queryExecutor, resetIdleTimer, lastBuildMs)
-  else
-    // Layer 1: Stdin EOF — main loop
-    val reader = java.io.BufferedReader(java.io.InputStreamReader(System.in))
-    runStdinLoop(reader, index, workspace, queryExecutor, resetIdleTimer, lastBuildMs)
-
-// ── Stdin loop ───────────────────────────────────────────────────────────
-
-private def runStdinLoop(
-  reader: java.io.BufferedReader, index: SemIndex, workspace: Path,
-  queryExecutor: java.util.concurrent.ExecutorService,
-  resetIdleTimer: () => Unit, initialLastBuildMs: Long,
-): Unit =
-  var lastBuildMs = initialLastBuildMs
-  while true do
-    val line = reader.readLine()
-    if line == null then
-      System.err.println("Stdin closed, exiting.")
-      System.exit(0)
-
-    val trimmed = line.trim
-    if trimmed.nonEmpty then
-      resetIdleTimer()
-      SemTimings.reset()
-      val result = processQuery(trimmed, index, workspace, lastBuildMs, queryExecutor)
-      if result.rebuilt then lastBuildMs = System.currentTimeMillis()
-      println(result.json)
-      System.out.flush()
-      if result.shutdown then System.exit(0)
+  runSocketLoop(server, index, workspace, queryExecutor, resetIdleTimer, lastBuildMs)
 
 // ── Socket loop ──────────────────────────────────────────────────────────
 
