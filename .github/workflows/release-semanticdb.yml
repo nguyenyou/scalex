@@ -25,22 +25,22 @@ jobs:
           power: true
 
       - name: Build assembly JAR
-        run: ./build-native-semanticdb.sh sdbx
+        run: ./build-native-semanticdb.sh sdbex
 
       - name: Test binary
         run: |
-          ./sdbx --help
-          ./sdbx --version
+          ./sdbex --help
+          ./sdbex --version
 
       - name: Generate checksum
-        run: shasum -a 256 sdbx > sdbx.sha256
+        run: shasum -a 256 sdbex > sdbex.sha256
 
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
-          name: sdbx
+          name: sdbex
           path: |
-            sdbx
-            sdbx.sha256
+            sdbex
+            sdbex.sha256
 
   release:
     needs: build
@@ -58,17 +58,17 @@ jobs:
       - name: Prepare release files
         run: |
           # Find the binary wherever download-artifact placed it
-          SDB=$(find artifacts -name "sdbx" -not -name "*.sha256" -type f)
+          SDB=$(find artifacts -name "sdbex" -not -name "*.sha256" -type f)
           echo "Found binary at: $SDB"
           chmod +x "$SDB"
           # Copy to workspace root for predictable paths
-          cp "$SDB" sdbx
-          cp "${SDB}.sha256" sdbx.sha256 2>/dev/null || shasum -a 256 sdbx > sdbx.sha256
+          cp "$SDB" sdbex
+          cp "${SDB}.sha256" sdbex.sha256 2>/dev/null || shasum -a 256 sdbex > sdbex.sha256
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
-          subject-path: sdbx
+          subject-path: sdbex
 
       - name: Extract changelog
         id: changelog
@@ -83,6 +83,6 @@ jobs:
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           files: |
-            sdbx
-            sdbx.sha256
+            sdbex
+            sdbex.sha256
           body: ${{ steps.changelog.outputs.body }}

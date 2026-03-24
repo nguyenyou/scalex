@@ -9,10 +9,10 @@ set -euo pipefail
 
 EXPECTED_VERSION="0.7.0"
 REPO="nguyenyou/scalex"
-ARTIFACT="sdbx"
+ARTIFACT="sdbex"
 
 # Expected SHA-256 checksum (updated each release alongside EXPECTED_VERSION)
-CHECKSUM_sdbx="beb4ac24830a5cd2591ce428ab1d55630d5754dec4c2f3c4b45fa8723a5462de"
+CHECKSUM_sdbex="beb4ac24830a5cd2591ce428ab1d55630d5754dec4c2f3c4b45fa8723a5462de"
 
 # Cache location: follow XDG spec
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/scalex-semanticdb"
@@ -27,30 +27,30 @@ fi
 
 # Require Java
 if ! command -v java &>/dev/null; then
-  echo "sdbx: Java is required but not found on PATH." >&2
+  echo "sdbex: Java is required but not found on PATH." >&2
   echo "  Install Java 11+ (e.g. 'brew install openjdk' or 'sdk install java')" >&2
   exit 1
 fi
 
 # Download
-echo "sdbx: downloading v${EXPECTED_VERSION}..." >&2
+echo "sdbex: downloading v${EXPECTED_VERSION}..." >&2
 mkdir -p "$CACHE_DIR"
-TMP=$(mktemp "$CACHE_DIR/sdbx-temp.XXXXXX")
+TMP=$(mktemp "$CACHE_DIR/sdbex-temp.XXXXXX")
 trap 'rm -f "$TMP"' EXIT
 
 BASE_URL="https://github.com/${REPO}/releases/download/sdb-v${EXPECTED_VERSION}"
 
 curl -f -L -o "$TMP" "${BASE_URL}/${ARTIFACT}" || {
-  echo "sdbx: download failed. Visit https://github.com/${REPO}/releases" >&2
+  echo "sdbex: download failed. Visit https://github.com/${REPO}/releases" >&2
   exit 1
 }
 
 # Verify checksum
-if [ -n "$CHECKSUM_sdbx" ]; then
+if [ -n "$CHECKSUM_sdbex" ]; then
   ACTUAL_HASH=$(shasum -a 256 "$TMP" | awk '{print $1}')
-  if [ "$ACTUAL_HASH" != "$CHECKSUM_sdbx" ]; then
-    echo "sdbx: checksum verification FAILED" >&2
-    echo "  expected: $CHECKSUM_sdbx" >&2
+  if [ "$ACTUAL_HASH" != "$CHECKSUM_sdbex" ]; then
+    echo "sdbex: checksum verification FAILED" >&2
+    echo "  expected: $CHECKSUM_sdbex" >&2
     echo "  actual:   $ACTUAL_HASH" >&2
     echo "  The downloaded binary may have been tampered with." >&2
     exit 1
@@ -65,5 +65,5 @@ trap - EXIT
 # macOS: remove quarantine
 [ "$(uname -s)" = "Darwin" ] && xattr -d com.apple.quarantine "$BINARY" 2>/dev/null || true
 
-echo "sdbx: installed v${EXPECTED_VERSION}" >&2
+echo "sdbex: installed v${EXPECTED_VERSION}" >&2
 exec "$BINARY" "$@"

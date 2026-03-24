@@ -165,7 +165,7 @@ class IndexTest extends SemTestBase:
   }
 
   test("rebuild on workspace without out/ produces empty index") {
-    val emptyWorkspace = java.nio.file.Files.createTempDirectory("sdbx-empty")
+    val emptyWorkspace = java.nio.file.Files.createTempDirectory("sdbex-empty")
     val idx = SemIndex(emptyWorkspace)
     idx.rebuild()
     assertEquals(idx.fileCount, 0, "should have zero files when no out/ exists")

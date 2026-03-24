@@ -17,7 +17,7 @@ class DaemonLifecycleTest extends FunSuite:
   override val munitTimeout = scala.concurrent.duration.Duration(180, "s")
 
   override def beforeAll(): Unit =
-    workspace = Files.createTempDirectory("sdbx-daemon-test")
+    workspace = Files.createTempDirectory("sdbex-daemon-test")
     val srcDir = workspace.resolve("src")
     Files.createDirectories(srcDir)
     writeMinimalFixture(srcDir)
@@ -36,7 +36,7 @@ class DaemonLifecycleTest extends FunSuite:
       val sockPath = socketPath(workspace)
       assert(Files.exists(sockPath), s"Socket file not created at $sockPath")
       val response = socketQuery(sockPath, """{"command":"stats"}""")
-      assert(response.startsWith("SDBX_OK"), s"Expected SDBX_OK stats response, got: $response")
+      assert(response.startsWith("SDBEX_OK"), s"Expected SDBEX_OK stats response, got: $response")
       assert(response.contains("Files:"), s"Expected Files: in stats, got: $response")
     finally
       sendSocketCommand(workspace, """{"command":"shutdown"}""")
@@ -48,7 +48,7 @@ class DaemonLifecycleTest extends FunSuite:
     waitForReady(proc)
     val sockPath = socketPath(workspace)
     val response = socketQuery(sockPath, """{"command":"shutdown"}""")
-    assert(response.startsWith("SDBX_OK"), s"Expected SDBX_OK response, got: $response")
+    assert(response.startsWith("SDBEX_OK"), s"Expected SDBEX_OK response, got: $response")
     val exited = proc.waitFor(10, TimeUnit.SECONDS)
     assert(exited, "Daemon did not exit after shutdown command")
     assertEquals(proc.exitValue(), 0)
@@ -91,7 +91,7 @@ class DaemonLifecycleTest extends FunSuite:
     // Send heartbeat at ~1s to reset idle timer
     Thread.sleep(1000)
     val hbResponse = socketQuery(sockPath, """{"command":"heartbeat"}""")
-    assert(hbResponse.startsWith("SDBX_OK"))
+    assert(hbResponse.startsWith("SDBEX_OK"))
     // At ~3s total (past original idle timeout of 2s), daemon should still be alive
     Thread.sleep(2000)
     assert(proc.isAlive, "Daemon died prematurely despite heartbeat activity")
@@ -106,11 +106,11 @@ class DaemonLifecycleTest extends FunSuite:
     val sockPath = socketPath(workspace)
     try
       val r1 = socketQuery(sockPath, """{"command":"stats"}""")
-      assert(r1.startsWith("SDBX_OK"), s"First query failed: $r1")
+      assert(r1.startsWith("SDBEX_OK"), s"First query failed: $r1")
       val r2 = socketQuery(sockPath, """{"command":"heartbeat"}""")
-      assert(r2.startsWith("SDBX_OK"), s"Second query failed: $r2")
+      assert(r2.startsWith("SDBEX_OK"), s"Second query failed: $r2")
       val r3 = socketQuery(sockPath, """{"command":"stats"}""")
-      assert(r3.startsWith("SDBX_OK"), s"Third query failed: $r3")
+      assert(r3.startsWith("SDBEX_OK"), s"Third query failed: $r3")
     finally
       sendSocketCommand(workspace, """{"command":"shutdown"}""")
       proc.waitFor(10, TimeUnit.SECONDS)
@@ -122,10 +122,10 @@ class DaemonLifecycleTest extends FunSuite:
     val sockPath = socketPath(workspace)
     try
       val errResponse = socketQuery(sockPath, "this is not json")
-      assert(errResponse.startsWith("SDBX_ERR"), s"Expected SDBX_ERR response, got: $errResponse")
+      assert(errResponse.startsWith("SDBEX_ERR"), s"Expected SDBEX_ERR response, got: $errResponse")
       // Daemon should still accept connections
       val okResponse = socketQuery(sockPath, """{"command":"heartbeat"}""")
-      assert(okResponse.startsWith("SDBX_OK"), s"Expected SDBX_OK after recovery, got: $okResponse")
+      assert(okResponse.startsWith("SDBEX_OK"), s"Expected SDBEX_OK after recovery, got: $okResponse")
     finally
       sendSocketCommand(workspace, """{"command":"shutdown"}""")
       proc.waitFor(10, TimeUnit.SECONDS)
@@ -133,13 +133,13 @@ class DaemonLifecycleTest extends FunSuite:
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  private val sdbxSrcDir = Path.of("scalex-semanticdb/src").toAbsolutePath.toString
+  private val sdbexSrcDir = Path.of("scalex-semanticdb/src").toAbsolutePath.toString
 
   private def startDaemon(
     idleTimeout: Int = 300,
     maxLifetime: Int = 1800,
   ): Process =
-    val baseArgs = List("scala-cli", "run", sdbxSrcDir, "--")
+    val baseArgs = List("scala-cli", "run", sdbexSrcDir, "--")
     val daemonArgs = List("daemon")
     val positionalArgs = List(idleTimeout.toString, maxLifetime.toString)
     val wsArgs = List("--workspace", workspace.toString)
@@ -153,7 +153,7 @@ class DaemonLifecycleTest extends FunSuite:
     val reader = BufferedReader(InputStreamReader(proc.getInputStream))
     val ready = reader.readLine()
     assert(ready != null, "Daemon exited before sending ready signal")
-    assert(ready.contains("sdbx daemon ready"), s"Expected ready signal, got: $ready")
+    assert(ready.contains("sdbex daemon ready"), s"Expected ready signal, got: $ready")
 
   // ── Fixture setup ──────────────────────────────────────────────────────
 

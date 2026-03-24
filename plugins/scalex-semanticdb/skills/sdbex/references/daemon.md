@@ -6,10 +6,10 @@ The daemon listens on a Unix domain socket. Any process can connect, send a quer
 
 ```bash
 # Start daemon (backgrounding is fine)
-bash "/path/to/sdbx-cli" daemon -w /project &
+bash "/path/to/sdbex-cli" daemon -w /project &
 
 # Non-daemon commands auto-detect the daemon and forward queries transparently:
-sdbx callers handleRequest -w /project  # <10ms via socket, falls back to local index if no daemon
+sdbex callers handleRequest -w /project  # <10ms via socket, falls back to local index if no daemon
 ```
 
 The socket is created at a short path under `/tmp/` (hashed from workspace path) to respect the macOS 104-byte limit on Unix domain socket paths. Requires Java 16+.
@@ -19,8 +19,8 @@ The socket is created at a short path under `/tmp/` (hashed from workspace path)
 The daemon uses a text-based wire protocol over the Unix domain socket. Non-daemon CLI commands auto-detect the daemon and forward queries transparently — output is identical whether the daemon is running or not.
 
 **Response format** (over socket):
-- Success: `SDBX_OK\n<text output>` — human-readable text, same as CLI
-- Error: `SDBX_ERR\n<error message>` — CLI prints to stderr, exits with code 1
+- Success: `SDBEX_OK\n<text output>` — human-readable text, same as CLI
+- Error: `SDBEX_ERR\n<error message>` — CLI prints to stderr, exits with code 1
 
 **Request format** (internal, sent by CLI):
 ```json
