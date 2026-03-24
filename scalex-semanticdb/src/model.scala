@@ -2,7 +2,7 @@ import java.nio.file.Path
 import scala.meta.internal.{semanticdb => sdb}
 import scala.meta.internal.semanticdb.XtensionSemanticdbSymbolInformation
 
-val SdbxVersion = "0.4.0"
+val SdbxVersion = "0.5.0"
 
 // ── Enums ──────────────────────────────────────────────────────────────────
 
