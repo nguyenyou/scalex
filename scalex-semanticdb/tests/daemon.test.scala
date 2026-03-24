@@ -163,11 +163,12 @@ class DaemonLifecycleTest extends FunSuite:
     mkfifo(fifo)
     try
       val proc = startDaemon(fifoPath = Some(fifo))
-      // Open FIFO, let daemon read ready signal, then close to trigger EOF
+      // Open FIFO for writing (unblocks when daemon opens read end, which happens
+      // after the ready signal is already emitted). Sleep briefly to let the main
+      // thread read the ready signal from stdout, then close to trigger EOF.
       val writerThread = new Thread:
         override def run(): Unit =
           val fos = java.io.FileOutputStream(fifo.toFile)
-          // Give daemon time to emit ready signal
           Thread.sleep(2000)
           fos.close() // EOF → daemon should exit
       writerThread.setDaemon(true)
@@ -186,6 +187,17 @@ class DaemonLifecycleTest extends FunSuite:
     val exited = proc.waitFor(30, TimeUnit.SECONDS)
     assert(exited, "Daemon did not exit for non-existent FIFO")
     assert(proc.exitValue() != 0, s"Expected non-zero exit for missing FIFO, got: ${proc.exitValue()}")
+  }
+
+  test("fifo-regular-file: regular file instead of FIFO exits with error") {
+    val regularFile = workspace.resolve("not_a_fifo.txt")
+    Files.writeString(regularFile, "hello")
+    try
+      val proc = startDaemon(fifoPath = Some(regularFile))
+      val exited = proc.waitFor(30, TimeUnit.SECONDS)
+      assert(exited, "Daemon did not exit for regular file as FIFO")
+      assert(proc.exitValue() != 0, s"Expected non-zero exit for regular file, got: ${proc.exitValue()}")
+    finally Files.deleteIfExists(regularFile)
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
