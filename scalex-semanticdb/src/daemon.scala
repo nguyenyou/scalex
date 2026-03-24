@@ -36,6 +36,16 @@ private val HeapCheckIntervalSec = 60L
 def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, parentPid: Option[Long] = None, fifoPath: Option[Path] = None): Unit =
   System.err.println("sdbx daemon starting...")
 
+  // Fail fast: validate FIFO path before any expensive work
+  fifoPath.foreach { fifo =>
+    if !Files.exists(fifo) then
+      System.err.println(s"FIFO not found: $fifo")
+      System.exit(1)
+    if Files.isRegularFile(fifo) then
+      System.err.println(s"Not a FIFO (regular file): $fifo")
+      System.exit(1)
+  }
+
   // Self-termination timers (created early so startup timeout works)
   val scheduler = Executors.newSingleThreadScheduledExecutor { r =>
     val t = Thread(r, "daemon-watchdog")
@@ -129,9 +139,6 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
   // Layer 1: Stdin/FIFO EOF — main loop
   val reader = fifoPath match
     case Some(fifo) =>
-      if !Files.exists(fifo) then
-        System.err.println(s"FIFO not found: $fifo")
-        System.exit(1)
       System.err.println(s"Reading from FIFO: $fifo")
       java.io.BufferedReader(java.io.InputStreamReader(java.io.FileInputStream(fifo.toFile)))
     case None =>

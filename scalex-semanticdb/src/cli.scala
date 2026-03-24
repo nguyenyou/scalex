@@ -6,11 +6,12 @@ import java.nio.file.{Files, Path}
   val argList = args.toList
   if argList.isEmpty || argList.head == "--help" || argList.head == "-h" then
     printUsage()
-    return
-  if argList.head == "--version" then
+  else if argList.head == "--version" then
     println(s"sdbx $SdbxVersion")
-    return
+  else
+    run(argList)
 
+private def run(argList: List[String]): Unit =
   val cmd = argList.head
   val rest = argList.tail
   val flags = parseFlags(rest)
