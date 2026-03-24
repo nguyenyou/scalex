@@ -14,44 +14,24 @@ sdbx callers handleRequest -w /project  # <10ms via socket, falls back to local 
 
 The socket is created at a short path under `/tmp/` (hashed from workspace path) to respect the macOS 104-byte limit on Unix domain socket paths. Requires Java 16+.
 
-## Request/response protocol (JSON-lines)
+## Wire protocol
 
-Send one JSON object per line. The daemon responds with one JSON line per request.
+The daemon uses a text-based wire protocol over the Unix domain socket. Non-daemon CLI commands auto-detect the daemon and forward queries transparently — output is identical whether the daemon is running or not.
 
-**Request format:**
+**Response format** (over socket):
+- Success: `SDBX_OK\n<text output>` — human-readable text, same as CLI
+- Error: `SDBX_ERR\n<error message>` — CLI prints to stderr, exits with code 1
+
+**Request format** (internal, sent by CLI):
 ```json
-{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method","--depth":"3"}}
+{"command":"callers","args":["handleRequest"],"flags":{"kind":"method","depth":"3"}}
 ```
 
-- `command` (required): any command name (`callers`, `refs`, `lookup`, `stats`, `heartbeat`, `shutdown`, etc.)
+- `command` (required): any command name
 - `args` (optional): list of positional arguments
-- `flags` (optional): map of flags to values. Boolean flags use `"true"` as value. Keys can include `--` prefix or not.
+- `flags` (optional): map of flags to values. Boolean flags use `"true"` as value.
 
-**Response format:**
-```json
-{"ok":true,"result":{...}}
-{"ok":false,"error":"parse_error","message":"missing 'command' field"}
-{"ok":false,"error":"unknown_command","message":"Unknown command: foo"}
-{"ok":false,"error":"timeout","message":"Query timed out after 30s"}
-{"ok":false,"error":"internal","message":"..."}
-```
-
-**Special daemon commands:**
-- `{"command":"heartbeat"}` — returns `{"ok":true}`, resets idle timer
-- `{"command":"shutdown"}` — returns `{"ok":true}`, then exits cleanly
-- `{"command":"rebuild"}` — force-rebuilds the index, returns stats with `"event":"rebuilt"`
-- `{"command":"stats"}` — returns index statistics
-
-**Examples:**
-```json
-{"command":"callers","args":["processPayment"],"flags":{"--kind":"method","--exclude":"test"}}
-{"command":"refs","args":["Config"]}
-{"command":"callees","args":["createOrder"],"flags":{"--smart":"true","--kind":"method"}}
-{"command":"explain","args":["processPayment"],"flags":{"--kind":"method"}}
-{"command":"batch","args":["callers handleRequest","subtypes Repository","members Config"]}
-{"command":"stats"}
-{"command":"heartbeat"}
-```
+**Daemon-specific commands:** `heartbeat` (resets idle timer), `shutdown` (exits cleanly), `rebuild` (force-rebuilds index), `stats` (index statistics).
 
 ## Auto-rebuild on staleness
 
@@ -63,10 +43,10 @@ The daemon is designed to self-terminate aggressively — it will never become a
 
 1. **Idle timeout** — exits after 5 minutes of no requests (configurable, first positional arg)
 2. **Max lifetime** — exits after 30 minutes regardless of activity (configurable, second positional arg)
-3. **Shutdown command** — explicit `{"command":"shutdown"}` exits after sending response
+3. **Shutdown command** — explicit shutdown exits after sending response
 4. **Per-query timeout** — any query taking >30s returns a timeout error instead of hanging
 5. **Heap pressure** — exits if JVM memory usage exceeds 85% after GC
 6. **Startup timeout** — exits if index building takes >120s
 7. **Shutdown hook** — SIGTERM/SIGINT triggers clean exit (socket file cleaned up automatically)
 
-You do not need to worry about cleanup — the daemon handles it. But you can send `{"command":"shutdown"}` for explicit clean shutdown.
+You do not need to worry about cleanup — the daemon handles it.

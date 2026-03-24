@@ -6,7 +6,7 @@
 - Daemon now returns text output instead of JSON — identical output whether daemon is running or not
 - Wire protocol changed from JSON envelope to `SDBX_OK`/`SDBX_ERR` text protocol
 - Ready signal changed from JSON to human-readable text
-- Stderr (disambiguation warnings) now passes through from daemon to client
+- Daemon errors (`SDBX_ERR`) now cause CLI to exit with code 1
 
 ### Removed
 - `--json` flag — all output is now text-only

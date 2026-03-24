@@ -299,8 +299,15 @@ private def dispatchDaemonCommand(req: DaemonRequest, index: SemIndex, workspace
           if cmd == "batch" then runBatch(flags.cleanArgs, ctx)
           else commands(cmd)(flags.cleanArgs, ctx)
 
-        val text = captureText(result, ctx)
-        DaemonResponse(s"SDBX_OK\n$text", rebuilt = rebuilt)
+        result match
+          case SemCmdResult.UsageError(msg) =>
+            DaemonResponse(s"SDBX_ERR\n$msg\n", rebuilt = rebuilt)
+          case SemCmdResult.NotFound(msg) =>
+            val text = captureText(result, ctx)
+            DaemonResponse(s"SDBX_OK\n$text", rebuilt = rebuilt)
+          case _ =>
+            val text = captureText(result, ctx)
+            DaemonResponse(s"SDBX_OK\n$text", rebuilt = rebuilt)
 
 private def captureText(result: SemCmdResult, ctx: SemCommandContext): String =
   val buf = java.io.ByteArrayOutputStream()

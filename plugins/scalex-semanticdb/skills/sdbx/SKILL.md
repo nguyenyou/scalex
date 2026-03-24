@@ -297,7 +297,7 @@ sdbx symbols --kind trait -w /project
 
 #### `sdbx batch "cmd1" "cmd2" ...` — multiple queries in one invocation
 
-Amortizes the ~1.5s index load across many queries. Each positional arg is a full sub-command string (command + args + flags). Results are separated by `--- <command> ---` delimiters in text mode, or wrapped in `{"batch":[...]}` in JSON mode. Unknown sub-commands produce an error for that entry without affecting others.
+Amortizes the ~1.5s index load across many queries. Each positional arg is a full sub-command string (command + args + flags). Results are separated by `--- <command> ---` delimiters. Unknown sub-commands produce an error for that entry without affecting others.
 
 ```bash
 sdbx batch "lookup Dog" "members Animal" "subtypes Shape" -w /project
@@ -349,7 +349,6 @@ sdbx stats -w /project              # Show counts
 |---|---|
 | `-w`, `--workspace PATH` | Set workspace (default: cwd) |
 | `--limit N` | Max results (default: 50, 0=unlimited) |
-| `--json` | JSON output |
 | `--verbose`, `-v` | Full signatures and properties |
 | `--kind K` | Filter by kind AND narrow symbol resolution (class, trait, object, method, field, type) |
 | `--role R` | Filter occurrences (def, ref) |

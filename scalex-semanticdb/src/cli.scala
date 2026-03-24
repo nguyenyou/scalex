@@ -38,10 +38,14 @@ private def run(argList: List[String]): Unit =
       val sockPath = socketPath(workspace)
       Files.exists(sockPath) && {
         trySocketForward(cmd, flags, sockPath) match
-          case Some(response) =>
-            if response.nonEmpty then print(response)
+          case SocketResult.Ok(text) =>
+            if text.nonEmpty then print(text)
             true
-          case None => false
+          case SocketResult.Err(msg) =>
+            if msg.nonEmpty then System.err.println(msg)
+            System.exit(1)
+            true
+          case SocketResult.None => false
       }
     }
 
@@ -238,7 +242,12 @@ def flagsToContext(flags: SemParsedFlags, index: SemIndex, workspace: Path): Sem
 
 // ── Socket forwarding ────────────────────────────────────────────────────
 
-private def trySocketForward(cmd: String, flags: SemParsedFlags, sockPath: Path): Option[String] =
+private enum SocketResult:
+  case Ok(text: String)
+  case Err(msg: String)
+  case None
+
+private def trySocketForward(cmd: String, flags: SemParsedFlags, sockPath: Path): SocketResult =
   try
     val addr = java.net.UnixDomainSocketAddress.of(sockPath)
     val ch = java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)
@@ -253,22 +262,21 @@ private def trySocketForward(cmd: String, flags: SemParsedFlags, sockPath: Path)
         java.io.InputStreamReader(java.nio.channels.Channels.newInputStream(ch))
       )
       val firstLine = reader.readLine()
-      if firstLine == null then None
+      if firstLine == null then SocketResult.None
       else if firstLine == "SDBX_OK" then
         val sb = StringBuilder()
         var line = reader.readLine()
         while line != null do
           sb.append(line).append('\n')
           line = reader.readLine()
-        Some(sb.toString)
+        SocketResult.Ok(sb.toString)
       else if firstLine == "SDBX_ERR" then
         val errMsg = reader.readLine()
-        if errMsg != null then System.err.println(errMsg)
-        Some("")
-      else None // unknown protocol, fall through to local
+        SocketResult.Err(if errMsg != null then errMsg else "unknown error")
+      else SocketResult.None // unknown protocol, fall through to local
     finally ch.close()
   catch
-    case _: Exception => None // stale socket, connection refused, Java <16 — fall through
+    case _: Exception => SocketResult.None // stale socket, connection refused, Java <16 — fall through
 
 private def escapeJson(s: String): String =
   s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")

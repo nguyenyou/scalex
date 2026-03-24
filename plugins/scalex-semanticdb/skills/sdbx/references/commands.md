@@ -46,11 +46,11 @@
 
 | Command | Arguments | Description |
 |---|---|---|
-| `daemon` | `[idle] [max]` | Stdin/stdout JSON-lines server (keeps index hot, <10ms/query) |
+| `daemon` | `[idle] [max]` | Socket daemon — keeps index hot in memory (<10ms/query) |
 
-Daemon-only options: `--socket` (listen on Unix domain socket, requires Java 16+).
 Positional args: idle timeout seconds (default: 300), max lifetime seconds (default: 1800).
-Non-daemon commands auto-detect a running socket daemon and forward queries transparently.
+Non-daemon commands auto-detect a running daemon and forward queries transparently.
+Output is identical whether daemon is running or not — always human-readable text.
 
 **Index:**
 
@@ -65,7 +65,6 @@ Non-daemon commands auto-detect a running socket daemon and forward queries tran
 |---|---|---|---|
 | `--workspace` | `-w` | cwd | Set workspace root |
 | `--limit` | — | 50 | Max results (0=unlimited) |
-| `--json` | — | off | JSON output for all commands |
 | `--verbose` | `-v` | off | Show full signatures, properties, overrides |
 | `--kind` | — | all | Filter by symbol kind AND narrow resolution in flow/callees/callers |
 | `--role` | — | all | Filter occurrences by role (def/ref) |
@@ -102,57 +101,33 @@ SemanticDB fully-qualified names use `/` for packages, `#` for types, `.` for te
 
 Use with `--kind` flag: `class`, `trait`, `object`, `method`, `field`, `type`, `package`, `packageobj`, `constructor`, `parameter`, `typeparam`, `macro`, `interface`, `local`.
 
-## JSON Output
-
-All commands support `--json`. Output is a single JSON object per invocation:
-
-- `lookup`/`members`/`symbols`: `{"header", "total", "symbols": [...]}`
-- `refs`/`occurrences`: `{"header", "total", "occurrences": [...]}`
-- `flow`/`path`: `{"header", "lines": [...]}`
-- `explain`: `{"symbol", "file", "line", "callers", "totalCallers", "callees", "totalCallees", "parents", "subtypes", "totalSubtypes", "members", "totalMembers"}`
-- `related`: `{"header", "total", "related": [...]}`
-- `stats`: `{"files", "symbols", "occurrences", "buildTimeMs", "cached", "parsedCount", "skippedCount"}`
-- `batch`: `{"batch": [{"command": "...", "result": {...}}, ...]}`
-- Errors: `{"error": "not_found"|"usage", "message": "..."}`
-
 ## Daemon Protocol
 
-The daemon communicates via JSON-lines on stdin/stdout. It supports all regular commands plus daemon-specific ones.
+The daemon listens on a Unix domain socket. Non-daemon CLI commands auto-detect it and forward queries transparently — output is identical whether daemon is running or not.
 
-### Startup
+### Wire protocol
 
-On launch, the daemon builds the index and emits a ready signal:
+The daemon uses a text-based protocol over the socket:
+
+- **Success**: `SDBX_OK\n<text output>`
+- **Error**: `SDBX_ERR\n<error message>`
+
+The client (CLI) parses this internally — users and agents always see clean text output.
+
+### Request format (internal)
+
+The CLI sends JSON requests to the daemon over the socket:
 ```json
-{"ok":true,"event":"ready","files":142,"symbols":3580,"occurrences":28400,"buildTimeMs":1823}
-```
-
-### Request format
-
-One JSON object per line on stdin (or via socket connection in `--socket` mode):
-```json
-{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method","--depth":"3"}}
-```
-
-- `command` (required): command name
-- `args` (optional): positional arguments as string array
-- `flags` (optional): flag-value pairs. Boolean flags use `"true"`. Keys may include `--` prefix.
-
-### Response format
-
-One JSON object per line on stdout:
-```json
-{"ok":true,"result":{...}}
-{"ok":false,"error":"parse_error|unknown_command|timeout|internal","message":"..."}
+{"command":"callers","args":["handleRequest"],"flags":{"kind":"method","depth":"3"}}
 ```
 
 ### Daemon-specific commands
 
-| Command | Response | Effect |
-|---|---|---|
-| `heartbeat` | `{"ok":true}` | Resets idle timer, no-op otherwise |
-| `shutdown` | `{"ok":true}` | Daemon exits after response |
-| `rebuild` | `{"ok":true,"event":"rebuilt","files":N,...}` | Force-rebuilds index |
-| `stats` | `{"ok":true,"result":{"files":N,...}}` | Returns index statistics |
+| Command | Effect |
+|---|---|
+| `heartbeat` | Resets idle timer |
+| `shutdown` | Daemon exits after response |
+| `rebuild` | Force-rebuilds index |
 
 ### Auto-rebuild
 
@@ -164,8 +139,8 @@ Seven termination layers ensure the daemon never becomes a zombie:
 
 1. **Idle timeout** — no request for N seconds → exit (default: 300s, configurable)
 2. **Max lifetime** — hard cap regardless of activity (default: 1800s, configurable)
-3. **Shutdown command** — explicit `{"command":"shutdown"}` → exit after response
-4. **Per-query timeout** — query >30s → returns `{"ok":false,"error":"timeout",...}`, daemon stays alive
+3. **Shutdown command** — explicit shutdown → exit after response
+4. **Per-query timeout** — query >30s → returns error, daemon stays alive
 5. **Heap pressure** — used heap >85% after GC → exit
 6. **Startup timeout** — index build >120s → exit with code 1
 7. **Shutdown hook** — SIGTERM/SIGINT → clean exit
