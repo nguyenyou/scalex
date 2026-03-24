@@ -1,5 +1,4 @@
-metals-main/
-metals-v2/
+.local/
 out
 .bsp
 .scala-build
