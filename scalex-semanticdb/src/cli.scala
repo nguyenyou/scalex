@@ -40,7 +40,10 @@ private def run(argList: List[String]): Unit =
       val sockPath = socketPath(workspace)
       Files.exists(sockPath) && {
         trySocketForward(cmd, flags, sockPath) match
-          case Some(response) => println(response); true
+          case Some(response) =>
+            if !flags.jsonOutput then System.err.println("(via daemon — output is JSON)")
+            println(response)
+            true
           case None => false
       }
     }

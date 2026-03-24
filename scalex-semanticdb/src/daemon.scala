@@ -45,6 +45,13 @@ def runDaemon(workspace: Path, idleTimeoutSec: Long, maxLifetimeSec: Long, paren
 
   System.err.println("sdbx daemon starting...")
 
+  // Fail fast: check if a socket daemon is already running before expensive index build
+  if socketMode then
+    val sockPath = socketPath(workspace)
+    if !isStaleSocket(sockPath) && java.nio.file.Files.exists(sockPath) then
+      System.err.println(s"Socket already exists and daemon is running: $sockPath")
+      System.exit(1)
+
   // Self-termination timers (created early so startup timeout works)
   val scheduler = Executors.newSingleThreadScheduledExecutor { r =>
     val t = Thread(r, "daemon-watchdog")
