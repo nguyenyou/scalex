@@ -24,6 +24,8 @@ class DaemonLifecycleTest extends FunSuite:
     compileWithSemanticdb(srcDir, workspace.resolve("out"))
 
   override def afterAll(): Unit =
+    // Clean up socket file if it exists
+    try Files.deleteIfExists(socketPath(workspace)) catch case _: Exception => ()
     deleteRecursive(workspace)
 
   // ── Tests ──────────────────────────────────────────────────────────────
@@ -125,90 +127,74 @@ class DaemonLifecycleTest extends FunSuite:
     proc.waitFor(15, TimeUnit.SECONDS)
   }
 
-  // ── FIFO tests ──────────────────────────────────────────────────────
+  // ── Socket tests ──────────────────────────────────────────────────
 
-  test("fifo-query-response: daemon reads from named pipe and responds") {
-    val fifo = workspace.resolve("sdbx_test.fifo")
-    mkfifo(fifo)
+  test("socket-query-response: daemon accepts socket connection and responds") {
+    val proc = startDaemon(socketMode = true)
+    val reader = waitForReady(proc)
     try
-      val proc = startDaemon(fifoPath = Some(fifo))
-      // Writer thread opens the FIFO for writing — blocks until the daemon opens
-      // the read end (standard FIFO handshake, enforced by OS, not by test ordering).
-      val writerThread = new Thread:
-        override def run(): Unit =
-          val fos = java.io.FileOutputStream(fifo.toFile)
-          try
-            fos.write(("""{"command":"stats"}""" + "\n").getBytes)
-            fos.flush()
-            // Keep pipe open long enough for response
-            Thread.sleep(3000)
-            fos.write(("""{"command":"shutdown"}""" + "\n").getBytes)
-            fos.flush()
-          finally fos.close()
-      writerThread.setDaemon(true)
-      writerThread.start()
-
-      val reader = waitForReady(proc)
-      val response = readResponse(reader)
-      assert(response.contains("\"ok\":true"), s"Expected ok stats response via FIFO, got: $response")
+      val sockPath = socketPath(workspace)
+      assert(Files.exists(sockPath), s"Socket file not created at $sockPath")
+      val response = socketQuery(sockPath, """{"command":"stats"}""")
+      assert(response.contains("\"ok\":true"), s"Expected ok stats response, got: $response")
       assert(response.contains("\"files\""), s"Expected files in stats, got: $response")
-      val exited = proc.waitFor(15, TimeUnit.SECONDS)
-      assert(exited, "Daemon did not exit after shutdown via FIFO")
-      assertEquals(proc.exitValue(), 0)
-    finally Files.deleteIfExists(fifo)
+    finally
+      sendSocketCommand(workspace, """{"command":"shutdown"}""")
+      proc.waitFor(10, TimeUnit.SECONDS)
   }
 
-  test("fifo-eof: closing the named pipe terminates daemon") {
-    val fifo = workspace.resolve("sdbx_eof.fifo")
-    mkfifo(fifo)
+  test("socket-shutdown: shutdown command via socket exits daemon and cleans up") {
+    val proc = startDaemon(socketMode = true)
+    waitForReady(proc)
+    val sockPath = socketPath(workspace)
+    val response = socketQuery(sockPath, """{"command":"shutdown"}""")
+    assert(response.contains("\"ok\":true"), s"Expected ok response, got: $response")
+    val exited = proc.waitFor(10, TimeUnit.SECONDS)
+    assert(exited, "Daemon did not exit after shutdown command via socket")
+    assertEquals(proc.exitValue(), 0)
+    // Socket file should be cleaned up by shutdown hook
+    Thread.sleep(500) // give shutdown hook time
+    assert(!Files.exists(sockPath), "Socket file was not cleaned up")
+  }
+
+  test("socket-idle-timeout: idle timeout works in socket mode") {
+    val proc = startDaemon(idleTimeout = 3, socketMode = true)
+    waitForReady(proc)
+    val exited = proc.waitFor(15, TimeUnit.SECONDS)
+    assert(exited, "Daemon did not exit after idle timeout in socket mode")
+    assertEquals(proc.exitValue(), 0)
+  }
+
+  test("socket-multiple-connections: sequential connections work") {
+    val proc = startDaemon(socketMode = true)
+    waitForReady(proc)
+    val sockPath = socketPath(workspace)
     try
-      val proc = startDaemon(fifoPath = Some(fifo))
-      // Writer opens the FIFO (blocks until daemon opens read end — FIFO handshake).
-      // By then the ready signal is already on stdout. Sleep gives a buffer before
-      // closing to trigger EOF.
-      val writerThread = new Thread:
-        override def run(): Unit =
-          val fos = java.io.FileOutputStream(fifo.toFile)
-          Thread.sleep(2000)
-          fos.close() // EOF → daemon should exit
-      writerThread.setDaemon(true)
-      writerThread.start()
-
-      val reader = waitForReady(proc)
-      val exited = proc.waitFor(15, TimeUnit.SECONDS)
-      assert(exited, "Daemon did not exit within 15s of FIFO closure")
-      assertEquals(proc.exitValue(), 0)
-    finally Files.deleteIfExists(fifo)
+      val r1 = socketQuery(sockPath, """{"command":"stats"}""")
+      assert(r1.contains("\"ok\":true"), s"First query failed: $r1")
+      val r2 = socketQuery(sockPath, """{"command":"heartbeat"}""")
+      assert(r2.contains("\"ok\":true"), s"Second query failed: $r2")
+      val r3 = socketQuery(sockPath, """{"command":"stats"}""")
+      assert(r3.contains("\"ok\":true"), s"Third query failed: $r3")
+    finally
+      sendSocketCommand(workspace, """{"command":"shutdown"}""")
+      proc.waitFor(10, TimeUnit.SECONDS)
   }
 
-  test("fifo-not-found: non-existent FIFO path exits with error") {
-    val bogus = workspace.resolve("does_not_exist.fifo")
-    val proc = startDaemon(fifoPath = Some(bogus))
-    val exited = proc.waitFor(30, TimeUnit.SECONDS)
-    assert(exited, "Daemon did not exit for non-existent FIFO")
-    assert(proc.exitValue() != 0, s"Expected non-zero exit for missing FIFO, got: ${proc.exitValue()}")
-  }
-
-  test("fifo-regular-file: regular file instead of FIFO exits with error") {
-    val regularFile = workspace.resolve("not_a_fifo.txt")
-    Files.writeString(regularFile, "hello")
+  test("socket-error-recovery: malformed JSON returns error, daemon stays alive") {
+    val proc = startDaemon(socketMode = true)
+    waitForReady(proc)
+    val sockPath = socketPath(workspace)
     try
-      val proc = startDaemon(fifoPath = Some(regularFile))
-      val exited = proc.waitFor(30, TimeUnit.SECONDS)
-      assert(exited, "Daemon did not exit for regular file as FIFO")
-      assert(proc.exitValue() != 0, s"Expected non-zero exit for regular file, got: ${proc.exitValue()}")
-    finally Files.deleteIfExists(regularFile)
-  }
-
-  test("fifo-directory: directory instead of FIFO exits with error") {
-    val dir = workspace.resolve("not_a_fifo_dir")
-    Files.createDirectories(dir)
-    try
-      val proc = startDaemon(fifoPath = Some(dir))
-      val exited = proc.waitFor(30, TimeUnit.SECONDS)
-      assert(exited, "Daemon did not exit for directory as FIFO")
-      assert(proc.exitValue() != 0, s"Expected non-zero exit for directory, got: ${proc.exitValue()}")
-    finally Files.deleteIfExists(dir)
+      val errResponse = socketQuery(sockPath, "this is not json")
+      assert(errResponse.contains("\"ok\":false"), s"Expected error response, got: $errResponse")
+      assert(errResponse.contains("parse_error"), s"Expected parse_error, got: $errResponse")
+      // Daemon should still accept connections
+      val okResponse = socketQuery(sockPath, """{"command":"heartbeat"}""")
+      assert(okResponse.contains("\"ok\":true"), s"Expected ok after recovery, got: $okResponse")
+    finally
+      sendSocketCommand(workspace, """{"command":"shutdown"}""")
+      proc.waitFor(10, TimeUnit.SECONDS)
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
@@ -219,16 +205,18 @@ class DaemonLifecycleTest extends FunSuite:
     idleTimeout: Int = 300,
     maxLifetime: Int = 1800,
     parentPid: Option[Long] = None,
-    fifoPath: Option[Path] = None,
+    socketMode: Boolean = false,
   ): Process =
     val baseArgs = List("scala-cli", "run", sdbxSrcDir, "--")
     val daemonArgs = List("daemon")
-    val pidArgs = parentPid.map(p => List("--parent-pid", p.toString)).getOrElse(Nil)
-    val fifoArgs = fifoPath.map(f => List("--fifo", f.toString)).getOrElse(Nil)
+    // Socket mode requires --parent-pid; default to current test process PID
+    val effectivePid = parentPid.orElse(if socketMode then Some(ProcessHandle.current().pid()) else None)
+    val pidArgs = effectivePid.map(p => List("--parent-pid", p.toString)).getOrElse(Nil)
+    val socketArgs = if socketMode then List("--socket") else Nil
     val positionalArgs = List(idleTimeout.toString, maxLifetime.toString)
     val wsArgs = List("--workspace", workspace.toString)
 
-    val cmd = baseArgs ++ daemonArgs ++ pidArgs ++ fifoArgs ++ positionalArgs ++ wsArgs
+    val cmd = baseArgs ++ daemonArgs ++ pidArgs ++ socketArgs ++ positionalArgs ++ wsArgs
     val pb = ProcessBuilder(cmd*)
     pb.redirectErrorStream(false)
     pb.start()
@@ -284,10 +272,26 @@ class DaemonLifecycleTest extends FunSuite:
     val exit = proc.waitFor()
     assert(exit == 0, s"Test fixture compilation failed:\n$output")
 
-  private def mkfifo(path: Path): Unit =
-    val proc = ProcessBuilder("mkfifo", path.toString).start()
-    val exit = proc.waitFor()
-    assert(exit == 0, s"mkfifo failed with exit code $exit")
+  private def socketQuery(sockPath: Path, json: String): String =
+    val addr = java.net.UnixDomainSocketAddress.of(sockPath)
+    val ch = java.nio.channels.SocketChannel.open(java.net.StandardProtocolFamily.UNIX)
+    try
+      ch.connect(addr)
+      val out = java.nio.channels.Channels.newOutputStream(ch)
+      out.write((json + "\n").getBytes("UTF-8"))
+      out.flush()
+      ch.shutdownOutput()
+      val reader = BufferedReader(InputStreamReader(
+        java.nio.channels.Channels.newInputStream(ch)))
+      val line = reader.readLine()
+      assert(line != null, "Daemon closed connection without response")
+      line
+    finally ch.close()
+
+  private def sendSocketCommand(workspace: Path, json: String): Unit =
+    val sockPath = socketPath(workspace)
+    if Files.exists(sockPath) then
+      try socketQuery(sockPath, json) catch case _: Exception => ()
 
   private def deleteRecursive(path: Path): Unit =
     if Files.isDirectory(path) then

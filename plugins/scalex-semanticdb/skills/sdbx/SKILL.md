@@ -315,8 +315,10 @@ bash "/path/to/sdbx-cli" daemon --parent-pid $$ -w /project
 # With custom timeouts (idle=120s, max-lifetime=600s):
 bash "/path/to/sdbx-cli" daemon --parent-pid $$ 120 600 -w /project
 
-# Read from a named pipe instead of stdin (for non-interactive shells):
-bash "/path/to/sdbx-cli" daemon --fifo .scalex/daemon.fifo --parent-pid $$ -w /project
+# Socket mode — listen on Unix domain socket (requires Java 16+):
+bash "/path/to/sdbx-cli" daemon --socket --parent-pid $$ -w /project
+# Any process can connect, send a JSON-line query, read a JSON-line response, disconnect.
+# Non-daemon commands auto-detect a running socket daemon and forward queries transparently.
 ```
 
 Wait for the ready signal on stdout before sending queries:
@@ -324,9 +326,7 @@ Wait for the ready signal on stdout before sending queries:
 {"ok":true,"event":"ready","files":142,"symbols":3580,"occurrences":28400,"buildTimeMs":1823}
 ```
 
-Send JSON-line requests to stdin, one per line: `{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method"}}`. The daemon auto-rebuilds when `.semanticdb` files change (~7ms check). It self-terminates aggressively (stdin/FIFO EOF, idle timeout, max lifetime, heap pressure) — no cleanup needed.
-
-For the full protocol, non-interactive shell workarounds (`--fifo`, `coproc`), and safety guarantees, see `references/daemon.md`.
+Send JSON-line requests to stdin (stdin mode), one per line: `{"command":"callers","args":["handleRequest"],"flags":{"--kind":"method"}}`. The daemon auto-rebuilds when `.semanticdb` files change (~7ms check). It self-terminates aggressively (stdin EOF, idle timeout, max lifetime, heap pressure) — no cleanup needed.
 
 #### When to use daemon vs CLI vs batch
 
@@ -334,7 +334,8 @@ For the full protocol, non-interactive shell workarounds (`--fifo`, `coproc`), a
 |---|---|---|
 | 1-2 queries | CLI (`sdbx callers ...`) | Simplest, no setup |
 | 3-5 related queries | `batch` | Amortizes 1.5s load |
-| Many queries over time | Daemon | <10ms per query after initial load |
+| Many queries, single shell | Daemon (stdin) | <10ms per query after initial load |
+| Many queries, multiple shells | Daemon (`--socket`) | <10ms, any process can connect |
 
 ### Index management
 

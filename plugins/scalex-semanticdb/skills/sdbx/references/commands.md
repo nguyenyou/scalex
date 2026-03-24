@@ -48,8 +48,9 @@
 |---|---|---|
 | `daemon` | `[idle] [max]` | Stdin/stdout JSON-lines server (keeps index hot, <10ms/query) |
 
-Daemon-only options: `--parent-pid PID` (monitor parent process, auto-exit on parent death), `--fifo PATH` (read requests from named pipe instead of stdin).
+Daemon-only options: `--parent-pid PID` (monitor parent process, auto-exit on parent death), `--socket` (listen on Unix domain socket, requires Java 16+).
 Positional args: idle timeout seconds (default: 300), max lifetime seconds (default: 1800).
+Non-daemon commands auto-detect a running socket daemon and forward queries transparently.
 
 **Index:**
 
@@ -127,7 +128,7 @@ On launch, the daemon builds the index and emits a ready signal:
 
 ### Request format
 
-One JSON object per line on stdin (or the FIFO if `--fifo` is used):
+One JSON object per line on stdin (or via socket connection in `--socket` mode):
 ```json
 {"command":"callers","args":["handleRequest"],"flags":{"--kind":"method","--depth":"3"}}
 ```
@@ -161,7 +162,7 @@ Before each query, the daemon checks if `.semanticdb` directories have been modi
 
 Eight termination layers ensure the daemon never becomes a zombie:
 
-1. **Stdin/FIFO EOF** — parent dies → pipe/FIFO closes → daemon exits immediately
+1. **Stdin EOF** — parent dies → pipe closes → daemon exits immediately
 2. **Parent PID exit** — `--parent-pid PID` → `ProcessHandle.onExit()` → daemon exits when parent dies
 3. **Idle timeout** — no request for N seconds → exit (default: 300s, configurable)
 4. **Max lifetime** — hard cap regardless of activity (default: 1800s, configurable)
