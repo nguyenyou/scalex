@@ -2,9 +2,9 @@
 
 > **Experimental — not ready for use.**
 
-Compiler-precise Scala code intelligence. Index once, query in microseconds.
+Compiler-precise Scala code intelligence for [Mill](https://mill-build.org)-powered codebases. Index once, query in microseconds.
 
-From *codex* (the first book format to replace scrolls: organized, indexed, random-access). kodex turns compiled SemanticDB data into a queryable knowledge base coding agents can navigate instantly.
+From *codex* (the first book format to replace scrolls: organized, indexed, random-access). kodex turns compiled SemanticDB data from Mill's `out/` directory into a queryable knowledge base coding agents can navigate instantly.
 
 ## How it works
 
