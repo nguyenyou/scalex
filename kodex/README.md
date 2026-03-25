@@ -2,9 +2,22 @@
 
 > **Experimental — not ready for use.**
 
-Compiler-precise Scala code intelligence for [Mill](https://mill-build.org)-powered codebases. Index once, query in microseconds.
+kodex is a knowledge-base extractor for [Mill](https://mill-build.org)-powered Scala codebases. It reads [SemanticDB](https://scalameta.org/docs/semanticdb/guide.html) — the compiler's output where every connection, every reference, every type is resolved with zero ambiguity. If [scalex](../README.md) isn't enough and you need the most powerful tool to understand a Scala codebase, this is it.
 
-From *codex* (the first book format to replace scrolls: organized, indexed, random-access). kodex turns compiled SemanticDB data from Mill's `out/` directory into a queryable knowledge base coding agents can navigate instantly.
+The tradeoff is clear:
+
+| | **scalex** | **kodex** |
+|---|---|---|
+| **Input** | `.scala` source files | `.semanticdb` compiler output |
+| **How** | Parses source to AST (Scalameta) | Reads what the compiler already resolved |
+| **Setup** | None — works on raw source | Requires `./mill __.compile` first |
+| **Precision** | Name-based (ambiguous overloads, unresolved types) | Compiler-precise (exact FQNs, resolved implicits) |
+| **Call graph** | Not available | Full forward + reverse, trait-aware |
+| **Impact analysis** | Manual chaining | One command |
+| **Build tool** | Any (git-based) | Mill only |
+| **Speed** | ~10ms warm (JVM daemon) | <1ms (zero-copy mmap, no JVM) |
+
+scalex parses. kodex *knows*. Use scalex for instant zero-setup exploration of any Scala project. Use kodex when the project compiles with Mill and you need compiler-precise call graphs, impact analysis, and composite answers.
 
 ## How it works
 
