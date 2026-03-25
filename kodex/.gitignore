@@ -1,3 +1,5 @@
 target/
 kodex.idx
 compare.sh
+tests/snapshot/snapshots/
+tests/snapshot/queries.sh

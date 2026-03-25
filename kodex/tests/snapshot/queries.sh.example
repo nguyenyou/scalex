@@ -1,0 +1,98 @@
+# queries.sh.example — copy to queries.sh and fill in real symbol names
+#
+# Each test: run_test <test_name> <command> [args...]
+# The --idx flag is appended automatically by run_test.
+#
+# IMPORTANT: queries.sh is gitignored because it contains real project names.
+# This .example file uses placeholders only.
+
+# ── Config: fill in real symbols from your project ──────────────────────────
+
+CLASS_NAME="MyService"                        # a class with members and callers
+TRAIT_NAME="MyTrait"                          # a trait with implementations
+METHOD_NAME="apply"                           # a common method name (ambiguous)
+UNIQUE_METHOD="processRequest"                # a method with a unique name
+FQN_CLASS="com/example/MyService#"            # full SemanticDB FQN of a class
+OBJECT_NAME="MyApp"                           # an object
+TRACE_FROM="createUser"                       # for trace: source symbol
+TRACE_TO="saveToDb"                           # for trace: target symbol
+
+# ── def ─────────────────────────────────────────────────────────────────────
+
+run_test "def__exact_name"       def "$CLASS_NAME"
+run_test "def__fqn"              def "$FQN_CLASS"
+run_test "def__kind_filter"      def "$METHOD_NAME" --kind method --limit 10
+run_test "def__ambiguous"        def "$METHOD_NAME" --limit 5
+run_test "def__verbose"          def "$CLASS_NAME" --kind class -v
+run_test "def__not_found"        def "ThisSymbolDoesNotExist12345"
+
+# ── refs ────────────────────────────────────────────────────────────────────
+
+run_test "refs__basic"           refs "$CLASS_NAME" --limit 20
+run_test "refs__limited"         refs "$TRAIT_NAME" --limit 5
+run_test "refs__not_found"       refs "ThisSymbolDoesNotExist12345"
+
+# ── callers ─────────────────────────────────────────────────────────────────
+
+run_test "callers__basic"        callers "$UNIQUE_METHOD" --limit 20
+run_test "callers__kind_filter"  callers "$METHOD_NAME" --kind method --limit 10
+run_test "callers__limited"      callers "$UNIQUE_METHOD" --limit 3
+run_test "callers__not_found"    callers "ThisSymbolDoesNotExist12345"
+
+# ── callees ─────────────────────────────────────────────────────────────────
+
+run_test "callees__basic"        callees "$UNIQUE_METHOD" --limit 20
+run_test "callees__kind_filter"  callees "$METHOD_NAME" --kind method --limit 10
+run_test "callees__not_found"    callees "ThisSymbolDoesNotExist12345"
+
+# ── hierarchy ───────────────────────────────────────────────────────────────
+
+run_test "hierarchy__trait"      hierarchy "$TRAIT_NAME" --kind trait
+run_test "hierarchy__class"      hierarchy "$CLASS_NAME" --kind class
+run_test "hierarchy__not_found"  hierarchy "ThisSymbolDoesNotExist12345"
+
+# ── members ─────────────────────────────────────────────────────────────────
+
+run_test "members__basic"        members "$CLASS_NAME" --limit 20
+run_test "members__kind_filter"  members "$CLASS_NAME" --kind method --limit 10
+run_test "members__not_found"    members "ThisSymbolDoesNotExist12345"
+
+# ── overrides ───────────────────────────────────────────────────────────────
+
+run_test "overrides__basic"      overrides "$UNIQUE_METHOD" --kind method
+run_test "overrides__not_found"  overrides "ThisSymbolDoesNotExist12345"
+
+# ── type ────────────────────────────────────────────────────────────────────
+
+run_test "type__class"           type "$CLASS_NAME" --kind class
+run_test "type__method"          type "$UNIQUE_METHOD" --kind method
+run_test "type__not_found"       type "ThisSymbolDoesNotExist12345"
+
+# ── orient ──────────────────────────────────────────────────────────────────
+
+run_test "orient"                orient
+
+# ── explore ─────────────────────────────────────────────────────────────────
+
+run_test "explore__class"        explore "$CLASS_NAME" --limit 10
+run_test "explore__trait"        explore "$TRAIT_NAME" --kind trait --limit 10
+run_test "explore__with_exclude" explore "$CLASS_NAME" --exclude "Utils,Ops" --limit 10
+run_test "explore__not_found"    explore "ThisSymbolDoesNotExist12345"
+
+# ── flow ────────────────────────────────────────────────────────────────────
+
+run_test "flow__depth2"          flow "$UNIQUE_METHOD" --depth 2
+run_test "flow__depth1"          flow "$UNIQUE_METHOD" --depth 1
+run_test "flow__with_exclude"    flow "$UNIQUE_METHOD" --depth 3 --exclude "Utils"
+
+# ── impact ──────────────────────────────────────────────────────────────────
+
+run_test "impact__method"        impact "$UNIQUE_METHOD" --kind method
+run_test "impact__class"         impact "$CLASS_NAME" --kind class
+run_test "impact__not_found"     impact "ThisSymbolDoesNotExist12345"
+
+# ── trace ───────────────────────────────────────────────────────────────────
+
+run_test "trace__found"          trace "$TRACE_FROM" "$TRACE_TO"
+run_test "trace__not_found"      trace "ThisSymbolDoesNotExist12345" "AnotherNonExistent"
+run_test "trace__same_symbol"    trace "$CLASS_NAME" "$CLASS_NAME"
