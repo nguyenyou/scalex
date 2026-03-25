@@ -10,7 +10,7 @@ scalex-workspace/
 /scalex
 /scalex-before
 /scalex-after
-/sdbex
+
 
 # Profiling artifacts
 profiling/*.html
