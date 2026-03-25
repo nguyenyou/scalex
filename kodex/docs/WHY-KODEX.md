@@ -116,32 +116,3 @@ kodex explore UserService
 ```
 
 Returns signature, members, inheritance tree, callers, callees, and related types — all filtered (no tests, no stdlib, no plumbing like `apply`/`toString`/`hashCode`). ~1800 tokens vs ~8000 for the equivalent scalex session.
-
-## Why not just use kodex for everything?
-
-scalex still has advantages:
-
-| | scalex | kodex |
-|---|---|---|
-| **Setup** | None — works on raw source | Requires compilation with `-Xsemanticdb` |
-| **Broken builds** | Works fine | Needs successful compilation |
-| **Build tool** | Any (git-based) | Mill only |
-| **Startup cost** | ~200ms (JVM) | ~2-5s index build (then <1ms) |
-| **Source reading** | Built-in (`doc`, `members --body`) | Not stored — read `.scala` files directly |
-| **AST patterns** | `ast-pattern` command (structural queries) | Not available |
-| **Scaladoc** | Extracted from source | Not in SemanticDB |
-
-scalex is the right tool when you need zero-setup exploration of any Scala project. kodex is the right tool when the project compiles with Mill and you need compiler-precise answers — call graphs, impact analysis, flow tracing, and composite queries that fit in an agent's context window.
-
-## The numbers
-
-On a real 13.7k-file codebase, exploring a single type:
-
-| Approach | Tool calls | Tokens consumed |
-|---|---|---|
-| scalex alone | 15 | ~8000 |
-| sdbex (SemanticDB CLI) alone | 5 | ~2000 |
-| Both combined | 6 | ~2500 |
-| **kodex** | **2** | **~2000** |
-
-Two calls. Complete answer. Compiler-precise. That's why we built kodex.

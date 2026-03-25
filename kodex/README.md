@@ -10,7 +10,7 @@ The tradeoff is clear:
 |---|---|---|
 | **Input** | `.scala` source files | `.semanticdb` compiler output |
 | **How** | Parses source to AST (Scalameta) | Reads what the compiler already resolved |
-| **Setup** | None — works on raw source | Requires `./mill __.compile` first |
+| **Setup** | None — works on raw source | Requires ` ./mill __.semanticDbData` first |
 | **Precision** | Name-based (ambiguous overloads, unresolved types) | Compiler-precise (exact FQNs, resolved implicits) |
 | **Call graph** | Not available | Full forward + reverse, trait-aware |
 | **Impact analysis** | Manual chaining | One command |
@@ -92,11 +92,3 @@ The index is serialized with [rkyv](https://rkyv.org) (zero-copy deserialization
 
 - A Scala project compiled with SemanticDB (`-Xsemanticdb` for Scala 3, `semanticdb-scalac` plugin for Scala 2)
 - Mill build tool (kodex discovers `.semanticdb` files from Mill's `out/` directory)
-
-## See also
-
-- [WHY-KODEX.md](docs/WHY-KODEX.md) — why we built kodex when scalex already exists
-- [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — how kodex turns SemanticDB into a queryable knowledge base
-- [HOW-THE-INDEX-WORKS.md](docs/HOW-THE-INDEX-WORKS.md) — detailed walkthrough of the 9-phase index build pipeline, serialization format, and query execution
-- [DESIGN.md](DESIGN.md) — design principles and rationale
-- [SemanticDB guide](https://github.com/scalameta/scalameta/blob/main/semanticdb/guide.md) — introduction to SemanticDB (source of the `Test.scala` example above)
