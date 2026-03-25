@@ -95,6 +95,7 @@ The index is serialized with [rkyv](https://rkyv.org) (zero-copy deserialization
 
 ## See also
 
+- [WHY-KODEX.md](docs/WHY-KODEX.md) — why we built kodex when scalex already exists
 - [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — how kodex turns SemanticDB into a queryable knowledge base
 - [HOW-THE-INDEX-WORKS.md](docs/HOW-THE-INDEX-WORKS.md) — detailed walkthrough of the 9-phase index build pipeline, serialization format, and query execution
 - [DESIGN.md](DESIGN.md) — design principles and rationale
