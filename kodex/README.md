@@ -4,6 +4,14 @@
 
 kodex is a knowledge-base extractor for [Mill](https://mill-build.org)-powered Scala codebases. It reads [SemanticDB](https://scalameta.org/docs/semanticdb/guide.html) — the compiler's output where every connection, every reference, every type is resolved with zero ambiguity. If [scalex](../README.md) isn't enough and you need the most powerful tool to understand a Scala codebase, this is it.
 
+From the user's perspective: scalex lets you jump into any cloned Scala git repo and start exploring right away. kodex just needs you to run this once:
+
+```
+./mill __.semanticDbData
+```
+
+After that, everything else is the same.
+
 The tradeoff is clear:
 
 | | **scalex** | **kodex** |
