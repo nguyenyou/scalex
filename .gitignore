@@ -16,3 +16,4 @@ scalex-workspace/
 profiling/*.html
 profiling/*.jfr
 *.jfr
+CLAUDE.local.md
