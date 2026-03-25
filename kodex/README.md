@@ -79,3 +79,10 @@ The index is serialized with [rkyv](https://rkyv.org) (zero-copy deserialization
 
 - A Scala project compiled with SemanticDB (`-Xsemanticdb` for Scala 3, `semanticdb-scalac` plugin for Scala 2)
 - Mill build tool (kodex discovers `.semanticdb` files from Mill's `out/` directory)
+
+## See also
+
+- [HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) — how kodex turns SemanticDB into a queryable knowledge base
+- [HOW-THE-INDEX-WORKS.md](docs/HOW-THE-INDEX-WORKS.md) — detailed walkthrough of the 9-phase index build pipeline, serialization format, and query execution
+- [DESIGN.md](DESIGN.md) — design principles and rationale
+- [SemanticDB guide](https://github.com/scalameta/scalameta/blob/main/semanticdb/guide.md) — introduction to SemanticDB (source of the `Test.scala` example above)
