@@ -4,17 +4,6 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
-### sdbex: trait-aware callers & group-by-file (#331)
-
-- [x] Trait-aware callers — when querying callers of an impl method, automatically include callers of the overridden trait/abstract method; uses `overriddenSymbols` to find parent methods, unions their callers; default behavior (no flag needed)
-- [x] Transitive trait-aware callers — `--depth N` walks through trait indirection automatically
-- [x] `callers --group-by-file` — group caller output by source file for readability
-
-### sdbex: daemon --fifo for non-interactive shells (#317)
-
-- [x] `--fifo <path>` flag — daemon reads from named pipe instead of stdin; solves immediate exit when backgrounding with `&` in non-interactive shells
-- [x] Document `coproc` workaround in SKILL.md for shells that prefer keeping bidirectional pipes
-
 ### Community feedback: output budgets & package-scoped refs (#252)
 
 - [x] `--max-output N` global output budget — truncate any command's output at N characters with pagination hint; wraps `render()` centrally via `BudgetPrintStream` in `runCommand`; also serves as per-query budget in `batch` mode
@@ -175,43 +164,6 @@
 - ~~`scalex flow <from> <to>`~~ — BFS without type resolution is fragile via name collisions; fails "better than grep" gate (same reasoning as rejected `scalex path` in #102)
 - ~~`scalex sealed <trait>`~~ — `hierarchy --down --depth 1` already serves this use case; marginal
 - ~~Smarter default limits~~ — auto-summarize is hard to get right universally; better to give users explicit flags (`--members-limit`, `--definitions-only`)
-
-### sdbex: noise filtering for flow/callees/callers
-
-- [x] `--no-accessors` flag — filter val/var field accessors from flow/callees
-- [x] `--exclude "p1,p2,..."` flag — filter symbols by FQN or file path from flow/callees/callers
-- [x] `--smart` flag — auto-filter infrastructure noise (accessors, generated code, protobuf boilerplate, functional plumbing); in flow, only recurses into same-module callees
-- [x] `--kind` narrows symbol resolution in flow/callees/callers (not just output filtering)
-- [x] `resolveSymbol` prefers source over generated code in ranking
-- [x] `batch` command — run multiple queries in one invocation
-
-### sdbex: agent UX improvements (#303)
-
-- [x] Fix `batch` FQN quoting — strip surrounding quotes in `runBatch()`
-- [x] `--in <scope>` flag — scope symbol resolution by owner, FQN, or file without full FQN
-- [x] `--exclude-test` flag — filter out test source directories
-- [x] `--exclude-pkg "p1,p2,..."` flag — exclude symbols by package prefix
-- [x] `--smart` filters effect-system combinators (flatMap, traverse, pure, succeed, etc.)
-- [x] `lookup` shows `[object]`/`[class/trait]` annotations for method/field members
-- [x] FQN resolution `#`↔`.` fallback with stderr hint
-
-### sdbex: reduce noise in members/lookup output (#307)
-
-- [x] `members` synthetic filtering — hide compiler-generated case class members (`_N`, `copy`, `copy$default$N`, `productElement`, `productPrefix`, `canEqual`, `apply`, `unapply`) by default; show with `--verbose`. Note: `hashCode`/`toString`/`equals` are not filtered because Scala 3 SemanticDB only emits them when user-overridden.
-- [x] `--smart` on `members` — consistent with `--smart` on flow/callees/callers; filters synthetic case class methods + val accessors, showing only user-declared members
-- [x] `lookup --source-only` — hard-exclude symbols from generated code directories (protobuf, codegen); apply existing `isGeneratedSource()` filter post-resolution; also available via `--smart` on lookup
-- [x] `explain` subtypes — add `subtypes: N` line + first 3 names for traits/abstract classes; new field in `ExplainResult`, `findSubtypes()` call, formatter update
-- Discarded: SKILL.md daemon nudge — already documented with decision tree (lines 374-382) recommending daemon for 3+ queries and exploratory sessions
-
-### sdbex: daemon mode & Mill-only discovery
-
-- [x] `daemon` command — Unix domain socket server, keeps index hot in memory (<10ms queries vs ~1.5s CLI). Text output identical to CLI mode.
-- [x] 8 defensive termination layers: stdin EOF, parent PID monitoring, idle timeout, max lifetime, shutdown command, per-query timeout, heap pressure, shutdown hook
-- [x] `--parent-pid PID` flag — daemon auto-exits when parent process dies
-- [x] Auto-rebuild on staleness — checks `.semanticdb` directory mtimes before each query (~7ms)
-- [x] Mill-only discovery — parallel `semanticDbDataDetailed.dest/data/` walk, ~44% faster
-- [x] Removed `--semanticdb-path` flag — Mill's `out/` is the only supported layout
-- [x] 7 subprocess-based daemon lifecycle tests (stdin-eof, idle-timeout, max-lifetime, shutdown, heartbeat, query-response, error-recovery)
 
 ## Completed
 

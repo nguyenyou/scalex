@@ -35,7 +35,6 @@ scala-cli test src/ tests/
 
 # Validate Claude Code plugin structure
 claude plugin validate plugins/scalex/
-claude plugin validate plugins/scalex-intellij/
 ```
 
 ## Architecture
@@ -107,58 +106,16 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 - `com.google.guava:guava:33.5.0-jre` — bloom filters
 - `org.scalameta::munit:1.2.4` — test framework (test only)
 
-## scalex-semanticdb module
-
-Standalone SemanticDB index & query tool at `scalex-semanticdb/`. Zero shared code with main scalex.
-
-```bash
-# Run
-scala-cli run scalex-semanticdb/src/ -- <command> [args...]
-
-# Test (compiles fixtures with -Xsemanticdb, needs ~30s first run)
-scala-cli test scalex-semanticdb/src/ scalex-semanticdb/tests/
-```
-
-### Mill-only discovery
-sdbex auto-discovers `.semanticdb` files from Mill's `out/` directory only. It finds `semanticDbDataDetailed.dest/data/META-INF/semanticdb/` directories and walks them in parallel. No sbt/Bloop/generic fallback — other build tools are not supported yet. See `docs/MILL-SEMANTICDB.md` for the full `out/` layout.
-
-### Daemon mode
-The `daemon` command keeps the index hot in memory so queries take <10ms instead of ~3.2s. It listens on a Unix domain socket. Non-daemon CLI commands auto-detect the daemon and forward queries transparently — output is identical whether the daemon is running or not.
-
-**The daemon MUST be treated as hostile to long-running processes.** It is designed to self-terminate aggressively — we never want zombie JVM processes consuming memory after the agent session ends. Seven defensive layers enforce this:
-1. **Idle timeout**: no query for 5 min → exit (configurable, default 300s)
-2. **Max lifetime**: 30 min hard cap regardless of activity (configurable, default 1800s)
-3. **Shutdown command**: explicit shutdown via socket
-4. **Per-query timeout**: any query >30s returns timeout error (daemon stays responsive)
-5. **Heap pressure**: >85% heap after GC → exit
-6. **Startup timeout**: index build >120s → exit
-7. **Shutdown hook**: SIGTERM/SIGINT triggers cleanup
-
-When adding features to the daemon, never weaken these guarantees. Every code path must lead to eventual termination. Never add "keep-alive" logic, reconnection attempts, or retry loops. If something goes wrong, the correct behavior is to die.
-
-### Gotchas
-- **`semanticdb-shared` has no `_3` artifact on Maven Central** — use `org.scalameta:semanticdb-shared_2.13:4.15.2` (single `:`, Java-style dep). The `_2.13` jar works fine with Scala 3.
-- **SemanticDB generation**: Scala 3 uses `-Xsemanticdb` (built-in). Scala 2 needs the `semanticdb-scalac` plugin + `-Yrangepos`.
-- **`.semanticdb` file location**: Mill produces them at `out/**/semanticDbDataDetailed.dest/data/META-INF/semanticdb/`. The `classes/` copy is ignored.
-- **Callees body range**: When finding callees, skip local definitions (`local0`, etc.) for end-boundary detection — use next sibling definition (same owner) instead.
-- **Ship as assembly JAR, not GraalVM native image**: JVM JIT is ~11x faster on warm loads for this protobuf-heavy workload (1.8s vs 20s). Use `./build-native-semanticdb.sh` which runs `scala-cli package --assembly`.
-
 ## Plugin structure
 
 ```
 plugins/
-├── scalex/                        # scalex plugin
-│   ├── .claude-plugin/plugin.json
-│   └── skills/scalex/
-│       ├── SKILL.md
-│       ├── references/
-│       └── scripts/scalex-cli     # Bootstrap: downloads + caches binary, forwards args
-└── scalex-intellij/               # scalex-intellij plugin (separate)
+└── scalex/                        # scalex plugin
     ├── .claude-plugin/plugin.json
-    └── skills/scalex-intellij/
+    └── skills/scalex/
         ├── SKILL.md
-        ├── references/tools.md
-        └── scripts/jb-mcp         # MCP client: discovers IDE, manages sessions
+        ├── references/
+        └── scripts/scalex-cli     # Bootstrap: downloads + caches binary, forwards args
 ```
 
 The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumped alongside `ScalexVersion` in `src/model.scala` when releasing.
