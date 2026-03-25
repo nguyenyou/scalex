@@ -33,7 +33,7 @@ Coding agents explore codebases through raw file reads and grep. They lack struc
 | Type hierarchy | "What implements `Repository`?" requires search + filter |
 | Batch exploration | Inspect 5 types = 5 separate tool calls |
 | Noise filtering | Every search on a 13k-file project returns hundreds of hits |
-| Module-scoped queries | Long `--path modules/order/order/jvm/src` strings |
+| Module-scoped queries | Long `--path modules/workspace/workspace/jvm/src` strings |
 
 ## Model
 
@@ -209,45 +209,45 @@ Related types:
 For methods, the output includes the **call flow** (callees) as a structured numbered list — this replaces reading the raw method body:
 
 ```bash
-kodex explore OrderService.createOrder
+kodex explore WorkspaceService.createWorkspace
 ```
 
 ```
-method createOrder — OrderService
-  File: modules/order/.../OrderService.scala:123
-  Signature: (params: CreateOrderParams, ctx: RequestContext): Task[CreateOrderResponse]
+method createWorkspace — WorkspaceService
+  File: modules/workspace/.../WorkspaceService.scala:123
+  Signature: (params: CreateWorkspaceParams, ctx: RequestContext): Task[CreateWorkspaceResponse]
 
-  Params (from CreateOrderParams):
+  Params (from CreateWorkspaceParams):
     name: String
-    orgId: OrgId
+    entityId: EntityId
     metadata: Option[MetadataParams]
     showIndex: Boolean
     showSearch: Boolean
 
   Service calls (19):
     1. PermissionService.verifyMember [auth]                          — cross-module
-    2. OrderBillingOperations.checkEntityHavingOrderPremiumFeatures
+    2. WorkspaceBillingOperations.checkEntityHavingWorkspacePremiumFeatures
     3. TeamService.createNewTeam [auth]                          — cross-module
     4. TeamService.addMember [auth]                              — cross-module
-    5. OrderFlowOperations.createOrder
+    5. WorkspaceFlowOperations.createWorkspace
     6. FileService.createSystemFolderForChannel [document]           — cross-module
-    7. OrderEmailSenderService.sendEmail
+    7. WorkspaceEmailSenderService.sendEmail
     ...
 
   Called by (production):
-    OrderCoreServer.services [API endpoint]
-    OrderAdminPortalService.createOrderOnBehalfUnsafe
-    OrderAgentServiceLive.createOrder [AI agent]
-    OrderService.duplicateOrder
+    WorkspaceCoreServer.services [API endpoint]
+    WorkspaceAdminPortalService.createWorkspaceOnBehalfUnsafe
+    WorkspaceAgentServiceLive.createWorkspace [AI agent]
+    WorkspaceService.duplicateWorkspace
 
   Related types:
-    OrderPlan (sealed trait):
-      OrderProPlan       — ViewOnly, Analytics, AccessControl, Branding
-      OrderBusinessPlan  — all features
-      OrderEmptyPlan     — free, no premium features
-    OrderPremiumFeature (enum):
+    WorkspacePlan (sealed trait):
+      WorkspaceProPlan       — ViewOnly, Analytics, AccessControl, Branding
+      WorkspaceBusinessPlan  — all features
+      WorkspaceEmptyPlan     — free, no premium features
+    WorkspacePremiumFeature (enum):
       ViewOnly, Analytics, AccessControl, Branding, HomePage, CustomDomain
-    OrderRole (enum):
+    WorkspaceRole (enum):
       Admin, Member, Guest, Restricted
 ```
 
@@ -355,12 +355,12 @@ Default: excludes tests, generated code, UI. `--all` to show everything.
 **Domain-aware ranking**:
 | Tier | Pattern | Examples |
 |---|---|---|
-| 1 (highest) | `*Service`, `*Operations`, `*Provider` | `OrderService.createOrder` |
-| 2 | `*Params`, `*Request`, `*Response`, `*Model` | `CreateOrderParams` |
-| 3 | `*Endpoint*`, `*Api*`, `*Server` | `OrderEndpoints.createOrder` |
-| 4 | `*Plan`, `*Role`, `*Feature`, `*Config` | `OrderPlan`, `OrderRole` |
-| 5 | `*Component`, `*Modal`, `*Page` (UI) | `CreateOrderButton` |
-| 6 (lowest) | test paths, `*Spec`, `*Suite`, `*Fixture` | `OrderQuotaInteg` |
+| 1 (highest) | `*Service`, `*Operations`, `*Provider` | `WorkspaceService.createWorkspace` |
+| 2 | `*Params`, `*Request`, `*Response`, `*Model` | `CreateWorkspaceParams` |
+| 3 | `*Endpoint*`, `*Api*`, `*Server` | `WorkspaceEndpoints.createWorkspace` |
+| 4 | `*Plan`, `*Role`, `*Feature`, `*Config` | `WorkspacePlan`, `WorkspaceRole` |
+| 5 | `*Component`, `*Modal`, `*Page` (UI) | `CreateWorkspaceButton` |
+| 6 (lowest) | test paths, `*Spec`, `*Suite`, `*Fixture` | `WorkspaceQuotaInteg` |
 
 ---
 
@@ -416,18 +416,18 @@ echo -e "explore UserService\nexplore Permission\nflow UserController.postUser" 
 
 ### R1: Smart symbol disambiguation
 
-When a name is ambiguous (e.g., `createOrder` matches 16 symbols), kodex auto-selects using ranking:
+When a name is ambiguous (e.g., `createWorkspace` matches 16 symbols), kodex auto-selects using ranking:
 1. `*Service#method` > `*Operations#method` > `*Endpoint.val` > test paths > locals
 2. Prefer non-test, non-generated, server-side sources
 3. Prefer methods over vals/types when the name looks like a verb (`createX`, `getX`, `handleX`)
 
 When multiple candidates survive:
 ```
-3 matches for "createOrder":
-  1. OrderService.createOrder     — modules/order/.../OrderService.scala:123
-  2. OrderAgentServiceLive.createOrder — modules/order/.../OrderAgentServiceLive.scala:280
-  3. OrderFlowOperations.createOrder   — modules/order/.../OrderFlowOperations.scala:36
-Use: kodex explore createOrder --pick 2
+3 matches for "createWorkspace":
+  1. WorkspaceService.createWorkspace     — modules/workspace/.../WorkspaceService.scala:123
+  2. WorkspaceAgentServiceLive.createWorkspace — modules/workspace/.../WorkspaceAgentServiceLive.scala:280
+  3. WorkspaceFlowOperations.createWorkspace   — modules/workspace/.../WorkspaceFlowOperations.scala:36
+Use: kodex explore createWorkspace --pick 2
 ```
 
 ### R2: Inline small enums and sealed hierarchies
@@ -436,10 +436,10 @@ When `explore` encounters a related type that is an enum (<=20 values) or sealed
 
 ```
 Related types:
-  OrderPlan (sealed trait):
-    OrderProPlan       — ViewOnly, Analytics, AccessControl, Branding
-    OrderBusinessPlan  — all features
-    OrderEmptyPlan     — free, no premium features
+  WorkspacePlan (sealed trait):
+    WorkspaceProPlan       — ViewOnly, Analytics, AccessControl, Branding
+    WorkspaceBusinessPlan  — all features
+    WorkspaceEmptyPlan     — free, no premium features
 ```
 
 No follow-up `body` calls needed for small domain types.
@@ -447,9 +447,9 @@ No follow-up `body` calls needed for small domain types.
 ### R3: Module-scoped queries
 
 ```bash
-kodex explore createOrder --module order
+kodex explore createWorkspace --module workspace
 kodex search "permission" --module auth
-kodex explore createOrder --module "order.*"  # glob for sub-modules
+kodex explore createWorkspace --module "workspace.*"  # glob for sub-modules
 ```
 
 kodex parses Mill's module structure at index time and maps module names to source paths.
@@ -469,11 +469,11 @@ Override: `--all`, `--include-tests`, `--include-stdlib`, `--no-filter`.
 
 ```
 Called by (depth 2):
-  OrderCoreServer.services [API endpoint]
-    AppServer.commonServices [server boot]
-  OrderAdminPortalService.createOrderOnBehalfUnsafe
-    OrderAdminPortalServer.services [API endpoint]
-  OrderAgentServiceLive.createOrder [AI agent]
+  WorkspaceCoreServer.services [API endpoint]
+    GondorServer.commonServices [server boot]
+  WorkspaceAdminPortalService.createWorkspaceOnBehalfUnsafe
+    WorkspaceAdminPortalServer.services [API endpoint]
+  WorkspaceAgentServiceLive.createWorkspace [AI agent]
 ```
 
 Detection: classes extending `*Server`, `*Endpoint`, `*Controller`, symbols with `@main`, naming heuristics.
@@ -633,7 +633,7 @@ enum ReferenceRole {
 
 #[derive(Archive, Serialize)]
 struct MillModule {
-    name: StringId,           // e.g. "order", "core"
+    name: StringId,           // e.g. "workspace", "core"
     source_paths: Vec<StringId>,
     symbol_count: u32,
     file_count: u32,
@@ -899,4 +899,4 @@ Compare: scalex alone = 15 calls, ~8000 tokens. sdbex alone = 5 calls, ~2000 tok
 2. **Dependency library exploration**: Should `kodex explore` work on dependency types (from classpath JARs), or only project code? Metals' `inspect` tool does this via the Presentation Compiler. kodex could index classpath SemanticDB if available.
 3. **MCP / Claude Code plugin**: Ship as a Claude Code plugin with a skill file? The binary is self-contained and fast enough.
 4. **Multi-repo**: For monorepos or multi-repo setups, can we produce a merged `kodex.idx` across repos?
-5. **Prerequisite chain expansion**: R9 from requirements — `kodex explore CreateOrderParams --expand-prereqs` to show entity → plan → features chain. High value but requires heuristic call graph + body analysis. Defer to v2?
+5. **Prerequisite chain expansion**: R9 from requirements — `kodex explore CreateWorkspaceParams --expand-prereqs` to show entity → plan → features chain. High value but requires heuristic call graph + body analysis. Defer to v2?
