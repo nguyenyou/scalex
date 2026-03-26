@@ -459,16 +459,6 @@ Built with [Claude Code](https://claude.ai/code) powered by **Claude Opus 4.6** 
 
 A **kestrel** — the smallest falcon. Fast, sharp-eyed, lightweight, hovers before diving. See [MASCOT.md](site/MASCOT.md) for the full design brief.
 
-## Star History
-
-<a href="https://www.star-history.com/?repos=nguyenyou%2Fscalex&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=nguyenyou/scalex&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=nguyenyou/scalex&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=nguyenyou/scalex&type=date&legend=top-left" />
- </picture>
-</a>
-
 ## License
 
 MIT
