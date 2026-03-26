@@ -160,35 +160,29 @@ cp -r /tmp/scalex/plugins/scalex/skills/scalex /path/to/your/agent/skills/
 
 The skill folder contains everything: `SKILL.md` (teaches the agent when and how to use scalex), reference docs, and a bootstrap script that downloads the correct binary for your platform.
 
-### Manual binary install
+### How the bootstrap script works
 
-If you prefer to install the binary yourself:
+You don't install scalex manually — the skill includes a bootstrap script (`scripts/scalex-cli`) that handles everything:
 
-```bash
-mkdir -p ~/.local/bin
+1. **Detects your platform** (macOS arm64, macOS x64, Linux x64)
+2. **Downloads the correct native binary** from GitHub Releases on first run
+3. **Verifies the SHA-256 checksum** against pinned hashes in the script
+4. **Caches the binary** at `~/.cache/scalex/` (follows XDG spec)
+5. **Auto-upgrades** when the skill version changes — old cached binaries are left in place, new version is downloaded alongside
 
-# macOS Apple Silicon
-curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-macos-arm64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex
+The coding agent invokes scalex through this script on every call. After the first run (~2s download), subsequent calls go straight to the cached binary with zero overhead.
 
-# macOS Intel
-curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-macos-x64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex
+### Advanced: customize or override
 
-# Linux x64
-curl -fsSL https://github.com/nguyenyou/scalex/releases/latest/download/scalex-linux-x64 -o ~/.local/bin/scalex && chmod +x ~/.local/bin/scalex
-```
+If you prefer to build from source or use your own binary, you have two options:
 
-### Run without installing
+**Option A: Put your binary on PATH and edit the skill.**
+Build scalex, place it anywhere on your `PATH`, then update `SKILL.md` to invoke `scalex` directly instead of `bash "/path/to/scripts/scalex-cli"`.
 
-If you have [scala-cli](https://scala-cli.virtuslab.org/) installed:
+**Option B: Edit the bootstrap script to use a local binary.**
+Set the `BINARY` variable in `scripts/scalex-cli` to point to your local build — the script will skip the download and exec your binary directly.
 
-```bash
-git clone https://github.com/nguyenyou/scalex.git
-scala-cli run scalex/src/ -- search /path/to/project MyClass
-```
-
-No build step. Downloads dependencies on first run (~5s), then starts in ~1s.
-
-### Build from source
+#### Build from source
 
 Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.graalvm.org/):
 
@@ -197,8 +191,18 @@ git clone https://github.com/nguyenyou/scalex.git
 cd scalex
 ./build-native.sh
 # Output: ~30MB standalone binary, no JVM needed
-cp scalex ~/.local/bin/scalex
 ```
+
+#### Run from source (no native image)
+
+If you have [scala-cli](https://scala-cli.virtuslab.org/) installed, you can run directly from source without building a native image:
+
+```bash
+git clone https://github.com/nguyenyou/scalex.git
+scala-cli run scalex/src/ -- search /path/to/project MyClass
+```
+
+Downloads dependencies on first run (~5s), then starts in ~1s. Useful for development or quick testing.
 
 ## Usage Examples
 
