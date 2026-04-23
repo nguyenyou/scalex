@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.39.0] — 2026-04-23
+
 ### Changed
 - Bumped Scala to 3.8.3, Scalameta to 4.16.1, Guava to 33.6.0-jre, and munit to 1.3.0
 
