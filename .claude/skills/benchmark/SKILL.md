@@ -52,7 +52,7 @@ rm -rf benchmark/scala3/.scalex
 ./scalex refs benchmark/scala3 Compiler --timings
 
 # JVM mode
-scala-cli run src/ -- index benchmark/scala3 --timings
+./mill run index benchmark/scala3 --timings
 ```
 
 ### Phases reported
@@ -185,9 +185,8 @@ Built into JDK 21. Near-zero overhead. Best for GC, file I/O, and thread analysi
 
 ```bash
 # Record with custom config
-scala-cli run src/ \
-  --java-opt "-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
-  -- index benchmark/scala3
+SCALEX_JAVA_OPTS="-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
+  ./mill run index benchmark/scala3
 
 # Quick summary
 jfr summary profiling/scalex.jfr
@@ -216,17 +215,17 @@ Isolate per-function costs with warmup and statistical measurement.
 
 ```bash
 # Specific benchmark
-scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- bloom-build benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- persistence-load benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- search benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- refs benchmark/scala3
+./mill bench.run extract-single benchmark/scala3
+./mill bench.run bloom-build benchmark/scala3
+./mill bench.run persistence-load benchmark/scala3
+./mill bench.run search benchmark/scala3
+./mill bench.run refs benchmark/scala3
 
 # All benchmarks
-scala-cli run src/bench.scala src/*.scala -- all benchmark/scala3
+./mill bench.run all benchmark/scala3
 
 # Custom warmup/iterations
-scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3 --warmup 3 --iterations 10
+./mill bench.run extract-single benchmark/scala3 --warmup 3 --iterations 10
 ```
 
 ### Available benchmarks
@@ -247,7 +246,7 @@ Reports: mean, median, p99, stddev, min, max per benchmark.
 
 ## Layer 6: Memory profiling (`bench.sh memory`)
 
-Measures heap usage, GC pressure, and peak memory across three scenarios: cold index (full parse), warm index (cache load), and refs query. Uses JVM GC logging via `-Xlog:gc*` — requires scala-cli (JVM mode), not native binary.
+Measures heap usage, GC pressure, and peak memory across three scenarios: cold index (full parse), warm index (cache load), and refs query. Uses JVM GC logging via `-Xlog:gc*` through Mill JVM mode, not the native binary.
 
 ### Running
 
@@ -256,7 +255,7 @@ Measures heap usage, GC pressure, and peak memory across three scenarios: cold i
 .claude/skills/benchmark/scripts/bench.sh memory
 ```
 
-No prerequisites beyond scala-cli. Does not require hyperfine or native binary.
+No prerequisites beyond the Mill wrapper and JDK 21. Does not require hyperfine or native binary.
 
 ### Output
 
@@ -317,9 +316,8 @@ For one-off measurements without the script:
 
 ```bash
 # Run any scalex command with GC logging to a temp file
-scala-cli run src/ \
-  --java-opt "-Xlog:gc*=info:file=/tmp/scalex-gc.log" \
-  -- overview benchmark/scala3
+SCALEX_JAVA_OPTS="-Xlog:gc*=info:file=/tmp/scalex-gc.log" \
+  ./mill run overview benchmark/scala3
 
 # Check peak heap
 grep -o '[0-9]*M->' /tmp/scalex-gc.log | sed 's/M->//' | sort -n | tail -1

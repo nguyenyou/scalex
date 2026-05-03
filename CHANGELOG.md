@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- Migrated the project build from scala-cli directives to Mill, including CLI/test/benchmark modules and native image packaging.
+
 ## [1.39.0] — 2026-04-23
 
 ### Changed

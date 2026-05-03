@@ -37,11 +37,6 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: VirtusLab/scala-cli-setup@59e308800210b0414d2d7190068c80021e1b3e5d # v1
-        with:
-          power: true
-          jvm: graalvm-java21
-
       - name: Build native image
         run: ./build-native.sh ${{ matrix.artifact }}
 

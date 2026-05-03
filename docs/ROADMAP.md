@@ -4,6 +4,12 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Mill build migration
+
+- [x] Add Mill build definition for Scalex CLI and tests
+- [x] Move local/native build commands from scala-cli to Mill
+- [x] Update docs and scripts to describe Mill workflows
+
 ### Community feedback: output budgets & package-scoped refs (#252)
 
 - [x] `--max-output N` global output budget — truncate any command's output at N characters with pagination hint; wraps `render()` centrally via `BudgetPrintStream` in `runCommand`; also serves as per-query budget in `batch` mode

@@ -1,5 +1,4 @@
-//> using target.scope test
-// ^^ exclude from main compilation; run with: scala-cli run src/bench.scala src/*.scala -- <bench> <workspace>
+// Excluded from the main Mill module; run with: ./mill bench.run <bench> <workspace>
 
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
@@ -131,7 +130,7 @@ def benchIndexBuild(workspace: Path, warmup: Int, iters: Int): BenchResult =
   if argList.isEmpty || argList.contains("--help") then
     println("""scalex microbenchmark harness
       |
-      |Usage: scala-cli run src/bench.scala src/*.scala -- <benchmark> <workspace> [options]
+      |Usage: ./mill bench.run <benchmark> <workspace> [options]
       |
       |Benchmarks:
       |  extract-single     extractSymbols on one large file
