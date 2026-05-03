@@ -30,6 +30,8 @@ if [ -z "$WORKSPACE" ]; then
   exit 1
 fi
 
+WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+
 # ── Find async-profiler ──────────────────────────────────────────────────────
 
 if [ -n "${AP_HOME:-}" ]; then
@@ -56,9 +58,9 @@ echo ""
 # Delete cache to profile cold index
 rm -rf "$WORKSPACE/.scalex"
 
-scala-cli run "$PROJECT_ROOT/src/" \
-  --java-opt "-agentpath:$AP_LIB=start,event=$EVENT,file=$OUTPUT" \
-  -- index "$WORKSPACE"
+cd "$PROJECT_ROOT"
+SCALEX_JAVA_OPTS="-agentpath:$AP_LIB=start,event=$EVENT,file=$OUTPUT" \
+  ./mill run index "$WORKSPACE"
 
 echo ""
 echo "Flame graph written to: $OUTPUT"

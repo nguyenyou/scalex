@@ -182,9 +182,9 @@ Build scalex, place it anywhere on your `PATH`, then update `SKILL.md` to invoke
 **Option B: Edit the bootstrap script to use a local binary.**
 Set the `BINARY` variable in `scripts/scalex-cli` to point to your local build — the script will skip the download and exec your binary directly.
 
-#### Build from source
+#### Build From Source
 
-Requires [scala-cli](https://scala-cli.virtuslab.org/) + [GraalVM](https://www.graalvm.org/):
+Requires JDK 21. Native builds require [GraalVM](https://www.graalvm.org/). Mill is pinned by the checked-in `mill` wrapper:
 
 ```bash
 git clone https://github.com/nguyenyou/scalex.git
@@ -193,16 +193,17 @@ cd scalex
 # Output: ~30MB standalone binary, no JVM needed
 ```
 
-#### Run from source (no native image)
+#### Run From Source
 
-If you have [scala-cli](https://scala-cli.virtuslab.org/) installed, you can run directly from source without building a native image:
+Run directly from source without building a native image:
 
 ```bash
 git clone https://github.com/nguyenyou/scalex.git
-scala-cli run scalex/src/ -- search /path/to/project MyClass
+cd scalex
+./mill run search /path/to/project MyClass
 ```
 
-Downloads dependencies on first run (~5s), then starts in ~1s. Useful for development or quick testing.
+Mill downloads dependencies on first run, then reuses its local cache. Useful for development or quick testing.
 
 ## Usage Examples
 

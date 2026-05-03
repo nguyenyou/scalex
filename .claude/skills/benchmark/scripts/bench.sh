@@ -132,9 +132,9 @@ run_query_diverse() {
 # ── Memory profiling (JVM only) ────────────────────────────────────────────
 
 run_memory() {
-  echo "=== Memory Profiling (JVM mode via scala-cli) ==="
+  echo "=== Memory Profiling (JVM mode via Mill) ==="
   echo ""
-  echo "Note: Runs via scala-cli (not native binary) to access JVM GC logs."
+  echo "Note: Runs via Mill (not native binary) to access JVM GC logs."
   echo ""
 
   local HEAP_LOG
@@ -168,9 +168,8 @@ run_memory() {
   # --- Cold index (full parse) ---
   echo "--- Cold index (full parse, ~17.7k files) ---"
   rm -rf "$SCALA3_DIR/.scalex"
-  scala-cli run "$PROJECT_ROOT/src/" \
-    --java-opt "-Xlog:gc*=info:file=$HEAP_LOG" \
-    -- --timings index "$SCALA3_DIR" 2>&1 | grep -E '^\s'
+  SCALEX_JAVA_OPTS="-Xlog:gc*=info:file=$HEAP_LOG" \
+    "$PROJECT_ROOT/mill" run index "$SCALA3_DIR" --timings 2>&1 | grep -E '^\s'
   echo ""
   parse_gc_stats "$HEAP_LOG" "COLD"
   echo ""
@@ -178,9 +177,8 @@ run_memory() {
   # --- Warm index (cache load) ---
   echo "--- Warm index (cache load) ---"
   > "$HEAP_LOG"
-  scala-cli run "$PROJECT_ROOT/src/" \
-    --java-opt "-Xlog:gc*=info:file=$HEAP_LOG" \
-    -- --timings index "$SCALA3_DIR" 2>&1 | grep -E '^\s'
+  SCALEX_JAVA_OPTS="-Xlog:gc*=info:file=$HEAP_LOG" \
+    "$PROJECT_ROOT/mill" run index "$SCALA3_DIR" --timings 2>&1 | grep -E '^\s'
   echo ""
   parse_gc_stats "$HEAP_LOG" "WARM"
   echo ""
@@ -188,9 +186,8 @@ run_memory() {
   # --- Refs query (text search across files) ---
   echo "--- refs Phase (warm cache, text search) ---"
   > "$HEAP_LOG"
-  scala-cli run "$PROJECT_ROOT/src/" \
-    --java-opt "-Xlog:gc*=info:file=$HEAP_LOG" \
-    -- --timings refs "$SCALA3_DIR" Phase 2>&1 | grep -E '^\s'
+  SCALEX_JAVA_OPTS="-Xlog:gc*=info:file=$HEAP_LOG" \
+    "$PROJECT_ROOT/mill" run refs "$SCALA3_DIR" Phase --timings 2>&1 | grep -E '^\s'
   echo ""
   parse_gc_stats "$HEAP_LOG" "REFS"
   echo ""

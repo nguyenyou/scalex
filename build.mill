@@ -1,0 +1,75 @@
+package build
+
+import mill.*
+import mill.javalib.NativeImageModule
+import mill.scalalib.*
+
+trait ScalexModule extends ScalaModule {
+  def scalaVersion: T[String] = "3.8.3"
+
+  def mvnDeps: T[Seq[Dep]] = Seq(
+    mvn"org.scalameta::scalameta:4.16.1",
+    mvn"com.google.guava:guava:33.6.0-jre",
+    mvn"com.github.javaparser:javaparser-core:3.28.0"
+  )
+
+  def mainClass: T[Option[String]] = Some("main")
+
+  def scalacOptions: T[Seq[String]] = Seq("-deprecation")
+
+  def scalexJavaOpts: T[Seq[String]] = Task.Input {
+    Task.env.get("SCALEX_JAVA_OPTS").toSeq
+  }
+
+  override def forkArgs: T[Seq[String]] = Task {
+    super.forkArgs() ++ scalexJavaOpts()
+  }
+}
+
+object `package` extends ScalexModule, NativeImageModule {
+  private def workspaceRoot: os.Path = moduleDir
+
+  override def allSourceFiles: T[Seq[PathRef]] = Task {
+    super.allSourceFiles().filterNot(_.path == moduleDir / "src" / "bench.scala")
+  }
+
+  def nativeMarchFlag: T[Seq[String]] = Task.Input {
+    if Task.env.contains("CI") then Seq.empty
+    else Seq("-march=native")
+  }
+
+  override def nativeImageOptions: T[Seq[String]] = Task {
+    super.nativeImageOptions() ++ Seq(
+      "--no-fallback",
+      "--initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies"
+    ) ++ nativeMarchFlag()
+  }
+
+  def nativeCopy(dest: String): Command[PathRef] = Task.Command {
+    val output = os.Path(dest, workspaceRoot)
+    os.makeDir.all(output / os.up)
+    os.copy.over(nativeImage().path, output)
+    os.perms.set(output, "rwxr-xr-x")
+    PathRef(output)
+  }
+
+  object test extends ScalaTests {
+    override def moduleDir: os.Path = workspaceRoot
+
+    def sources: T[Seq[PathRef]] = Task.Sources("tests")
+
+    def mvnDeps: T[Seq[Dep]] = Seq(
+      mvn"org.scalameta::munit:1.3.0"
+    )
+
+    def testFramework: T[String] = "munit.Framework"
+  }
+
+  object bench extends ScalexModule {
+    override def moduleDir: os.Path = workspaceRoot
+
+    override def sources: T[Seq[PathRef]] = Task.Sources("src")
+
+    override def mainClass: T[Option[String]] = Some("bench")
+  }
+}

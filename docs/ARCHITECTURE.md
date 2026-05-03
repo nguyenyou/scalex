@@ -212,8 +212,8 @@ How types flow from extraction through commands to output:
 ## File Layout
 
 ```
+build.mill                      Mill build: CLI, tests, benchmark module, native image
 src/
-├── project.scala              scala-cli directives
 ├── model.scala                SymbolInfo, CmdResult, CommandContext, all data types
 ├── cli.scala                  @main, flag parsing, workspace resolution
 ├── dispatch.scala             command name → handler map

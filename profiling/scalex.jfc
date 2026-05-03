@@ -3,9 +3,8 @@
   JFR configuration for profiling scalex.
 
   Usage:
-    scala-cli run src/ \
-      - -java-opt "-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
-      - - index <workspace>
+    SCALEX_JAVA_OPTS="-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
+      ./mill run index <workspace>
 
     jfr summary profiling/scalex.jfr
     jfr print - -events jdk.ObjectAllocationSample profiling/scalex.jfr | head -100

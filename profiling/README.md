@@ -7,10 +7,10 @@ Multi-layered profiling tools for identifying performance bottlenecks.
 ```bash
 # Phase breakdown for cold index
 rm -rf benchmark/scala3/.scalex
-scala-cli run src/ -- index benchmark/scala3 --timings
+./mill run index benchmark/scala3 --timings
 
 # Phase breakdown for refs query
-scala-cli run src/ -- refs benchmark/scala3 Compiler --timings
+./mill run refs benchmark/scala3 Compiler --timings
 
 # Native image
 ./scalex index benchmark/scala3 --timings
@@ -51,9 +51,8 @@ brew install async-profiler
 
 ```bash
 # Record
-scala-cli run src/ \
-  --java-opt "-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
-  -- index benchmark/scala3
+SCALEX_JAVA_OPTS="-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
+  ./mill run index benchmark/scala3
 
 # Quick summary
 jfr summary profiling/scalex.jfr
@@ -75,13 +74,13 @@ open profiling/scalex.jfr
 
 ```bash
 # Run a specific benchmark
-scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3
+./mill bench.run extract-single benchmark/scala3
 
 # All benchmarks
-scala-cli run src/bench.scala src/*.scala -- all benchmark/scala3
+./mill bench.run all benchmark/scala3
 
 # Custom iterations
-scala-cli run src/bench.scala src/*.scala -- extract-batch benchmark/scala3 --warmup 3 --iterations 10
+./mill bench.run extract-batch benchmark/scala3 --warmup 3 --iterations 10
 ```
 
 ## Native Image Profiling
