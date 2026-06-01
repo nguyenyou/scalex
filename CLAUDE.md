@@ -105,9 +105,10 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 
 ### Dependencies
 
-- `org.scalameta::scalameta:4.15.2` — AST parsing
-- `com.google.guava:guava:33.5.0-jre` — bloom filters
-- `org.scalameta::munit:1.2.4` — test framework (test only)
+- `org.scalameta::scalameta:4.17.0` — AST parsing
+- `com.google.guava:guava:33.6.0-jre` — bloom filters
+- `com.github.javaparser:javaparser-core:3.28.2` — Java source parsing
+- `org.scalameta::munit:1.3.1` — test framework (test only)
 
 ## Plugin structure
 
