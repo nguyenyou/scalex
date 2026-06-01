@@ -29,6 +29,8 @@ trait ScalexModule extends ScalaModule {
 object `package` extends ScalexModule, NativeImageModule {
   private def workspaceRoot: os.Path = moduleDir
 
+  override def jvmVersion: T[String] = "graalvm-community:21.0.2"
+
   override def allSourceFiles: T[Seq[PathRef]] = Task {
     super.allSourceFiles().filterNot(_.path == moduleDir / "src" / "bench.scala")
   }
