@@ -2,8 +2,11 @@
 
 ## [Unreleased]
 
+## [1.40.0] — 2026-06-01
+
 ### Changed
 - Migrated the project build from scala-cli directives to Mill, including CLI/test/benchmark modules and native image packaging.
+- Bumped Scalex to 1.40.0, Scalameta to 4.17.0, JavaParser to 3.28.2, and munit to 1.3.1.
 
 ## [1.39.0] — 2026-04-23
 
