@@ -8,9 +8,9 @@ trait ScalexModule extends ScalaModule {
   def scalaVersion: T[String] = "3.8.3"
 
   def mvnDeps: T[Seq[Dep]] = Seq(
-    mvn"org.scalameta::scalameta:4.16.1",
+    mvn"org.scalameta::scalameta:4.17.0",
     mvn"com.google.guava:guava:33.6.0-jre",
-    mvn"com.github.javaparser:javaparser-core:3.28.0"
+    mvn"com.github.javaparser:javaparser-core:3.28.2"
   )
 
   def mainClass: T[Option[String]] = Some("main")
@@ -59,7 +59,7 @@ object `package` extends ScalexModule, NativeImageModule {
     def sources: T[Seq[PathRef]] = Task.Sources("tests")
 
     def mvnDeps: T[Seq[Dep]] = Seq(
-      mvn"org.scalameta::munit:1.3.0"
+      mvn"org.scalameta::munit:1.3.1"
     )
 
     def testFramework: T[String] = "munit.Framework"
