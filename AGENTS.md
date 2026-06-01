@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## What is Scalex
 
-Scalex is a Scala code intelligence CLI for coding agents. It provides fast symbol search, find definitions, and find references — without requiring an IDE, build server, or compilation. Designed as a Codex plugin.
+Scalex is a Scala code intelligence CLI for coding agents. It provides fast symbol search, find definitions, and find references — without requiring an IDE, build server, or compilation. Designed as a Claude Code plugin.
 
 ## IMPORTANT: No company references
 
@@ -23,27 +23,28 @@ Source code lives in `src/` (production) and `tests/` (test suite). When searchi
 ## Build & Run
 
 ```bash
-# Run via scala-cli (development)
-scala-cli run src/ -- <command> [args...]
+# Run via Mill (development)
+./mill run <command> [args...]
 
 # Run tests
-scala-cli test src/ tests/
+./mill test
 
-# Build GraalVM native image (requires GraalVM + scala-cli)
+# Run microbenchmarks
+./mill bench.run <benchmark> <workspace> [options]
+
+# Build GraalVM native image (requires GraalVM)
 ./build-native.sh
 # Output: ./scalex (26MB standalone binary)
 
-# Validate Codex plugin structure
-Codex plugin validate plugins/scalex/
 ```
 
 ## Architecture
 
-Source code is in `src/`, tests in `tests/` (Scala 3.8.2, JDK 21+). When searching the codebase, scope to these directories to avoid hitting benchmark data or build artifacts.
+Source code is in `src/`, tests in `tests/` (Scala 3.8.3, JDK 21+). When searching the codebase, scope to these directories to avoid hitting benchmark data or build artifacts.
 
 ```
+build.mill                      # Mill build: CLI, tests, benchmark module, native image
 src/                           # Production source code
-├── project.scala              # scala-cli directives only
 ├── model.scala                # Data types, enums, version constant
 ├── extraction.scala           # AST parsing & single-file extraction functions
 ├── index.scala                # Git integration, persistence, WorkspaceIndex, filtering
@@ -151,8 +152,8 @@ When adding or changing commands/flags in `src/cli.scala`:
 ## Gotchas
 
 - **Protected main branch**: Cannot push directly to main — all changes require a PR
-- **Zero warnings policy**: Before creating a PR, run `scala-cli compile src/ 2>&1 | grep -i warn` and verify no output. Do not ship compiler warnings.
-- **Zero deprecations policy**: Also verify with `scala-cli compile --scalac-option "-deprecation" src/ 2>&1 | grep -i warn`. Do not use deprecated APIs — find and use the replacement immediately.
+- **Zero warnings policy**: Before creating a PR, run `./mill __.compile 2>&1 | grep -i warn` and verify no output. Do not ship compiler warnings.
+- **Zero deprecations policy**: Deprecation warnings are enabled in Mill; also run `./mill __.compile 2>&1 | grep -i deprecat` and verify no output. Do not use deprecated APIs — find and use the replacement immediately.
 
 - **Guava group ID**: `com.google.guava:guava`, NOT `com.google.common:guava`
 - **GraalVM native image**: Guava needs `--initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies` (see `build-native.sh`)
