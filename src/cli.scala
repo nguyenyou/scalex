@@ -1,5 +1,5 @@
 import java.nio.file.{Files, Path}
-import clibase.{BatchLoop, Flags, Timings}
+import clibase.{BatchLoop, Flag, Flags, Timings}
 
 // ── CLI entry point ─────────────────────────────────────────────────────────
 
@@ -79,16 +79,22 @@ private def runCli(f: Flags, args: List[String]): Unit =
       }
 
     case "graph" :: _ =>
-      // graph command doesn't need workspace index — extract raw args after "graph", strip global flags
+      // graph command doesn't need workspace index — extract raw args after "graph",
+      // stripping every registry flag (derived from scalexFlags, so a newly added
+      // global flag can never leak into the edge-list args). Graph-local flags
+      // like --render/--unicode are not in the registry and pass through; --json
+      // is stripped here but already reflected in ctx.jsonOutput.
       val afterGraph = args.dropWhile(_ != "graph").drop(1)
       val graphArgs = {
         val buf = scala.collection.mutable.ListBuffer[String]()
         var i = 0
         while i < afterGraph.size do
-          afterGraph(i) match
-            case "-w" | "--workspace" | "--max-output" | "--in-package" => i += 1 // skip flag + value
-            case "--timings" | "--json" | "--each-method" => () // skip standalone flags already parsed
-            case other => buf += other
+          scalexFlags.byName.get(afterGraph(i)) match
+            case Some(_: Flag.BooleanFlag) => () // skip standalone flag
+            case Some(_: Flag.OptionalIntFlag) =>
+              if i + 1 < afterGraph.size && afterGraph(i + 1).toIntOption.isDefined then i += 1
+            case Some(_) => i += 1 // value-taking flag: skip its value too
+            case None => buf += afterGraph(i)
           i += 1
         buf.toList
       }

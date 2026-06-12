@@ -199,10 +199,8 @@ def astPatternSearch(idx: WorkspaceIndex, workspace: Path,
                      bodyContains: Option[String], noTests: Boolean,
                      pathFilter: Option[String], excludePath: Option[String] = None,
                      limit: Int): List[AstPatternMatch] = {
-  var candidates = idx.symbols.filter(s => typeKinds.contains(s.kind))
-  if noTests then candidates = candidates.filter(s => !isTestFile(s.file, workspace))
-  pathFilter.foreach { p => candidates = candidates.filter(s => matchesPath(s.file, p, workspace)) }
-  excludePath.foreach { p => candidates = candidates.filter(s => !matchesPath(s.file, p, workspace)) }
+  val keep = pathPredicate(noTests, pathFilter, excludePath, workspace)
+  var candidates = idx.symbols.filter(s => typeKinds.contains(s.kind) && keep(s.file))
 
   // Filter by extends
   extendsTrait.foreach { traitName =>

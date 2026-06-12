@@ -77,7 +77,8 @@ object Flag {
 
 /** An application's full flag set, in help-display order. */
 final class FlagRegistry(val flags: List[Flag[?]]) {
-  private[clibase] val byName: Map[String, Flag[?]] =
+  /** Lookup of every accepted spelling to its flag declaration. */
+  val byName: Map[String, Flag[?]] =
     flags.iterator.flatMap(f => f.names.map(_ -> f)).toMap
 
   /** Generated `Options:` section body — one line per flag, declaration order. */

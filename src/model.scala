@@ -18,6 +18,9 @@ enum SymbolKind(val id: Byte):
   case Extension extends SymbolKind(9)
   case Package   extends SymbolKind(10)
 
+  /** Lowercase display name used in all text and JSON output. */
+  def label: String = toString.toLowerCase
+
 object SymbolKind:
   private val byId: Array[SymbolKind] = values.sortBy(_.id)
   def fromId(id: Byte): SymbolKind = byId(id)
@@ -50,10 +53,28 @@ case class IndexedFile(
 enum RefCategory:
   case Definition, ExtendedBy, ImportedBy, UsedAsType, Comment, Usage
 
+/** Display order for reference categories (differs from declaration order). */
+val refCategoryOrder: List[RefCategory] = List(
+  RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
+  RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
+
 case class CategorizedRef(ref: Reference, category: RefCategory)
 
 enum Confidence:
   case High, Medium, Low
+
+  def label: String = this match {
+    case Confidence.High   => "High confidence"
+    case Confidence.Medium => "Medium confidence"
+    case Confidence.Low    => "Low confidence"
+  }
+
+  /** Parenthetical shown next to the label in categorized refs output. */
+  def explanation: String = this match {
+    case Confidence.High   => "import-matched"
+    case Confidence.Medium => "wildcard import"
+    case Confidence.Low    => "no matching import"
+  }
 
 // ── Member / body / hierarchy types ─────────────────────────────────────────
 
@@ -177,7 +198,7 @@ enum CmdResult:
   case SourceBlocks(symbol: String, blocks: List[(file: Path, body: BodyInfo)], contextLines: Int = 0, showImports: Boolean = false)
   case TestSuites(suites: List[TestSuiteResult], showBody: Boolean, emptyMessage: String = "No test suites found")
   case TestCount(suites: Int, tests: Int, dynamicSites: Int)
-  case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String])
+  case CoverageReport(symbol: String, totalRefs: Int, testRefs: List[Reference], testFiles: List[String], hint: Option[NotFoundHint] = None)
   case HierarchyResult(symbol: String, tree: HierarchyTree)
   case OverrideList(header: String, results: List[OverrideInfo])
   case Explanation(sym: SymbolInfo, doc: Option[String], members: List[MemberInfo], impls: List[SymbolInfo], importRefs: List[Reference],

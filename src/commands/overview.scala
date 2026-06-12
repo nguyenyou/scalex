@@ -24,11 +24,15 @@ private def isStdlibPackageOnly(lowerName: String, symbolsByName: Map[String, Li
     case None => false
     case Some(syms) => syms.forall(s => isStdlibPackage(s.packageName.toLowerCase))
 
+/** The indexed symbol behind a lowercased parentIndex key, if any. */
+private def recoverSymbol(lower: String, symbolsByName: Map[String, List[SymbolInfo]]): Option[SymbolInfo] =
+  symbolsByName.get(lower).flatMap(_.headOption)
+
 private def recoverName(lower: String, symbolsByName: Map[String, List[SymbolInfo]]): String =
-  symbolsByName.get(lower).flatMap(_.headOption).map(_.name).getOrElse(lower)
+  recoverSymbol(lower, symbolsByName).map(_.name).getOrElse(lower)
 
 private def recoverSignature(lower: String, symbolsByName: Map[String, List[SymbolInfo]]): String =
-  symbolsByName.get(lower).flatMap(_.headOption).map(_.signature).getOrElse("")
+  recoverSymbol(lower, symbolsByName).map(_.signature).getOrElse("")
 
 def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
   var allSymbols = filterSymbols(ctx.idx.symbols, ctx)
@@ -53,24 +57,18 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
 
   val effectiveArch = ctx.architecture || ctx.focusPackage.isDefined || ctx.concise
 
-  // Architecture: compute package dependency graph from imports
+  // Architecture: compute package dependency graph from imports recorded at
+  // index time (no source reparse needed)
   val archPkgDeps: Map[String, Set[String]] = if effectiveArch then {
     val deps = mutable.HashMap.empty[String, mutable.HashSet[String]]
     allSymbols.groupBy(_.file).foreach { (file, syms) =>
       val filePkg = syms.headOption.map(_.packageName).getOrElse("")
       if filePkg.nonEmpty && !isJavaFile(file) then {
-        parseFile(file).foreach { tree =>
-          val (imports, _) = extractImports(tree)
-          imports.foreach { imp =>
-            val trimmed = imp.trim.stripPrefix("import ")
-            // Extract package from import: "com.example.Foo" → "com.example"
-            val lastDot = trimmed.lastIndexOf('.')
-            if lastDot > 0 then {
-              val importPkg = trimmed.substring(0, lastDot)
-              // Only track cross-package dependencies
-              if importPkg != filePkg && ctx.idx.packages.contains(importPkg) then {
-                deps.getOrElseUpdate(filePkg, mutable.HashSet.empty) += importPkg
-              }
+        ctx.idx.fileImports(file).foreach { imp =>
+          parseImportTarget(imp).foreach { (importPkg, _, _) =>
+            // Only track cross-package dependencies
+            if importPkg != filePkg && ctx.idx.packages.contains(importPkg) then {
+              deps.getOrElseUpdate(filePkg, mutable.HashSet.empty) += importPkg
             }
           }
         }

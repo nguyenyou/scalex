@@ -1,7 +1,5 @@
 def cmdImports(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex imports <symbol>")
-    case Some(symbol) =>
+  requireArg(args, "Usage: scalex imports <symbol>") { symbol =>
       val (rawResults, timedOut) = ctx.idx.findImports(symbol, strict = ctx.strict)
       val results = filterRefs(rawResults, ctx)
       if results.isEmpty then
@@ -15,3 +13,4 @@ def cmdImports(args: List[String], ctx: CommandContext): CmdResult =
           refs = results,
           timedOut = timedOut,
           useContext = false)
+  }

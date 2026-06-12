@@ -1,7 +1,5 @@
 def cmdSearch(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex search <query>")
-    case Some(query) =>
+  requireArg(args, "Usage: scalex search <query>") { query =>
       var results = ctx.idx.search(query)
       ctx.searchMode.foreach {
         case "exact" =>
@@ -47,3 +45,4 @@ def cmdSearch(args: List[String], ctx: CommandContext): CmdResult =
           header = s"""Found ${results.size} symbols matching "$query":""",
           symbols = results,
           total = results.size)
+  }

@@ -1,9 +1,7 @@
 def cmdMembers(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex members <Symbol>")
-    case Some(symbol) =>
+  requireArg(args, "Usage: scalex members <Symbol>") { symbol =>
       val simpleName = simpleNameOf(symbol)
-      val typeDefs = ctx.idx.findDefinition(symbol).filter(s => typeKinds.contains(s.kind))
+      val typeDefs = findTypeDefs(symbol, ctx)
       val defs = filterSymbols(typeDefs, ctx)
 
       if defs.isEmpty then
@@ -29,3 +27,4 @@ def cmdMembers(args: List[String], ctx: CommandContext): CmdResult =
           )
         }
         CmdResult.MemberSections(symbol, sections)
+  }

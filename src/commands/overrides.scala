@@ -1,7 +1,5 @@
 def cmdOverrides(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex overrides <method> [--of <trait>]")
-    case Some(methodName) =>
+  requireArg(args, "Usage: scalex overrides <method> [--of <trait>]") { methodName =>
       var results = findOverrides(ctx.idx, methodName, ctx.ofTrait, ctx.limit)
       if ctx.withBody then
         results = results.map { o =>
@@ -19,3 +17,4 @@ def cmdOverrides(args: List[String], ctx: CommandContext): CmdResult =
         CmdResult.OverrideList(
           header = s"Overrides of $methodName$ofStr — ${results.size} found:",
           results = results)
+  }
