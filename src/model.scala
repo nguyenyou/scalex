@@ -19,20 +19,22 @@ object Timings:
       result
 
   def report(): Unit =
-    if !enabled then return
-    import scala.jdk.CollectionConverters.*
-    val items = entries.asScala.toList
-    entries.clear()
-    if items.isEmpty then return
-    val total = items.map(_._2).sum
-    System.err.println("Timings:")
-    items.foreach { (name, nanos) =>
-      val ms = nanos / 1_000_000.0
-      val pct = if total > 0 then (nanos * 100.0 / total).round else 0
-      System.err.println(f"  $name%-22s $ms%8.1f ms  ($pct%2d%%)")
+    if enabled then {
+      import scala.jdk.CollectionConverters.*
+      val items = entries.asScala.toList
+      entries.clear()
+      if items.nonEmpty then {
+        val total = items.map(_._2).sum
+        System.err.println("Timings:")
+        items.foreach { (name, nanos) =>
+          val ms = nanos / 1_000_000.0
+          val pct = if total > 0 then (nanos * 100.0 / total).round else 0
+          System.err.println(f"  $name%-22s $ms%8.1f ms  ($pct%2d%%)")
+        }
+        val totalMs = total / 1_000_000.0
+        System.err.println(f"  ${"total"}%-22s $totalMs%8.1f ms")
+      }
     }
-    val totalMs = total / 1_000_000.0
-    System.err.println(f"  ${"total"}%-22s $totalMs%8.1f ms")
 
   def reset(): Unit = entries.clear()
 
@@ -172,7 +174,7 @@ case class CommandContext(
 
 // ── CmdResult types ────────────────────────────────────────────────────────
 
-case class NotFoundHint(symbol: String, fileCount: Int, parseFailures: Int, cmd: String, batchMode: Boolean, looksLikePath: Boolean, suggestions: List[String] = Nil)
+case class NotFoundHint(symbol: String, fileCount: Int, parseFailures: Int, cmd: String, batchMode: Boolean, looksLikePath: Boolean, suggestions: List[String] = Nil, timedOut: Boolean = false)
 
 case class MemberSectionData(
   file: Path, ownerKind: SymbolKind, packageName: String, line: Int,

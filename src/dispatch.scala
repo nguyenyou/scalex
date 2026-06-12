@@ -62,7 +62,7 @@ private class BudgetPrintStream(baos: ByteArrayOutputStream, budget: Int) extend
 
   override def write(buf: Array[Byte], off: Int, len: Int): Unit =
     val remaining = hardCap - baos.size()
-    if remaining <= 0 then { exceeded = true; return }
-    if len <= remaining then super.write(buf, off, len)
-    else super.write(buf, off, remaining)
+    if remaining > 0 then
+      if len <= remaining then super.write(buf, off, len)
+      else super.write(buf, off, remaining)
     if baos.size() >= budget then exceeded = true

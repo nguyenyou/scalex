@@ -1,4 +1,5 @@
 import scala.collection.mutable
+import scala.util.Using
 import java.nio.file.{Files, Path}
 import java.io.{BufferedReader, BufferedInputStream, BufferedOutputStream, DataInputStream, DataOutputStream, InputStreamReader}
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -7,24 +8,43 @@ import com.google.common.hash.{BloomFilter, Funnels}
 
 // ── Git ─────────────────────────────────────────────────────────────────────
 
-def gitLsFiles(workspace: Path): List[GitFile] =
-  val pb = ProcessBuilder("git", "ls-files", "--stage")
-  pb.directory(workspace.toFile)
-  pb.redirectErrorStream(true)
-  val proc = pb.start()
-  val reader = BufferedReader(InputStreamReader(proc.getInputStream))
-  val files = reader.lines().iterator().asScala.flatMap { line =>
-    val tabIdx = line.indexOf('\t')
-    if tabIdx < 0 then None
-    else
-      val parts = line.substring(0, tabIdx).split("\\s+")
-      val path = line.substring(tabIdx + 1)
-      if parts.length >= 2 && (path.endsWith(".scala") || path.endsWith(".java")) then
-        Some(GitFile(workspace.resolve(path), parts(1)))
-      else None
-  }.toList
-  proc.waitFor()
-  files
+/** Run a git command in `workspace` and collect its stdout lines.
+  * Returns None if the process cannot be started (e.g. git not installed). */
+def runGitLines(workspace: Path, args: String*): Option[(lines: List[String], exitCode: Int)] = {
+  try {
+    val pb = ProcessBuilder(("git" +: args)*)
+    pb.directory(workspace.toFile)
+    pb.redirectErrorStream(true)
+    val proc = pb.start()
+    val lines = Using.resource(BufferedReader(InputStreamReader(proc.getInputStream))) { reader =>
+      reader.lines().iterator().asScala.toList
+    }
+    val exitCode = proc.waitFor()
+    Some((lines = lines, exitCode = exitCode))
+  } catch {
+    case e: java.io.IOException =>
+      System.err.println(s"scalex: failed to run git ${args.headOption.getOrElse("")} (${e.getMessage})")
+      None
+  }
+}
+
+def gitLsFiles(workspace: Path): List[GitFile] = {
+  runGitLines(workspace, "ls-files", "--stage") match {
+    case None => Nil
+    case Some(result) =>
+      result.lines.flatMap { line =>
+        val tabIdx = line.indexOf('\t')
+        if tabIdx < 0 then None
+        else {
+          val parts = line.substring(0, tabIdx).split("\\s+")
+          val path = line.substring(tabIdx + 1)
+          if parts.length >= 2 && (path.endsWith(".scala") || path.endsWith(".java")) then
+            Some(GitFile(workspace.resolve(path), parts(1)))
+          else None
+        }
+      }
+  }
+}
 
 // ── Binary persistence ──────────────────────────────────────────────────────
 
@@ -115,16 +135,20 @@ object IndexPersistence:
 
   def load(workspace: Path, loadBlooms: Boolean = true): Option[Map[String, IndexedFile]] =
     val p = indexPath(workspace)
-    if !Files.exists(p) then return None
+    if !Files.exists(p) then None
+    else try
+      Using.resource(DataInputStream(BufferedInputStream(Files.newInputStream(p), 1 << 16))) { in =>
+        if in.readInt() != MAGIC then None
+        else if in.readByte() != VERSION then None
+        else Some(loadBody(workspace, in, loadBlooms))
+      }
+    catch
+      case e: Exception =>
+        System.err.println(s"scalex: index load failed (${e.getClass.getSimpleName}: ${e.getMessage}) — rebuilding")
+        None
 
-    try
-      val in = DataInputStream(BufferedInputStream(Files.newInputStream(p), 1 << 16))
-      try
-        val magic = in.readInt()
-        if magic != MAGIC then return None
-        val version = in.readByte()
-        if version != VERSION then return None
-
+  /** Read the index body after the magic/version header has been validated. */
+  private def loadBody(workspace: Path, in: DataInputStream, loadBlooms: Boolean): Map[String, IndexedFile] =
         val strCount = in.readInt()
         val strings = Array.fill(strCount)(in.readUTF())
 
@@ -186,12 +210,7 @@ object IndexPersistence:
           result(relPath) = IndexedFile(relPath, oid, syms.result(), bloom, imports, aliases, parseFailed)
           fi += 1
 
-        Some(result.toMap)
-      finally in.close()
-    catch
-      case _: Exception =>
-        System.err.println("scalex: index load failed, rebuilding")
-        None
+        result.toMap
 
 // ── Workspace index ─────────────────────────────────────────────────────────
 
@@ -437,34 +456,39 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   def grepFiles(pattern: String, noTests: Boolean, pathFilter: Option[String],
                 excludePath: Option[String] = None,
                 timeoutMs: Long = defaultTimeoutMs): (results: List[Reference], timedOut: Boolean) =
-    val regex = try java.util.regex.Pattern.compile(pattern)
+    compileRegex(pattern) match
+      case None => (Nil, false)
+      case Some(regex) =>
+        var candidates = gitFiles
+        if noTests then candidates = candidates.filter(gf => !isTestFile(gf.path, workspace))
+        pathFilter.foreach { p => candidates = candidates.filter(gf => matchesPath(gf.path, p, workspace)) }
+        excludePath.foreach { p => candidates = candidates.filter(gf => !matchesPath(gf.path, p, workspace)) }
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000
+        var grepTimedOut = false
+        val results = ConcurrentLinkedQueue[Reference]()
+        val grepUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
+        candidates.asJava.parallelStream().forEach { gf =>
+          if System.nanoTime() < deadline then {
+            try {
+              val lines = Files.readAllLines(gf.path).asScala
+              lines.zipWithIndex.foreach { case (line, idx) =>
+                if System.nanoTime() < deadline then {
+                  if regex.matcher(line).find() then
+                    results.add(Reference(gf.path, idx + 1, line.trim))
+                } else grepTimedOut = true
+              }
+            } catch { case _: java.io.IOException => grepUnreadable.incrementAndGet(); () }
+          } else grepTimedOut = true
+        }
+        if grepUnreadable.get() > 0 then System.err.println(s"scalex: ${grepUnreadable.get()} file(s) unreadable during grep")
+        (results.asScala.toList.sortBy(r => (workspace.relativize(r.file).toString, r.line)), grepTimedOut)
+
+  private def compileRegex(pattern: String): Option[java.util.regex.Pattern] =
+    try Some(java.util.regex.Pattern.compile(pattern))
     catch
       case e: java.util.regex.PatternSyntaxException =>
         Console.err.println(s"Invalid regex: ${e.getMessage}")
-        return (Nil, false)
-    var candidates = gitFiles
-    if noTests then candidates = candidates.filter(gf => !isTestFile(gf.path, workspace))
-    pathFilter.foreach { p => candidates = candidates.filter(gf => matchesPath(gf.path, p, workspace)) }
-    excludePath.foreach { p => candidates = candidates.filter(gf => !matchesPath(gf.path, p, workspace)) }
-    val deadline = System.nanoTime() + timeoutMs * 1_000_000
-    var grepTimedOut = false
-    val results = ConcurrentLinkedQueue[Reference]()
-    val grepUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
-    candidates.asJava.parallelStream().forEach { gf =>
-      if System.nanoTime() < deadline then {
-        try {
-          val lines = Files.readAllLines(gf.path).asScala
-          lines.zipWithIndex.foreach { case (line, idx) =>
-            if System.nanoTime() < deadline then {
-              if regex.matcher(line).find() then
-                results.add(Reference(gf.path, idx + 1, line.trim))
-            } else grepTimedOut = true
-          }
-        } catch { case _: java.io.IOException => grepUnreadable.incrementAndGet(); () }
-      } else grepTimedOut = true
-    }
-    if grepUnreadable.get() > 0 then System.err.println(s"scalex: ${grepUnreadable.get()} file(s) unreadable during grep")
-    (results.asScala.toList.sortBy(r => (workspace.relativize(r.file).toString, r.line)), grepTimedOut)
+        None
 
   def search(query: String): List[SymbolInfo] =
     val lower = query.toLowerCase
@@ -524,9 +548,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     exact.toList ++ prefix.toList ++ contains.toList ++ fuzzy.sortBy(_.length).toList
 
   private val defaultTimeoutMs = 20_000L
-  var timedOut: Boolean = false
 
-  def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): List[Reference] =
+  def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): (results: List[Reference], timedOut: Boolean) =
     val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
     val (candidates, allCandidates, fileAliasMap) = Timings.phase("bloom-screen") {
       val candidates = indexedFiles.filter(f => f.identifierBloom.forall(_.mightContain(name)))
@@ -541,7 +564,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     }
 
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
-    timedOut = false
+    var timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
     val seen = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
     val refsUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
@@ -567,11 +590,11 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       }
     }
     if refsUnreadable.get() > 0 then System.err.println(s"scalex: ${refsUnreadable.get()} file(s) unreadable during refs")
-    results.asScala.toList
+    (results.asScala.toList, timedOut)
 
-  def categorizeReferences(name: String, strict: Boolean = false): Map[RefCategory, List[Reference]] =
-    val refs = findReferences(name, strict = strict)
-    refs.groupBy { r =>
+  def categorizeReferences(name: String, strict: Boolean = false): (grouped: Map[RefCategory, List[Reference]], timedOut: Boolean) =
+    val (refs, timedOut) = findReferences(name, strict = strict)
+    val grouped = refs.groupBy { r =>
       val line = r.contextLine
       if line.matches("""^\s*(trait|class|object|enum|given|type|def|val|var)\s+.*""") && containsWord(line, name) &&
          (line.contains(s"trait $name") || line.contains(s"class $name") || line.contains(s"object $name") ||
@@ -589,12 +612,13 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       else
         RefCategory.Usage
     }
+    (grouped, timedOut)
 
-  def findImports(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): List[Reference] =
+  def findImports(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): (results: List[Reference], timedOut: Boolean) =
     val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
     val candidates = indexedFiles.filter(f => f.identifierBloom.forall(_.mightContain(name)))
     val deadline = System.nanoTime() + timeoutMs * 1_000_000
-    timedOut = false
+    var timedOut = false
     val results = ConcurrentLinkedQueue[Reference]()
     val resultPaths = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
     val importsUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
@@ -634,7 +658,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
               } catch { case _: java.io.IOException => importsUnreadable.incrementAndGet(); () }
 
     if importsUnreadable.get() > 0 then System.err.println(s"scalex: ${importsUnreadable.get()} file(s) unreadable during imports")
-    results.asScala.toList
+    (results.asScala.toList, timedOut)
 
   private def filePackage(idxFile: IndexedFile): String =
     idxFile.symbols.headOption.map(_.packageName).getOrElse("")
@@ -674,28 +698,40 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     i == 0 || name(i).isUpper || (i > 0 && name(i - 1) == '_')
 
   private def camelCaseMatch(query: String, name: String): Boolean =
-    if query.length < 2 then return false
-    val qLower = query.toLowerCase
-    val nLower = name.toLowerCase
-    var qi = 0
-    var ni = 0
-    while qi < qLower.length && ni < nLower.length do
-      if qLower(qi) == nLower(ni) then
-        qi += 1
-        ni += 1
-      else
-        ni += 1
-        while ni < nLower.length && !isSegmentStart(name, ni) do ni += 1
-    qi == qLower.length
+    query.length >= 2 && {
+      val qLower = query.toLowerCase
+      val nLower = name.toLowerCase
+      var qi = 0
+      var ni = 0
+      while qi < qLower.length && ni < nLower.length do
+        if qLower(qi) == nLower(ni) then
+          qi += 1
+          ni += 1
+        else
+          ni += 1
+          while ni < nLower.length && !isSegmentStart(name, ni) do ni += 1
+      qi == qLower.length
+    }
+
+  /** True if `word` occurs in `line` with no word character (per `isWordChar`)
+    * directly before or after the occurrence. */
+  private def containsWordWith(line: String, word: String, isWordChar: Char => Boolean): Boolean = {
+    var i = line.indexOf(word)
+    var found = false
+    while !found && i >= 0 do {
+      val before = i == 0 || !isWordChar(line(i - 1))
+      val after = i + word.length >= line.length || !isWordChar(line(i + word.length))
+      if before && after then found = true
+      else i = line.indexOf(word, i + 1)
+    }
+    found
+  }
 
   private def containsWord(line: String, word: String): Boolean =
-    var i = line.indexOf(word)
-    while i >= 0 do
-      val before = i == 0 || !line(i - 1).isLetterOrDigit
-      val after = i + word.length >= line.length || !line(i + word.length).isLetterOrDigit
-      if before && after then return true
-      i = line.indexOf(word, i + 1)
-    false
+    containsWordWith(line, word, _.isLetterOrDigit)
+
+  private def containsWordStrict(line: String, word: String): Boolean =
+    containsWordWith(line, word, isIdentChar)
 
   private def isIdentChar(c: Char): Boolean =
     c.isLetterOrDigit || c == '_' || c == '$'
@@ -783,15 +819,6 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         if name == "_" || name == "*" then Some((pkg, Nil, true))
         else Some((pkg, List(name), false))
     }
-
-  private def containsWordStrict(line: String, word: String): Boolean =
-    var i = line.indexOf(word)
-    while i >= 0 do
-      val before = i == 0 || !isIdentChar(line(i - 1))
-      val after = i + word.length >= line.length || !isIdentChar(line(i + word.length))
-      if before && after then return true
-      i = line.indexOf(word, i + 1)
-    false
 
 // ── Filtering helpers ────────────────────────────────────────────────────────
 

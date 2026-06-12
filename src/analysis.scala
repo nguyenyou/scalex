@@ -1,91 +1,76 @@
 import scala.meta.*
 import scala.collection.mutable
-import java.nio.file.{Files, Path}
+import scala.util.Using
+import java.nio.file.Path
 import java.io.{BufferedReader, InputStreamReader}
 import scala.jdk.CollectionConverters.*
 
 // ── Hierarchy building ──────────────────────────────────────────────────────
 
 def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDown: Boolean, maxDepth: Int, workspace: Path): Option[HierarchyTree] = {
-  val defs = idx.findDefinition(symbolName)
-  if defs.isEmpty then return None
-
-  val sym = defs.head
-  val rootNode = HierarchyNode(sym.name, Some(sym.kind), Some(sym.file), Some(sym.line), sym.packageName, isExternal = false)
-
   def walkUp(name: String, visited: Set[String], depth: Int): List[HierarchyTree] = {
-    if depth >= maxDepth || visited.contains(name.toLowerCase) then return Nil
-    val newVisited = visited + name.toLowerCase
-    val defs = idx.findDefinition(name)
-    if defs.isEmpty then Nil
+    if depth >= maxDepth || visited.contains(name.toLowerCase) then Nil
     else {
-      val s = defs.head
-      s.parents.map { parentName =>
-        val parentDefs = idx.findDefinition(parentName)
-        if parentDefs.isEmpty then {
-          val extNode = HierarchyNode(parentName, None, None, None, "", isExternal = true)
-          HierarchyTree(extNode, Nil, Nil)
-        } else {
-          val pd = parentDefs.head
-          val pNode = HierarchyNode(pd.name, Some(pd.kind), Some(pd.file), Some(pd.line), pd.packageName, isExternal = false)
-          val grandParents = walkUp(pd.name, newVisited, depth + 1)
-          HierarchyTree(pNode, grandParents, Nil)
+      val newVisited = visited + name.toLowerCase
+      idx.findDefinition(name).headOption.toList.flatMap { s =>
+        s.parents.map { parentName =>
+          idx.findDefinition(parentName).headOption match {
+            case None =>
+              val extNode = HierarchyNode(parentName, None, None, None, "", isExternal = true)
+              HierarchyTree(extNode, Nil, Nil)
+            case Some(pd) =>
+              val pNode = HierarchyNode(pd.name, Some(pd.kind), Some(pd.file), Some(pd.line), pd.packageName, isExternal = false)
+              val grandParents = walkUp(pd.name, newVisited, depth + 1)
+              HierarchyTree(pNode, grandParents, Nil)
+          }
         }
       }
     }
   }
 
   def walkDown(name: String, visited: Set[String], depth: Int): List[HierarchyTree] = {
-    if depth >= maxDepth || visited.contains(name.toLowerCase) then return Nil
-    val newVisited = visited + name.toLowerCase
-    val impls = idx.findImplementations(name)
-    impls.map { s =>
-      val node = HierarchyNode(s.name, Some(s.kind), Some(s.file), Some(s.line), s.packageName, isExternal = false)
-      if depth + 1 >= maxDepth then {
-        val truncated = idx.findImplementations(s.name).size
-        HierarchyTree(node, Nil, Nil, truncatedChildren = truncated)
-      } else {
-        val grandChildren = walkDown(s.name, newVisited, depth + 1)
-        HierarchyTree(node, Nil, grandChildren)
+    if depth >= maxDepth || visited.contains(name.toLowerCase) then Nil
+    else {
+      val newVisited = visited + name.toLowerCase
+      idx.findImplementations(name).map { s =>
+        val node = HierarchyNode(s.name, Some(s.kind), Some(s.file), Some(s.line), s.packageName, isExternal = false)
+        if depth + 1 >= maxDepth then {
+          val truncated = idx.findImplementations(s.name).size
+          HierarchyTree(node, Nil, Nil, truncatedChildren = truncated)
+        } else {
+          val grandChildren = walkDown(s.name, newVisited, depth + 1)
+          HierarchyTree(node, Nil, grandChildren)
+        }
       }
     }
   }
 
-  val parents = if goUp then walkUp(sym.name, Set.empty, 0) else Nil
-  val children = if goDown then walkDown(sym.name, Set.empty, 0) else Nil
-  Some(HierarchyTree(rootNode, parents, children))
+  idx.findDefinition(symbolName).headOption.map { sym =>
+    val rootNode = HierarchyNode(sym.name, Some(sym.kind), Some(sym.file), Some(sym.line), sym.packageName, isExternal = false)
+    val parents = if goUp then walkUp(sym.name, Set.empty, 0) else Nil
+    val children = if goDown then walkDown(sym.name, Set.empty, 0) else Nil
+    HierarchyTree(rootNode, parents, children)
+  }
 }
 
 // ── Override finding ────────────────────────────────────────────────────────
 
 def findOverrides(idx: WorkspaceIndex, methodName: String, ofTrait: Option[String], limit: Int): List[OverrideInfo] = {
   val buf = mutable.ListBuffer.empty[OverrideInfo]
-  val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+
+  def addMatchingMembers(s: SymbolInfo): Unit =
+    extractMembers(s.file, s.name).filter(_.name == methodName).foreach { m =>
+      buf += OverrideInfo(s.file, m.line, s.name, s.kind, m.signature, s.packageName)
+    }
 
   ofTrait match
     case Some(traitName) =>
-      val impls = idx.findImplementations(traitName)
-      impls.foreach { s =>
-        if typeKinds.contains(s.kind) then {
-          val members = extractMembers(s.file, s.name)
-          members.filter(_.name == methodName).foreach { m =>
-            buf += OverrideInfo(s.file, m.line, s.name, s.kind, m.signature, s.packageName)
-          }
-        }
-      }
+      idx.findImplementations(traitName).filter(s => typeKinds.contains(s.kind)).foreach(addMatchingMembers)
     case None =>
-      // Find the method's defining type first
-      val methodDefs = idx.findDefinition(methodName).filter(s => s.kind == SymbolKind.Def || s.kind == SymbolKind.Val)
-      // Also search all types that have a member with this name
+      // No declaring trait given: scan all types for a member with this name, capped by limit
       val allTypes = idx.symbols.filter(s => typeKinds.contains(s.kind))
       val iter = allTypes.iterator
-      while iter.hasNext && buf.size < limit do {
-        val s = iter.next()
-        val members = extractMembers(s.file, s.name)
-        members.filter(_.name == methodName).foreach { m =>
-          buf += OverrideInfo(s.file, m.line, s.name, s.kind, m.signature, s.packageName)
-        }
-      }
+      while iter.hasNext && buf.size < limit do addMatchingMembers(iter.next())
 
   buf.toList
 }
@@ -98,105 +83,77 @@ def extractDeps(idx: WorkspaceIndex, symbolName: String, workspace: Path, maxDep
   val visited = mutable.HashSet.empty[String]
 
   def extractSingle(name: String, depth: Int): Unit = {
-    if depth >= maxDepth || visited.contains(name.toLowerCase) then return
-    visited += name.toLowerCase
+    if depth < maxDepth && !visited.contains(name.toLowerCase) then {
+      visited += name.toLowerCase
+      idx.findDefinition(name).headOption.filterNot(sym => isJavaFile(sym.file)).foreach { sym =>
+        val seenNames = mutable.HashSet.empty[String]
+        seenNames += name // avoid self-reference
 
-    val defs = idx.findDefinition(name)
-    if defs.isEmpty then return
-
-    val sym = defs.head
-    if isJavaFile(sym.file) then return
-    val seenNames = mutable.HashSet.empty[String]
-    seenNames += name // avoid self-reference
-
-    parseFile(sym.file) match {
-      case None => ()
-      case Some(tree) =>
-        def findNode(t: Tree): Option[Tree] = {
-          t match
-            case d: Defn.Class if d.name.value == name => Some(d)
-            case d: Defn.Trait if d.name.value == name => Some(d)
-            case d: Defn.Object if d.name.value == name => Some(d)
-            case d: Defn.Enum if d.name.value == name => Some(d)
-            case d: Defn.Def if d.name.value == name => Some(d)
-            case _ =>
-              var result: Option[Tree] = None
-              t.children.foreach { c =>
-                if result.isEmpty then result = findNode(c)
-              }
-              result
+        // Record a dependency on `depName` (resolved via the index) into `sink`
+        def addDep(depName: String, sink: mutable.ListBuffer[DepInfo]): Unit = {
+          if !seenNames.contains(depName) then {
+            seenNames += depName
+            idx.findDefinition(depName).headOption.foreach { f =>
+              if !visited.contains(f.name.toLowerCase) then
+                sink += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName, depth)
+            }
+          }
         }
 
-        // Collect imports at the file level
-        def collectImports(t: Tree): Unit = {
-          t match
-            case i: Import =>
-              i.importers.foreach { importer =>
-                importer.importees.foreach {
-                  case importee: Importee.Name =>
-                    val iname = importee.name.value
-                    if !seenNames.contains(iname) then {
-                      seenNames += iname
-                      val found = idx.findDefinition(iname)
-                      if found.nonEmpty then {
-                        val f = found.head
-                        if !visited.contains(f.name.toLowerCase) then
-                          allImportDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName, depth)
-                      }
-                    }
-                  case importee: Importee.Rename =>
-                    val iname = importee.name.value
-                    if !seenNames.contains(iname) then {
-                      seenNames += iname
-                      val found = idx.findDefinition(iname)
-                      if found.nonEmpty then {
-                        val f = found.head
-                        if !visited.contains(f.name.toLowerCase) then
-                          allImportDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName, depth)
-                      }
-                    }
-                  case _ =>
-                }
-              }
-            case _ =>
-          t.children.foreach(collectImports)
-        }
-        collectImports(tree)
-
-        // Collect type/term references in the symbol's body
-        findNode(tree).foreach { node =>
-          def collectRefs(t: Tree): Unit = {
+        parseFile(sym.file).foreach { tree =>
+          def findNode(t: Tree): Option[Tree] = {
             t match
-              case Type.Name(typeName) if typeName != name && !seenNames.contains(typeName) =>
-                seenNames += typeName
-                val found = idx.findDefinition(typeName)
-                if found.nonEmpty then {
-                  val f = found.head
-                  if !visited.contains(f.name.toLowerCase) then
-                    allBodyDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName, depth)
+              case d: Defn.Class if d.name.value == name => Some(d)
+              case d: Defn.Trait if d.name.value == name => Some(d)
+              case d: Defn.Object if d.name.value == name => Some(d)
+              case d: Defn.Enum if d.name.value == name => Some(d)
+              case d: Defn.Def if d.name.value == name => Some(d)
+              case _ =>
+                var result: Option[Tree] = None
+                t.children.foreach { c =>
+                  if result.isEmpty then result = findNode(c)
                 }
-              case Term.Name(termName) if termName != name && !seenNames.contains(termName) =>
-                seenNames += termName
-                val found = idx.findDefinition(termName)
-                if found.nonEmpty then {
-                  val f = found.head
-                  if !visited.contains(f.name.toLowerCase) then
-                    allBodyDeps += DepInfo(f.name, f.kind.toString.toLowerCase, Some(f.file), Some(f.line), f.packageName, depth)
+                result
+          }
+
+          // Collect imports at the file level
+          def collectImports(t: Tree): Unit = {
+            t match
+              case i: Import =>
+                i.importers.foreach { importer =>
+                  importer.importees.foreach {
+                    case importee: Importee.Name => addDep(importee.name.value, allImportDeps)
+                    case importee: Importee.Rename => addDep(importee.name.value, allImportDeps)
+                    case _ =>
+                  }
                 }
               case _ =>
-            t.children.foreach(collectRefs)
+            t.children.foreach(collectImports)
           }
-          collectRefs(node)
-        }
+          collectImports(tree)
 
-        // Recurse into discovered deps at the next depth level
-        if depth + 1 < maxDepth then {
-          val newDeps = (allImportDeps.toList ++ allBodyDeps.toList)
-            .filter(_.depth == depth)
-            .map(_.name)
-            .distinct
-          newDeps.foreach(dep => extractSingle(dep, depth + 1))
+          // Collect type/term references in the symbol's body
+          findNode(tree).foreach { node =>
+            def collectRefs(t: Tree): Unit = {
+              t match
+                case Type.Name(typeName) if typeName != name => addDep(typeName, allBodyDeps)
+                case Term.Name(termName) if termName != name => addDep(termName, allBodyDeps)
+                case _ =>
+              t.children.foreach(collectRefs)
+            }
+            collectRefs(node)
+          }
+
+          // Recurse into discovered deps at the next depth level
+          if depth + 1 < maxDepth then {
+            val newDeps = (allImportDeps.toList ++ allBodyDeps.toList)
+              .filter(_.depth == depth)
+              .map(_.name)
+              .distinct
+            newDeps.foreach(dep => extractSingle(dep, depth + 1))
+          }
         }
+      }
     }
   }
 
@@ -206,16 +163,11 @@ def extractDeps(idx: WorkspaceIndex, symbolName: String, workspace: Path, maxDep
 
 // ── Diff extraction ─────────────────────────────────────────────────────────
 
-def runGitDiff(workspace: Path, ref: String): List[String] = {
-  val pb = ProcessBuilder("git", "diff", "--name-only", ref)
-  pb.directory(workspace.toFile)
-  pb.redirectErrorStream(true)
-  val proc = pb.start()
-  val reader = BufferedReader(InputStreamReader(proc.getInputStream))
-  val files = reader.lines().iterator().asScala.filter(f => f.endsWith(".scala") || f.endsWith(".java")).toList
-  proc.waitFor()
-  files
-}
+def runGitDiff(workspace: Path, ref: String): List[String] =
+  runGitLines(workspace, "diff", "--name-only", ref) match {
+    case None => Nil
+    case Some(result) => result.lines.filter(f => f.endsWith(".scala") || f.endsWith(".java"))
+  }
 
 def gitShowFile(workspace: Path, ref: String, relPath: String): Option[String] = {
   try {
@@ -223,8 +175,9 @@ def gitShowFile(workspace: Path, ref: String, relPath: String): Option[String] =
     pb.directory(workspace.toFile)
     pb.redirectErrorStream(false)
     val proc = pb.start()
-    val reader = BufferedReader(InputStreamReader(proc.getInputStream))
-    val content = reader.lines().iterator().asScala.mkString("\n")
+    val content = Using.resource(BufferedReader(InputStreamReader(proc.getInputStream))) { reader =>
+      reader.lines().iterator().asScala.mkString("\n")
+    }
     val exitCode = proc.waitFor()
     if exitCode == 0 then Some(content) else None
   } catch {
@@ -232,25 +185,13 @@ def gitShowFile(workspace: Path, ref: String, relPath: String): Option[String] =
   }
 }
 
-def extractSymbolsFromSource(source: String, filePath: String): List[DiffSymbol] = {
-  val input = Input.VirtualFile(filePath, source)
-  val tree = try {
-    given scala.meta.Dialect = scala.meta.dialects.Scala3
-    input.parse[Source].get
-  } catch {
-    case _: Exception =>
-      try {
-        given scala.meta.Dialect = scala.meta.dialects.Scala213
-        input.parse[Source].get
-      } catch {
-        case _: Exception =>
-          return Nil
-      }
+def extractSymbolsFromSource(source: String, filePath: String): List[DiffSymbol] =
+  parseSource(source, filePath) match {
+    case None => Nil
+    case Some(tree) =>
+      val (rawSymbols, pkg) = extractRawSymbols(tree)
+      rawSymbols.map(r => DiffSymbol(r.name, r.kind, filePath, r.line, pkg, r.signature))
   }
-
-  val (rawSymbols, pkg) = extractRawSymbols(tree)
-  rawSymbols.map(r => DiffSymbol(r.name, r.kind, filePath, r.line, pkg, r.signature))
-}
 
 // ── AST pattern search ──────────────────────────────────────────────────────
 
@@ -259,7 +200,6 @@ def astPatternSearch(idx: WorkspaceIndex, workspace: Path,
                      bodyContains: Option[String], noTests: Boolean,
                      pathFilter: Option[String], excludePath: Option[String] = None,
                      limit: Int): List[AstPatternMatch] = {
-  val typeKinds = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
   var candidates = idx.symbols.filter(s => typeKinds.contains(s.kind))
   if noTests then candidates = candidates.filter(s => !isTestFile(s.file, workspace))
   pathFilter.foreach { p => candidates = candidates.filter(s => matchesPath(s.file, p, workspace)) }

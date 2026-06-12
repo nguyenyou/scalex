@@ -1,4 +1,6 @@
-def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
+import scala.util.boundary, boundary.break
+
+def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = boundary {
   args.headOption match
     case None => CmdResult.UsageError("Usage: scalex explain <symbol>")
     case Some(symbol) =>
@@ -10,7 +12,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
           case Some(memberResults) =>
             val msym = memberResults.head
             val doc = if ctx.noDoc then None else extractDoc(msym.file, msym.line)
-            return CmdResult.Explanation(msym, doc, Nil, Nil, Nil)
+            break(CmdResult.Explanation(msym, doc, Nil, Nil, Nil))
           case None => ()
       if defs.isEmpty then
         // Fuzzy fallback: try search and auto-show best match if unambiguous
@@ -100,10 +102,11 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult =
             if ctx.expandDepth > 0 then expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
             else Nil
           // Import refs (apply path/exclude/noTests filters)
-          val importRefs = filterRefs(ctx.idx.findImports(simpleName, timeoutMs = 3000), ctx)
+          val importRefs = filterRefs(ctx.idx.findImports(simpleName, timeoutMs = 3000).results, ctx)
           CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls,
             otherMatches = otherMatches, totalImpls = totalImpls, inherited = inherited,
             relatedTypes = relatedTypes)
+}
 
 private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
                         depth: Int, visited: Set[String]): List[ExplainedImpl] =

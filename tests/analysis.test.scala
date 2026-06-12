@@ -317,7 +317,7 @@ class AnalysisSuite extends ScalexTestBase:
   test("coverage excludes non-test file refs") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val allFiles = refs.map(r => workspace.relativize(r.file).toString).distinct
     val testFiles = refs.filter(r => isTestFile(r.file, workspace)).map(r => workspace.relativize(r.file).toString).distinct
     // There should be refs in non-test files too

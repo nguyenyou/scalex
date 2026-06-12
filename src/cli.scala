@@ -44,134 +44,98 @@ case class ParsedFlags(
   cleanArgs: List[String] = Nil,
 )
 
-private val flagsWithArgs = Set("--limit", "--kind", "--workspace", "-w", "--path", "--exclude-path", "-C", "-e", "--category",
-                         "--in", "--of", "--impl-limit", "--depth", "--has-method", "--extends", "--body-contains", "--focus-package", "--expand",
-                         "--members-limit", "--used-by", "--returns", "--takes", "--top", "--max-lines", "--offset",
-                         "--max-output", "--in-package")
+/** Single left-to-right pass over the arg list. Each token is classified exactly
+  * once as a flag, a flag's value, or a positional arg — so a positional that
+  * happens to equal a flag's value elsewhere in the list is never misclassified. */
+def parseFlags(argList: List[String]): ParsedFlags = {
+  var f = ParsedFlags()
+  val positional = List.newBuilder[String]
+  // Paired flags are resolved after the pass
+  var sawUp = false
+  var sawDown = false
+  var sawExact = false
+  var sawPrefix = false
+  var wsLong: Option[String] = None
+  var wsShort: Option[String] = None
 
-def parseFlags(argList: List[String]): ParsedFlags =
-  val limit = argList.indexOf("--limit") match
-    case -1 => 20
-    case i =>
-      val v = argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(20)
-      if v == 0 then Int.MaxValue else v
-  val kindFilter = argList.indexOf("--kind") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val verbose = argList.contains("--verbose")
-  val categorize = !argList.contains("--flat")
-  val includeTests = argList.contains("--include-tests")
-  val noTests = argList.contains("--no-tests")
-  val pathFilter: Option[String] = argList.indexOf("--path") match
-    case -1 => None
-    case i => argList.lift(i + 1).map(p => p.stripPrefix("/"))
-  val contextLines: Int = argList.indexOf("-C") match
-    case -1 => 0
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
-  val jsonOutput = argList.contains("--json")
-  val countOnly = argList.contains("--count")
-  val searchMode: Option[String] =
-    if argList.contains("--exact") then Some("exact")
-    else if argList.contains("--prefix") then Some("prefix")
-    else None
-  val definitionsOnly = argList.contains("--definitions-only")
-  val categoryFilter: Option[String] = argList.indexOf("--category") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val grepPatterns: List[String] = argList.zipWithIndex.collect {
-    case ("-e", i) if argList.lift(i + 1).exists(a => !a.startsWith("-")) => argList(i + 1)
+  val args = argList.toVector
+  var i = 0
+  while i < args.length do {
+    // For flags that take a value: read the next token and consume it
+    def value: Option[String] = {
+      i += 1
+      args.lift(i)
+    }
+    def intValue(default: Int): Int = value.flatMap(_.toIntOption).getOrElse(default)
+
+    args(i) match {
+      case "--limit"          => val v = intValue(20); f = f.copy(limit = if v == 0 then Int.MaxValue else v)
+      case "--kind"           => f = f.copy(kindFilter = value)
+      case "--workspace"      => wsLong = value
+      case "-w"               => wsShort = value
+      case "--path"           => f = f.copy(pathFilter = value.map(_.stripPrefix("/")))
+      case "--exclude-path"   => f = f.copy(excludePath = value.map(_.stripPrefix("/")))
+      case "-C"               => f = f.copy(contextLines = intValue(0))
+      case "-e"               => value.filterNot(_.startsWith("-")).foreach(p => f = f.copy(grepPatterns = f.grepPatterns :+ p))
+      case "--category"       => f = f.copy(categoryFilter = value)
+      case "--in"             => f = f.copy(inOwner = value)
+      case "--of"             => f = f.copy(ofTrait = value)
+      case "--impl-limit"     => f = f.copy(implLimit = intValue(5))
+      case "--depth"          => f = f.copy(maxDepth = intValue(-1))
+      case "--has-method"     => f = f.copy(hasMethodFilter = value)
+      case "--extends"        => f = f.copy(extendsFilter = value)
+      case "--body-contains"  => f = f.copy(bodyContainsFilter = value)
+      case "--focus-package"  => f = f.copy(focusPackage = value)
+      case "--expand"         => f = f.copy(expandDepth = intValue(1))
+      case "--members-limit"  => f = f.copy(membersLimit = intValue(10))
+      case "--used-by"        => f = f.copy(usedByFilter = value)
+      case "--returns"        => f = f.copy(returnsFilter = value)
+      case "--takes"          => f = f.copy(takesFilter = value)
+      case "--top"            => f = f.copy(topN = value.flatMap(_.toIntOption))
+      case "--max-lines"      => f = f.copy(maxBodyLines = intValue(0))
+      case "--offset"         => f = f.copy(offset = intValue(0))
+      case "--max-output"     => f = f.copy(maxOutput = intValue(0))
+      case "--in-package"     => f = f.copy(inPackageFilter = value)
+      case "--verbose"        => f = f.copy(verbose = true)
+      case "--flat"           => f = f.copy(categorize = false)
+      case "--include-tests"  => f = f.copy(includeTests = true)
+      case "--no-tests"       => f = f.copy(noTests = true)
+      case "--json"           => f = f.copy(jsonOutput = true)
+      case "--count"          => f = f.copy(countOnly = true)
+      case "--exact"          => sawExact = true
+      case "--prefix"         => sawPrefix = true
+      case "--definitions-only" => f = f.copy(definitionsOnly = true)
+      case "--up"             => sawUp = true
+      case "--down"           => sawDown = true
+      case "--inherited"      => f = f.copy(inherited = true)
+      case "--architecture"   => f = f.copy(architecture = true)
+      case "--brief"          => f = f.copy(brief = true)
+      case "--strict"         => f = f.copy(strict = true)
+      case "--shallow"        => f = f.copy(shallow = true)
+      case "--no-doc"         => f = f.copy(noDoc = true)
+      case "--summary"        => f = f.copy(summaryMode = true)
+      case "--timings"        => f = f.copy(timingsEnabled = true)
+      case "--body" | "--with-bodies" => f = f.copy(withBody = true)
+      case "--imports"        => f = f.copy(showImports = true)
+      case "--related"        => f = f.copy(related = true)
+      case "--explain"        => f = f.copy(explainMode = true)
+      case "--concise"        => f = f.copy(concise = true)
+      case "--each-method"    => f = f.copy(eachMethod = true)
+      case "--categorize" | "-c" => () // categorized output is the default; kept for backwards compatibility
+      case other if other.startsWith("--") => () // unknown long flags are ignored
+      case other => positional += other
+    }
+    i += 1
   }
-  val explicitWorkspace: Option[String] =
-    val longIdx = argList.indexOf("--workspace")
-    val shortIdx = argList.indexOf("-w")
-    val idx = if longIdx >= 0 then longIdx else shortIdx
-    if idx >= 0 then argList.lift(idx + 1) else None
-  val inOwner: Option[String] = argList.indexOf("--in") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val ofTrait: Option[String] = argList.indexOf("--of") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val implLimit: Int = argList.indexOf("--impl-limit") match
-    case -1 => 5
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
-  val goUp = !argList.contains("--down") || argList.contains("--up")
-  val goDown = !argList.contains("--up") || argList.contains("--down")
-  val maxDepth: Int = argList.indexOf("--depth") match
-    case -1 => -1
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(-1)
-  val inherited = argList.contains("--inherited")
-  val architecture = argList.contains("--architecture")
-  val hasMethodFilter: Option[String] = argList.indexOf("--has-method") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val extendsFilter: Option[String] = argList.indexOf("--extends") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val bodyContainsFilter: Option[String] = argList.indexOf("--body-contains") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val focusPackage: Option[String] = argList.indexOf("--focus-package") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val expandDepth: Int = argList.indexOf("--expand") match
-    case -1 => 0
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(1)
-  val membersLimit: Int = argList.indexOf("--members-limit") match
-    case -1 => 10
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(10)
-  val brief = argList.contains("--brief")
-  val strict = argList.contains("--strict")
-  val usedByFilter: Option[String] = argList.indexOf("--used-by") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val returnsFilter: Option[String] = argList.indexOf("--returns") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val takesFilter: Option[String] = argList.indexOf("--takes") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val shallow = argList.contains("--shallow")
-  val noDoc = argList.contains("--no-doc")
-  val excludePath: Option[String] = argList.indexOf("--exclude-path") match
-    case -1 => None
-    case i => argList.lift(i + 1).map(p => p.stripPrefix("/"))
-  val topN: Option[Int] = argList.indexOf("--top") match
-    case -1 => None
-    case i => argList.lift(i + 1).flatMap(_.toIntOption)
-  val summaryMode = argList.contains("--summary")
-  val timingsEnabled = argList.contains("--timings")
-  val withBody = argList.contains("--body") || argList.contains("--with-bodies")
-  val maxBodyLines: Int = argList.indexOf("--max-lines") match
-    case -1 => 0
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
-  val showImports = argList.contains("--imports")
-  val offset: Int = argList.indexOf("--offset") match
-    case -1 => 0
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
-  val related = argList.contains("--related")
-  val explainMode = argList.contains("--explain")
-  val concise = argList.contains("--concise")
-  val maxOutput: Int = argList.indexOf("--max-output") match
-    case -1 => 0
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(0)
-  val inPackageFilter: Option[String] = argList.indexOf("--in-package") match
-    case -1 => None
-    case i => argList.lift(i + 1)
-  val eachMethod = argList.contains("--each-method")
 
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || a == "-w" || a == "-C" || a == "-e" || a == "-c" || {
-    val prev = argList.indexOf(a) - 1
-    prev >= 0 && flagsWithArgs.contains(argList(prev))
-  })
-
-  ParsedFlags(limit, kindFilter, verbose, categorize, includeTests, noTests, pathFilter,
-    contextLines, jsonOutput, countOnly, searchMode, definitionsOnly, categoryFilter, grepPatterns,
-    explicitWorkspace, inOwner, ofTrait, implLimit, goUp, goDown, maxDepth, inherited, architecture,
-    hasMethodFilter, extendsFilter, bodyContainsFilter, focusPackage, expandDepth, membersLimit,
-    brief, strict, usedByFilter, returnsFilter, takesFilter, shallow, noDoc, excludePath, topN,
-    summaryMode, timingsEnabled, withBody, maxBodyLines, showImports, offset, related, explainMode,
-    concise, maxOutput, inPackageFilter, eachMethod, cleanArgs)
+  f.copy(
+    searchMode = if sawExact then Some("exact") else if sawPrefix then Some("prefix") else None,
+    goUp = !sawDown || sawUp,
+    goDown = !sawUp || sawDown,
+    explicitWorkspace = wsLong.orElse(wsShort),
+    cleanArgs = positional.result(),
+  )
+}
 
 private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
                            batchMode: Boolean = false, effectiveNoTests: Option[Boolean] = None): CommandContext =
@@ -195,12 +159,10 @@ private def flagsToContext(f: ParsedFlags, idx: WorkspaceIndex, workspace: Path,
     eachMethod = f.eachMethod)
 
 @main def main(args: String*): Unit =
-  val f = parseFlags(args.toList)
+  if args.contains("--version") then println(ScalexVersion)
+  else runCli(parseFlags(args.toList), args.toList)
 
-  if args.contains("--version") then
-    println(ScalexVersion)
-    return
-
+private def runCli(f: ParsedFlags, args: List[String]): Unit =
   Timings.enabled = f.timingsEnabled
 
   f.cleanArgs match
