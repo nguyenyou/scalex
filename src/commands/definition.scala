@@ -8,8 +8,7 @@ def cmdDef(args: List[String], ctx: CommandContext): CmdResult =
           case Some(memberResults) =>
             CmdResult.SymbolList(
               header = s"""Definition of "$symbol":""",
-              symbols = memberResults,
-              total = memberResults.size)
+              symbols = memberResults)
           case None =>
             CmdResult.NotFound(
               s"""Definition of "$symbol": not found""",
@@ -21,8 +20,7 @@ def cmdDef(args: List[String], ctx: CommandContext): CmdResult =
       else
         CmdResult.SymbolList(
           header = s"""Definition of "$symbol":""",
-          symbols = results,
-          total = results.size)
+          symbols = results)
   }
 
 /** Resolve Owner.member syntax: if Owner is a type, extract its members and filter to the member name */

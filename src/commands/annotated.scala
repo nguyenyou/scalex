@@ -5,6 +5,5 @@ def cmdAnnotated(args: List[String], ctx: CommandContext): CmdResult =
       CmdResult.SymbolList(
         header = s"Symbols annotated with @$annot — ${results.size} found:",
         symbols = results,
-        total = results.size,
         emptyMessage = s"No symbols with @$annot annotation found")
   }

@@ -1,4 +1,5 @@
 import java.nio.file.Path
+import java.util.regex.{Pattern, PatternSyntaxException}
 import scala.collection.mutable
 
 // ── Command helpers ─────────────────────────────────────────────────────────
@@ -31,21 +32,14 @@ def splitOwnerMember(s: String): Option[(owner: String, member: String)] = {
 def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
   // Only \| needs unconditional conversion: POSIX alternation vs Java literal pipe.
   // \( and \) mean "literal paren" in both POSIX and Java — leave them alone.
-  if hasRegexHint(pattern) then
-    val fixed = pattern.replace("\\|", "|")
-    try
-      java.util.regex.Pattern.compile(fixed)
-      (pattern = fixed, wasFixed = true)
-    catch
-      case _: java.util.regex.PatternSyntaxException =>
-        (pattern = java.util.regex.Pattern.quote(fixed), wasFixed = true)
-  else
-    try
-      java.util.regex.Pattern.compile(pattern)
-      (pattern = pattern, wasFixed = false)
-    catch
-      case _: java.util.regex.PatternSyntaxException =>
-        (pattern = java.util.regex.Pattern.quote(pattern), wasFixed = true)
+  val candidate = if hasRegexHint(pattern) then pattern.replace("\\|", "|") else pattern
+  try {
+    Pattern.compile(candidate)
+    (pattern = candidate, wasFixed = candidate != pattern)
+  } catch {
+    case _: PatternSyntaxException =>
+      (pattern = Pattern.quote(candidate), wasFixed = true)
+  }
 
 // ── Suggestions for not-found ────────────────────────────────────────────────
 
@@ -53,7 +47,7 @@ def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String):
   var results = ctx.idx.search(symbol)
   if ctx.noTests then results = results.filter(s => !isTestFile(s.file, ctx.workspace))
   val suggestions = results.take(5).map { s =>
-    s"${s.kind.toString.toLowerCase} ${s.name} (${s.packageName})"
+    s"${s.kind.label} ${s.name} (${s.packageName})"
   }
   NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode,
     symbol.contains("/") || symbol.startsWith("."), suggestions)
@@ -62,23 +56,15 @@ def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String):
 def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext): List[String] =
   val ownerDefs = filterSymbols(findTypeDefs(owner, ctx), ctx.copy(kindFilter = None))
   val members = ownerDefs.headOption.toList.flatMap(s => extractMembers(s.file, s.name, Some(s.kind)))
-  // Rank by similarity: exact > prefix > contains > rest
+  // Rank by similarity: exact > prefix > contains > rest (sortBy is stable)
   val lower = symbol.toLowerCase
-  val exact = mutable.ListBuffer.empty[MemberInfo]
-  val prefix = mutable.ListBuffer.empty[MemberInfo]
-  val contains = mutable.ListBuffer.empty[MemberInfo]
-  val rest = mutable.ListBuffer.empty[MemberInfo]
-  members.foreach { m =>
-    nameMatchTier(lower, m.name) match {
-      case Some(MatchTier.Exact)    => exact += m
-      case Some(MatchTier.Prefix)   => prefix += m
-      case Some(MatchTier.Contains) => contains += m
-      case _                        => rest += m
-    }
+  def tier(m: MemberInfo): Int = nameMatchTier(lower, m.name) match {
+    case Some(MatchTier.Exact)    => 0
+    case Some(MatchTier.Prefix)   => 1
+    case Some(MatchTier.Contains) => 2
+    case _                        => 3
   }
-  (exact.toList ++ prefix.toList ++ contains.toList ++ rest.toList).take(5).map { m =>
-    s"${m.kind.label} ${m.name} in $owner"
-  }
+  members.sortBy(tier).take(5).map(m => s"${m.kind.label} ${m.name} in $owner")
 
 // ── Package resolution (shared by package, api, summary) ────────────────────
 
@@ -181,41 +167,36 @@ def countByKind(symbols: List[SymbolInfo]): List[(kind: SymbolKind, count: Int)]
 // ── Inherited member collection (shared by members + explain) ──────────────
 
 def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
-  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
+  inherited: List[InheritedGroup],
   parentMemberKeys: Set[(name: String, kind: SymbolKind)]
 ) = {
   if !ctx.inherited then (inherited = Nil, parentMemberKeys = Set.empty)
-  else collectInheritedMembersImpl(sym, ctx)
-}
+  else {
+    val visited = mutable.HashSet.empty[String]
+    visited += sym.name.toLowerCase
+    val ownMembers = extractMembers(sym.file, sym.name, Some(sym.kind)).map(m => (name = m.name, kind = m.kind)).toSet
+    val result = mutable.ListBuffer.empty[InheritedGroup]
+    val allParentKeys = mutable.HashSet.empty[(name: String, kind: SymbolKind)]
 
-private def collectInheritedMembersImpl(sym: SymbolInfo, ctx: CommandContext): (
-  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
-  parentMemberKeys: Set[(name: String, kind: SymbolKind)]
-) = {
-  val visited = mutable.HashSet.empty[String]
-  visited += sym.name.toLowerCase
-  val ownMembers = extractMembers(sym.file, sym.name, Some(sym.kind)).map(m => (name = m.name, kind = m.kind)).toSet
-  val result = mutable.ListBuffer.empty[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])]
-  val allParentKeys = mutable.HashSet.empty[(name: String, kind: SymbolKind)]
-
-  def walk(parentNames: List[String]): Unit = {
-    parentNames.foreach { pName =>
-      if !visited.contains(pName.toLowerCase) then {
-        visited += pName.toLowerCase
-        val parentDefs = findTypeDefs(pName, ctx)
-        parentDefs.headOption.foreach { pd =>
-          val parentMembers = extractMembers(pd.file, pd.name, Some(pd.kind))
-          parentMembers.foreach(m => allParentKeys += ((name = m.name, kind = m.kind)))
-          val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
-          if filtered.nonEmpty then result += ((parentName = pd.name, parentFile = Some(pd.file), parentPackage = pd.packageName, members = filtered))
-          walk(pd.parents)
+    def walk(parentNames: List[String]): Unit = {
+      parentNames.foreach { pName =>
+        if !visited.contains(pName.toLowerCase) then {
+          visited += pName.toLowerCase
+          val parentDefs = findTypeDefs(pName, ctx)
+          parentDefs.headOption.foreach { pd =>
+            val parentMembers = extractMembers(pd.file, pd.name, Some(pd.kind))
+            parentMembers.foreach(m => allParentKeys += ((name = m.name, kind = m.kind)))
+            val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
+            if filtered.nonEmpty then result += ((parentName = pd.name, parentFile = Some(pd.file), parentPackage = pd.packageName, members = filtered))
+            walk(pd.parents)
+          }
         }
       }
     }
-  }
 
-  walk(sym.parents)
-  (inherited = result.toList, parentMemberKeys = allParentKeys.toSet)
+    walk(sym.parents)
+    (inherited = result.toList, parentMemberKeys = allParentKeys.toSet)
+  }
 }
 
 // ── Body enrichment (shared by members, overrides, explain) ─────────────────
@@ -316,15 +297,8 @@ def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: Workspa
   // Cross-reference with index — skip names that are only defined in stdlib packages
   typeNames.foreach { name =>
     val lower = name.toLowerCase
-    if !seen.contains(lower) then
-      seen += lower
-      if !isStdlibType(lower, idx.symbolsByName) then
-        idx.symbolsByName.get(lower) match
-          case Some(syms) =>
-            syms.find(s => typeKinds.contains(s.kind)).foreach { s =>
-              result += s
-            }
-          case None => ()
+    if seen.add(lower) && !isStdlibType(lower, idx.symbolsByName) then
+      idx.symbolsByName.getOrElse(lower, Nil).find(s => typeKinds.contains(s.kind)).foreach(result += _)
   }
   result.toList.sortBy(_.name).take(10)
 

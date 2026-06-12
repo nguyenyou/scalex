@@ -16,12 +16,10 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
         s.parents.map { parentName =>
           idx.findDefinition(parentName).headOption match {
             case None =>
-              val extNode = HierarchyNode(parentName, None, None, None, "", isExternal = true)
-              HierarchyTree(extNode, Nil, Nil)
+              HierarchyTree(HierarchyNode(parentName, None), Nil, Nil)
             case Some(pd) =>
-              val pNode = HierarchyNode(pd.name, Some(pd.kind), Some(pd.file), Some(pd.line), pd.packageName, isExternal = false)
               val grandParents = walkUp(pd.name, newVisited, depth + 1)
-              HierarchyTree(pNode, grandParents, Nil)
+              HierarchyTree(HierarchyNode(pd.name, Some(pd)), grandParents, Nil)
           }
         }
       }
@@ -33,7 +31,7 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
     else {
       val newVisited = visited + name.toLowerCase
       idx.findImplementations(name).map { s =>
-        val node = HierarchyNode(s.name, Some(s.kind), Some(s.file), Some(s.line), s.packageName, isExternal = false)
+        val node = HierarchyNode(s.name, Some(s))
         if depth + 1 >= maxDepth then {
           val truncated = idx.findImplementations(s.name).size
           HierarchyTree(node, Nil, Nil, truncatedChildren = truncated)
@@ -46,10 +44,9 @@ def buildHierarchy(idx: WorkspaceIndex, symbolName: String, goUp: Boolean, goDow
   }
 
   idx.findDefinition(symbolName).headOption.map { sym =>
-    val rootNode = HierarchyNode(sym.name, Some(sym.kind), Some(sym.file), Some(sym.line), sym.packageName, isExternal = false)
     val parents = if goUp then walkUp(sym.name, Set.empty, 0) else Nil
     val children = if goDown then walkDown(sym.name, Set.empty, 0) else Nil
-    HierarchyTree(rootNode, parents, children)
+    HierarchyTree(HierarchyNode(sym.name, Some(sym)), parents, children)
   }
 }
 
@@ -198,39 +195,21 @@ def astPatternSearch(idx: WorkspaceIndex, workspace: Path,
                      hasMethod: Option[String], extendsTrait: Option[String],
                      bodyContains: Option[String], noTests: Boolean,
                      pathFilter: Option[String], excludePath: Option[String] = None,
-                     limit: Int): List[AstPatternMatch] = {
+                     limit: Int): List[SymbolInfo] = {
   val keep = pathPredicate(noTests, pathFilter, excludePath, workspace)
-  var candidates = idx.symbols.filter(s => typeKinds.contains(s.kind) && keep(s.file))
-
-  // Filter by extends
-  extendsTrait.foreach { traitName =>
-    candidates = candidates.filter(_.parents.exists(_.equalsIgnoreCase(traitName)))
+  val candidates = idx.symbols.filter { s =>
+    typeKinds.contains(s.kind) && keep(s.file) &&
+    extendsTrait.forall(t => s.parents.exists(_.equalsIgnoreCase(t)))
   }
 
-  val buf = mutable.ListBuffer.empty[AstPatternMatch]
-
+  val buf = mutable.ListBuffer.empty[SymbolInfo]
   val iter = candidates.iterator
   while iter.hasNext && buf.size < limit do {
     val s = iter.next()
-    var matches = true
-
-    // Filter by has-method
-    hasMethod.foreach { methodName =>
-      val members = extractMembers(s.file, s.name)
-      if !members.exists(_.name == methodName) then matches = false
-    }
-
-    // Filter by body-contains
-    bodyContains.foreach { pattern =>
-      if matches then {
-        val bodies = extractBody(s.file, s.name, None)
-        if !bodies.exists(_.sourceText.contains(pattern)) then matches = false
-      }
-    }
-
-    if matches then {
-      buf += AstPatternMatch(s.name, s.kind, s.file, s.line, s.packageName, s.signature)
-    }
+    // The expensive per-file parses run only for candidates that pass the cheap filters
+    val ok = hasMethod.forall(m => extractMembers(s.file, s.name).exists(_.name == m)) &&
+      bodyContains.forall(p => extractBody(s.file, s.name, None).exists(_.sourceText.contains(p)))
+    if ok then buf += s
   }
   buf.toList
 }

@@ -12,8 +12,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
     case Some(rawPattern) =>
       val (pattern, wasFixed) = fixPosixRegex(rawPattern)
       val isLiteralQuoted = wasFixed && pattern.startsWith("\\Q")
-      // Use rawPattern in display strings so users never see \Q...\E internals
-      val displayPattern = rawPattern
+      // Display strings use rawPattern so users never see \Q...\E internals
       val stderrHint =
         if isLiteralQuoted then Some(s"""  Note: invalid regex, treating as literal search: "$rawPattern"""")
         else if wasFixed then Some(s"""  Note: auto-corrected POSIX regex to Java regex: "$rawPattern" → "$pattern"""")
@@ -22,36 +21,23 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
       ctx.inOwner match
         case Some(owner) if ctx.eachMethod =>
           // Per-method grep: iterate members, grep each body, report which methods matched
-          grepEachMethod(pattern, displayPattern, owner, ctx, hint, stderrHint)
-        case Some(owner) =>
-          // Scoped grep: restrict to a specific symbol's body span
-          val (scopedResults, scopedTimedOut) = grepInSymbol(pattern, owner, ctx)
+          grepEachMethod(pattern, rawPattern, owner, ctx, hint, stderrHint)
+        case ownerOpt =>
+          val (results, timedOut) = ownerOpt match
+            // Scoped grep: restrict to a specific symbol's body span
+            case Some(owner) => grepInSymbol(pattern, owner, ctx)
+            case None => ctx.idx.grepFiles(pattern, ctx.noTests, ctx.pathFilter, ctx.excludePath)
           if ctx.countOnly then
-            val fileCount = scopedResults.map(_.file).distinct.size
-            CmdResult.GrepCount(scopedResults.size, fileCount, scopedTimedOut, hint, stderrHint)
+            CmdResult.GrepCount(results.size, results.map(_.file).distinct.size, timedOut, hint, stderrHint)
           else
-            val suffix = timedOutSuffix(scopedTimedOut)
-            val inStr = s""" in $owner"""
+            val suffix = timedOutSuffix(timedOut)
+            val inStr = ownerOpt.map(o => s" in $o").getOrElse("")
             CmdResult.RefList(
-              header = s"""Matches for "$displayPattern"$inStr — ${scopedResults.size} found:$suffix""",
-              refs = scopedResults,
-              timedOut = scopedTimedOut,
-              hint = hint,
-              emptyMessage = s"""No matches for "$displayPattern"$inStr$suffix""",
-              stderrHint = stderrHint)
-        case None =>
-          val (results, grepTimedOut) = ctx.idx.grepFiles(pattern, ctx.noTests, ctx.pathFilter, ctx.excludePath)
-          if ctx.countOnly then
-            val fileCount = results.map(_.file).distinct.size
-            CmdResult.GrepCount(results.size, fileCount, grepTimedOut, hint, stderrHint)
-          else
-            val suffix = timedOutSuffix(grepTimedOut)
-            CmdResult.RefList(
-              header = s"""Matches for "$displayPattern" — ${results.size} found:$suffix""",
+              header = s"""Matches for "$rawPattern"$inStr — ${results.size} found:$suffix""",
               refs = results,
-              timedOut = grepTimedOut,
+              timedOut = timedOut,
               hint = hint,
-              emptyMessage = s"""No matches for "$displayPattern"$suffix""",
+              emptyMessage = s"""No matches for "$rawPattern"$inStr$suffix""",
               stderrHint = stderrHint)
 
 /** Find a symbol's definitions for scoped grep, falling back to an exact-name
@@ -77,7 +63,7 @@ private def grepSpan(lines: collection.Seq[String], startLine: Int, endLine: Int
   matched.toList
 }
 
-private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (results: List[Reference], timedOut: Boolean) = boundary {
+private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (results: List[Reference], timedOut: Boolean) = {
   val regex = java.util.regex.Pattern.compile(pattern) // pattern is pre-validated by fixPosixRegex
 
   // Split Owner.member if present
@@ -86,26 +72,23 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
     case None => (owner, None)
   }
 
-  // Find the owner's files
   val ownerDefs = findOwnerDefs(ownerName, ctx, typesOnly = false)
-  if ownerDefs.isEmpty then break((Nil, false))
-
-  val results = scala.collection.mutable.ListBuffer.empty[Reference]
-  ownerDefs.foreach { sym =>
-    // Get the body span(s) for the owner (and optionally a member within it)
+  val results = ownerDefs.flatMap { sym =>
+    // Body span(s) for the owner (or a member within it); read the file once per definition
     val bodies = memberName match
       case Some(mName) => extractBody(sym.file, mName, Some(ownerName))
       case None => extractBody(sym.file, ownerName, None)
-
-    bodies.foreach { b =>
-      val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch
-        case _: java.io.IOException => break((Nil, false))
-      grepSpan(lines, b.startLine, b.endLine, regex).foreach { m =>
-        results += Reference(sym.file, m.lineNum, m.text)
+    if bodies.isEmpty then Nil
+    else {
+      val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch {
+        case _: java.io.IOException => Seq.empty
+      }
+      bodies.flatMap { b =>
+        grepSpan(lines, b.startLine, b.endLine, regex).map(m => Reference(sym.file, m.lineNum, m.text))
       }
     }
   }
-  (results.toList, false)
+  (results, false)
 }
 
 private val eachMethodTimeoutMs = 20_000L
