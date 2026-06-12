@@ -6,6 +6,20 @@ import scala.collection.mutable
 def hasRegexHint(pattern: String): Boolean =
   pattern.contains("\\|")
 
+// ── Dotted-name helpers ──────────────────────────────────────────────────────
+
+/** "Outer.Inner.member" → "member"; names without a dot pass through unchanged. */
+def simpleNameOf(s: String): String =
+  if s.contains(".") then s.substring(s.lastIndexOf('.') + 1) else s
+
+/** Split "Owner.member" at the last dot. None when there is no usable split
+  * (no dot, or a leading dot like ".foo"). */
+def splitOwnerMember(s: String): Option[(owner: String, member: String)] = {
+  val lastDot = s.lastIndexOf('.')
+  if lastDot <= 0 then None
+  else Some((owner = s.substring(0, lastDot), member = s.substring(lastDot + 1)))
+}
+
 def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
   // Only \| needs unconditional conversion: POSIX alternation vs Java literal pipe.
   // \( and \) mean "literal paren" in both POSIX and Java — leave them alone.
@@ -80,6 +94,17 @@ def mkPackageNotFound(pkg: String, ctx: CommandContext, cmd: String): NotFoundHi
   else Nil
   NotFoundHint(pkg, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode, false, pkgSuggestions)
 
+/** Resolve a package name and run `f` on it, or produce the standard not-found result. */
+def withResolvedPackage(pkg: String, ctx: CommandContext, cmd: String)(f: String => CmdResult): CmdResult = {
+  resolvePackage(pkg, ctx) match {
+    case None =>
+      CmdResult.NotFound(
+        s"""Package "$pkg" not found""",
+        mkPackageNotFound(pkg, ctx, cmd))
+    case Some(resolvedPkg) => f(resolvedPkg)
+  }
+}
+
 // ── Shared filters ──────────────────────────────────────────────────────────
 
 def filterSymbols(symbols: List[SymbolInfo], ctx: CommandContext): List[SymbolInfo] =
@@ -116,6 +141,30 @@ def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
 // ── Shared constants ─────────────────────────────────────────────────────────
 
 val typeKinds: Set[SymbolKind] = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+
+// ── Stdlib package detection ─────────────────────────────────────────────────
+
+/** True for java/javax/scala standard-library packages. Expects lowercase. */
+def isStdlibPackage(pkg: String): Boolean =
+  pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg.startsWith("scala.") ||
+    pkg == "java" || pkg == "javax" || pkg == "scala"
+
+/** Ranking weight that deprioritizes stdlib packages: java/javax (2), scala (1),
+  * project code (0). Expects lowercase. */
+def stdlibPkgRank(pkg: String): Int =
+  if pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg == "java" || pkg == "javax" then 2
+  else if pkg.startsWith("scala.") || pkg == "scala" then 1
+  else 0
+
+// ── Shared output fragments ──────────────────────────────────────────────────
+
+def timedOutSuffix(timedOut: Boolean): String =
+  if timedOut then " (timed out — partial results)" else ""
+
+// ── Kind grouping ────────────────────────────────────────────────────────────
+
+def countByKind(symbols: List[SymbolInfo]): List[(kind: SymbolKind, count: Int)] =
+  symbols.groupBy(_.kind).toList.sortBy(-_._2.size).map((k, v) => (kind = k, count = v.size))
 
 // ── Inherited member collection (shared by members + explain) ──────────────
 
@@ -159,12 +208,25 @@ private def collectInheritedMembersImpl(sym: SymbolInfo, ctx: CommandContext): (
 
 // ── Body enrichment (shared by members, overrides, explain) ─────────────────
 
-def enrichMemberWithBody(m: MemberInfo, file: java.nio.file.Path, ownerName: String, maxBodyLines: Int): MemberInfo =
-  val bodies = extractBody(file, m.name, Some(ownerName))
-  bodies.headOption match
-    case Some(b) if maxBodyLines <= 0 || (b.endLine - b.startLine + 1) <= maxBodyLines =>
-      m.copy(body = Some(b))
-    case _ => m
+/** Extract the body of `name` (optionally scoped to `owner`), kept only when it
+  * fits within `maxBodyLines` (<= 0 means no limit). */
+def bodyWithinLimit(file: Path, name: String, owner: Option[String], maxBodyLines: Int): Option[BodyInfo] =
+  extractBody(file, name, owner).headOption
+    .filter(b => maxBodyLines <= 0 || (b.endLine - b.startLine + 1) <= maxBodyLines)
+
+def enrichMemberWithBody(m: MemberInfo, file: Path, ownerName: String, maxBodyLines: Int): MemberInfo =
+  bodyWithinLimit(file, m.name, Some(ownerName), maxBodyLines) match {
+    case Some(b) => m.copy(body = Some(b))
+    case None => m
+  }
+
+/** Decorate raw members: mark inherited overrides (--inherited) and attach bodies (--with-body). */
+def decorateMembers(raw: List[MemberInfo], parentKeys: Set[(name: String, kind: SymbolKind)],
+                    file: Path, ownerName: String, ctx: CommandContext): List[MemberInfo] =
+  raw.map { m =>
+    val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
+    if ctx.withBody then enrichMemberWithBody(m2, file, ownerName, ctx.maxBodyLines) else m2
+  }
 
 // ── Ranking / sorting ────────────────────────────────────────────────────────
 
@@ -175,14 +237,8 @@ def rankSymbols(symbols: List[SymbolInfo], workspace: Path): List[SymbolInfo] =
       case SymbolKind.Type | SymbolKind.Given => 1
       case _ => 2
     val testRank = if isTestFile(s.file, workspace) then 1 else 0
-    // Deprioritize java.*/javax.*/scala.* standard library packages
-    val pkg = s.packageName.toLowerCase
-    val stdlibRank =
-      if pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg == "java" || pkg == "javax" then 2
-      else if pkg.startsWith("scala.") || pkg == "scala" then 1
-      else 0
     val pathLen = workspace.relativize(s.file).toString.length
-    (kindRank = kindRank, testRank = testRank, stdlibRank = stdlibRank, pathLen = pathLen)
+    (kindRank = kindRank, testRank = testRank, stdlibRank = stdlibPkgRank(s.packageName.toLowerCase), pathLen = pathLen)
   }
 
 def memberKindRank(m: MemberInfo): Int = m.kind match
@@ -230,11 +286,7 @@ private def isStdlibType(lowerName: String, symbolsByName: Map[String, List[Symb
   predefTypeNames.contains(lowerName) || {
     symbolsByName.get(lowerName) match
       case None => true // not in index → unindexed stdlib type
-      case Some(syms) => syms.forall { s =>
-        val pkg = s.packageName.toLowerCase
-        pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg.startsWith("scala.") ||
-          pkg == "java" || pkg == "javax" || pkg == "scala"
-      }
+      case Some(syms) => syms.forall(s => isStdlibPackage(s.packageName.toLowerCase))
   }
 
 def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: WorkspaceIndex): List[SymbolInfo] =

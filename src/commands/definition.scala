@@ -28,15 +28,10 @@ def cmdDef(args: List[String], ctx: CommandContext): CmdResult =
 
 /** Resolve Owner.member syntax: if Owner is a type, extract its members and filter to the member name */
 private def resolveDottedMember(symbol: String, ctx: CommandContext): Option[List[SymbolInfo]] = {
-  val lastDot = symbol.lastIndexOf('.')
-  if lastDot <= 0 then None
-  else {
-    val ownerName = symbol.substring(0, lastDot)
-    val memberName = symbol.substring(lastDot + 1)
+  splitOwnerMember(symbol).flatMap { (ownerName, memberName) =>
     val ownerDefs = filterSymbols(ctx.idx.findDefinition(ownerName), ctx).filter(s => typeKinds.contains(s.kind))
     val memberResults = ownerDefs.flatMap { owner =>
-      val simpleName = if ownerName.contains(".") then ownerName.substring(ownerName.lastIndexOf('.') + 1) else ownerName
-      val members = extractMembers(owner.file, simpleName)
+      val members = extractMembers(owner.file, simpleNameOf(ownerName))
       members.filter(_.name.equalsIgnoreCase(memberName)).map { m =>
         SymbolInfo(
           name = m.name,

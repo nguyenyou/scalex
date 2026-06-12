@@ -5,11 +5,9 @@ def cmdOverrides(args: List[String], ctx: CommandContext): CmdResult =
       var results = findOverrides(ctx.idx, methodName, ctx.ofTrait, ctx.limit)
       if ctx.withBody then
         results = results.map { o =>
-          val bodies = extractBody(o.file, methodName, Some(o.enclosingClass))
-          bodies.headOption match
-            case Some(b) if ctx.maxBodyLines <= 0 || (b.endLine - b.startLine + 1) <= ctx.maxBodyLines =>
-              o.copy(body = Some(b))
-            case _ => o
+          bodyWithinLimit(o.file, methodName, Some(o.enclosingClass), ctx.maxBodyLines) match
+            case Some(b) => o.copy(body = Some(b))
+            case None => o
         }
       if results.isEmpty then
         val ofStr = ctx.ofTrait.map(t => s" of $t").getOrElse("")

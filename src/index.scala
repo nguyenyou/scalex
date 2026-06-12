@@ -527,12 +527,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         case SymbolKind.Def | SymbolKind.Val | SymbolKind.Type => 2
         case _ => 3
       val testRank = if isTestFile(s.file, workspace) then 1 else 0
-      // Deprioritize java.*/javax.*/scala.* standard library packages
-      val pkg = s.packageName.toLowerCase
-      val stdlibRank =
-        if pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg == "java" || pkg == "javax" then 2
-        else if pkg.startsWith("scala.") || pkg == "scala" then 1
-        else 0
+      val stdlibRank = stdlibPkgRank(s.packageName.toLowerCase)
       // Symbols in heavily-imported types rank higher (lower importRank = better)
       val importRank = -symbolImportRank.getOrElse(s.name.toLowerCase, 0)
       val pathLen = s.file.toString.length
