@@ -3,9 +3,7 @@ private val kindRankMap: Map[SymbolKind, Int] = Map(
 ).withDefaultValue(4)
 
 def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex package <pkg>")
-    case Some(pkg) =>
+  requireArg(args, "Usage: scalex package <pkg>") { pkg =>
       withResolvedPackage(pkg, ctx, "package") { resolvedPkg =>
         var symbols = filterSymbols(ctx.idx.symbols.filter(_.packageName == resolvedPkg), ctx)
         if ctx.explainMode then
@@ -23,3 +21,4 @@ def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
             symbols = symbols.filter(s => typeKinds.contains(s.kind))
           CmdResult.PackageSymbols(resolvedPkg, symbols)
       }
+  }

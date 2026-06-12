@@ -1,7 +1,5 @@
 def cmdRefs(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex refs <symbol>")
-    case Some(symbol) =>
+  requireArg(args, "Usage: scalex refs <symbol>") { symbol =>
       val targetPkgs = ctx.idx.symbolsByName.getOrElse(symbol.toLowerCase, Nil).map(_.packageName).toSet
       def filterByCategory(grouped: Map[RefCategory, List[Reference]]): (filtered: Map[RefCategory, List[Reference]], stderrHint: Option[String]) =
         ctx.categoryFilter match
@@ -24,11 +22,7 @@ def cmdRefs(args: List[String], ctx: CommandContext): CmdResult =
         val (categorized, timedOut) = ctx.idx.categorizeReferences(symbol, strict = ctx.strict)
         val rawGrouped = categorized.map((cat, refs) => (cat, filterRefs(refs, ctx)))
         val counts = rawGrouped.toList.map((cat, refs) => (category = cat, count = refs.size)).filter(_.count > 0)
-          .sortBy { entry =>
-            val order = List(RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
-                             RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
-            order.indexOf(entry.category)
-          }
+          .sortBy(entry => refCategoryOrder.indexOf(entry.category))
         val total = counts.map(_.count).sum
         CmdResult.RefsSummary(symbol, counts, total, timedOut)
       else if ctx.categorize then
@@ -40,3 +34,4 @@ def cmdRefs(args: List[String], ctx: CommandContext): CmdResult =
         val (rawRefs, timedOut) = ctx.idx.findReferences(symbol, strict = ctx.strict)
         val results = filterRefs(rawRefs, ctx)
         CmdResult.FlatRefs(symbol, results, targetPkgs, timedOut)
+  }

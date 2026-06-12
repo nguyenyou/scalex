@@ -147,8 +147,9 @@ def benchIndexBuild(workspace: Path, warmup: Int, iters: Int): BenchResult =
       |  --warmup N         Warmup iterations (default: 5)
       |  --iterations N     Measured iterations (default: 20)
       |""".stripMargin)
-    return
+  else runBenchCli(argList)
 
+private def runBenchCli(argList: List[String]): Unit =
   val warmup = argList.indexOf("--warmup") match
     case -1 => 5
     case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
@@ -176,26 +177,28 @@ def benchIndexBuild(workspace: Path, warmup: Int, iters: Int): BenchResult =
 
   def run(name: String): Unit =
     println(s"[$name]")
-    val result = name match
-      case "extract-single" => benchExtractSingle(workspace, warmup, iterations)
+    val result: Option[BenchResult] = name match
+      case "extract-single" => Some(benchExtractSingle(workspace, warmup, iterations))
       case "extract-batch" =>
         val r1 = benchExtractBatch(workspace, warmup, iterations)
         printResult(r1)
-        benchExtractBatchParallel(workspace, warmup, iterations)
-      case "bloom-build" => benchBloomBuild(workspace, warmup, iterations)
-      case "persistence-save" => benchPersistenceSave(workspace, warmup, iterations)
+        Some(benchExtractBatchParallel(workspace, warmup, iterations))
+      case "bloom-build" => Some(benchBloomBuild(workspace, warmup, iterations))
+      case "persistence-save" => Some(benchPersistenceSave(workspace, warmup, iterations))
       case "persistence-load" =>
         val r1 = benchPersistenceLoad(workspace, warmup, iterations)
         printResult(r1)
-        benchPersistenceLoadNoBlooms(workspace, warmup, iterations)
-      case "search" => benchSearch(workspace, warmup, iterations)
-      case "refs" => benchRefs(workspace, warmup, iterations)
-      case "index-cold" => benchIndexBuild(workspace, warmup, math.min(iterations, 5))
+        Some(benchPersistenceLoadNoBlooms(workspace, warmup, iterations))
+      case "search" => Some(benchSearch(workspace, warmup, iterations))
+      case "refs" => Some(benchRefs(workspace, warmup, iterations))
+      case "index-cold" => Some(benchIndexBuild(workspace, warmup, math.min(iterations, 5)))
       case _ =>
         println(s"  Unknown benchmark: $name")
-        return
-    printResult(result)
-    println()
+        None
+    result.foreach { r =>
+      printResult(r)
+      println()
+    }
 
   if benchName == "all" then
     val allBenches = List("extract-single", "extract-batch", "bloom-build",

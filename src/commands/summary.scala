@@ -1,7 +1,5 @@
 def cmdSummary(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex summary <package>")
-    case Some(pkg) =>
+  requireArg(args, "Usage: scalex summary <package>") { pkg =>
       withResolvedPackage(pkg, ctx, "summary") { resolvedPkg =>
         val prefix = resolvedPkg + "."
         // Collect all packages that start with resolvedPkg (including itself)
@@ -17,3 +15,4 @@ def cmdSummary(args: List[String], ctx: CommandContext): CmdResult =
           .sortBy(-_.count)
         CmdResult.PackageSummary(resolvedPkg, subPackages, allSymbols.size)
       }
+  }

@@ -226,6 +226,103 @@ object IndexPersistence:
 
         result.toMap
 
+// ── Deadline-bounded file scanning ──────────────────────────────────────────
+
+/** Shared chassis for the deadline-bounded parallel file scans behind
+  * `grepFiles`/`findReferences`/`findImports`: result queue, timeout flag,
+  * unreadable-file counter, and the per-file/per-line deadline checks. */
+private final class DeadlineScan(timeoutMs: Long) {
+  private val deadline: Long = System.nanoTime() + timeoutMs * 1_000_000
+  @volatile var timedOut: Boolean = false
+  private val queue = ConcurrentLinkedQueue[Reference]()
+  private val unreadable = java.util.concurrent.atomic.AtomicInteger(0)
+
+  def inTime: Boolean = System.nanoTime() < deadline
+
+  def emit(r: Reference): Unit = queue.add(r)
+
+  /** A file's lines, counting the file as unreadable (empty result) on IO errors. */
+  def readLines(path: Path): collection.Seq[String] =
+    try Files.readAllLines(path).asScala catch {
+      case _: java.io.IOException =>
+        unreadable.incrementAndGet()
+        Seq.empty
+    }
+
+  /** Visit each candidate in parallel while the deadline holds, handing its
+    * lines to `onFile`; candidates skipped after the deadline mark `timedOut`. */
+  def scanParallel[A](candidates: List[A])(pathOf: A => Path)(onFile: (item: A, path: Path, lines: collection.Seq[String]) => Unit): Unit =
+    candidates.asJava.parallelStream().forEach { item =>
+      if inTime then {
+        val path = pathOf(item)
+        onFile(item, path, readLines(path))
+      } else timedOut = true
+    }
+
+  /** Per-line loop with deadline checks; lines skipped after the deadline mark `timedOut`. */
+  def forEachLine(lines: collection.Seq[String])(f: (line: String, lineNum: Int) => Unit): Unit =
+    lines.zipWithIndex.foreach { case (line, idx) =>
+      if inTime then f(line, idx + 1)
+      else timedOut = true
+    }
+
+  def reportUnreadable(label: String): Unit =
+    if unreadable.get() > 0 then System.err.println(s"scalex: ${unreadable.get()} file(s) unreadable during $label")
+
+  def results: List[Reference] = queue.asScala.toList
+}
+
+// ── Ranked name matching ─────────────────────────────────────────────────────
+
+/** Match-quality tiers for ranked name search, best first. */
+enum MatchTier {
+  case Exact, Prefix, Contains, ReverseContains, CamelCase
+}
+
+private def isSegmentStart(name: String, i: Int): Boolean =
+  i == 0 || name(i).isUpper || (i > 0 && name(i - 1) == '_')
+
+/** True if every char of `query` (lowercase) appears in `name` walking
+  * camelCase/snake_case segment starts, e.g. "usl" matches "UserServiceLive". */
+def camelCaseMatch(query: String, name: String): Boolean =
+  query.length >= 2 && {
+    val qLower = query.toLowerCase
+    val nLower = name.toLowerCase
+    var qi = 0
+    var ni = 0
+    while qi < qLower.length && ni < nLower.length do
+      if qLower(qi) == nLower(ni) then
+        qi += 1
+        ni += 1
+      else
+        ni += 1
+        while ni < nLower.length && !isSegmentStart(name, ni) do ni += 1
+    qi == qLower.length
+  }
+
+/** Classify how `name` matches a query (`lowerQuery` must be pre-lowercased).
+  * One classifier behind symbol search, file search, and suggestion ranking. */
+def nameMatchTier(lowerQuery: String, name: String): Option[MatchTier] = {
+  val n = name.toLowerCase
+  if n == lowerQuery then Some(MatchTier.Exact)
+  else if n.startsWith(lowerQuery) then Some(MatchTier.Prefix)
+  else if n.contains(lowerQuery) then Some(MatchTier.Contains)
+  else if lowerQuery.endsWith(n) && n.length >= 3 && n.length > lowerQuery.length / 2 then Some(MatchTier.ReverseContains)
+  else if camelCaseMatch(lowerQuery, name) then Some(MatchTier.CamelCase)
+  else None
+}
+
+/** Inverted index: group items under each (already-normalized) key produced by `keys`. */
+private def buildMultiIndex[A, K](items: List[A])(keys: A => IterableOnce[K]): Map[K, List[A]] = {
+  val idx = mutable.HashMap.empty[K, mutable.ListBuffer[A]]
+  items.foreach { item =>
+    keys(item).iterator.foreach { k =>
+      idx.getOrElseUpdate(k, mutable.ListBuffer.empty) += item
+    }
+  }
+  idx.map((k, v) => k -> v.toList).toMap
+}
+
 // ── Workspace index ─────────────────────────────────────────────────────────
 
 class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
@@ -262,30 +359,17 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
   lazy val parentIndex: Map[String, List[SymbolInfo]] =
     Timings.phase("build-parentIndex") {
-      val pIdx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-      allSymbols.foreach { s =>
-        s.parents.foreach { p =>
-          pIdx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
-        }
-      }
-      pIdx.map((k, v) => k -> v.toList).toMap
+      buildMultiIndex(allSymbols)(_.parents.map(_.toLowerCase))
     }
 
   lazy val typeParamParentIndex: Map[String, List[SymbolInfo]] =
     Timings.phase("build-typeParamParentIndex") {
-      val idx = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-      allSymbols.foreach { s =>
-        s.typeParamParents.foreach { p =>
-          idx.getOrElseUpdate(p.toLowerCase, mutable.ListBuffer.empty) += s
-        }
-      }
-      idx.map((k, v) => k -> v.toList).toMap
+      buildMultiIndex(allSymbols)(_.typeParamParents.map(_.toLowerCase))
     }
 
   private lazy val distinctSymbols: List[SymbolInfo] =
     Timings.phase("build-distinctSymbols") {
-      val seen = mutable.HashSet.empty[(String, Path, Int)]
-      allSymbols.filter(s => seen.add((s.name, s.file, s.line)))
+      allSymbols.distinctBy(s => (name = s.name, file = s.file, line = s.line))
     }
 
   lazy val packageToSymbols: Map[String, Set[String]] =
@@ -332,13 +416,7 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
   private lazy val annotationIndex: Map[String, List[SymbolInfo]] =
     Timings.phase("build-annotationIndex") {
-      val aByAnnot = mutable.HashMap.empty[String, mutable.ListBuffer[SymbolInfo]]
-      allSymbols.foreach { s =>
-        s.annotations.foreach { a =>
-          aByAnnot.getOrElseUpdate(a.toLowerCase, mutable.ListBuffer.empty) += s
-        }
-      }
-      aByAnnot.map((k, v) => k -> v.toList).toMap
+      buildMultiIndex(allSymbols)(_.annotations.map(_.toLowerCase))
     }
 
   var fileCount: Int = 0
@@ -473,29 +551,17 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     compileRegex(pattern) match
       case None => (Nil, false)
       case Some(regex) =>
-        var candidates = gitFiles
-        if noTests then candidates = candidates.filter(gf => !isTestFile(gf.path, workspace))
-        pathFilter.foreach { p => candidates = candidates.filter(gf => matchesPath(gf.path, p, workspace)) }
-        excludePath.foreach { p => candidates = candidates.filter(gf => !matchesPath(gf.path, p, workspace)) }
-        val deadline = System.nanoTime() + timeoutMs * 1_000_000
-        var grepTimedOut = false
-        val results = ConcurrentLinkedQueue[Reference]()
-        val grepUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
-        candidates.asJava.parallelStream().forEach { gf =>
-          if System.nanoTime() < deadline then {
-            try {
-              val lines = Files.readAllLines(gf.path).asScala
-              lines.zipWithIndex.foreach { case (line, idx) =>
-                if System.nanoTime() < deadline then {
-                  if regex.matcher(line).find() then
-                    results.add(Reference(gf.path, idx + 1, line.trim))
-                } else grepTimedOut = true
-              }
-            } catch { case _: java.io.IOException => grepUnreadable.incrementAndGet(); () }
-          } else grepTimedOut = true
+        val keep = pathPredicate(noTests, pathFilter, excludePath, workspace)
+        val candidates = gitFiles.filter(gf => keep(gf.path))
+        val scan = DeadlineScan(timeoutMs)
+        scan.scanParallel(candidates)(_.path) { (_, path, lines) =>
+          scan.forEachLine(lines) { (line, lineNum) =>
+            if regex.matcher(line).find() then
+              scan.emit(Reference(path, lineNum, line.trim))
+          }
         }
-        if grepUnreadable.get() > 0 then System.err.println(s"scalex: ${grepUnreadable.get()} file(s) unreadable during grep")
-        (results.asScala.toList.sortBy(r => (workspace.relativize(r.file).toString, r.line)), grepTimedOut)
+        scan.reportUnreadable("grep")
+        (scan.results.sortBy(r => (path = workspace.relativize(r.file).toString, line = r.line)), scan.timedOut)
 
   private def compileRegex(pattern: String): Option[java.util.regex.Pattern] =
     try Some(java.util.regex.Pattern.compile(pattern))
@@ -513,12 +579,13 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     val fuzzy = mutable.ListBuffer.empty[SymbolInfo]
 
     distinctSymbols.foreach { s =>
-      val n = s.name.toLowerCase
-      if n == lower then exact += s
-      else if n.startsWith(lower) then prefix += s
-      else if n.contains(lower) then contains += s
-      else if lower.endsWith(n) && n.length >= 3 && n.length > lower.length / 2 then reverseContains += s
-      else if camelCaseMatch(lower, s.name) then fuzzy += s
+      nameMatchTier(lower, s.name).foreach {
+        case MatchTier.Exact           => exact += s
+        case MatchTier.Prefix          => prefix += s
+        case MatchTier.Contains        => contains += s
+        case MatchTier.ReverseContains => reverseContains += s
+        case MatchTier.CamelCase       => fuzzy += s
+      }
     }
     def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, stdlibRank: Int, importRank: Int, pathLen: Int) =
       val kindRank = s.kind match
@@ -548,11 +615,13 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
 
     indexedFiles.foreach { f =>
       val fileName = f.relativePath.substring(f.relativePath.lastIndexOf('/') + 1).stripSuffix(".scala").stripSuffix(".java")
-      val n = fileName.toLowerCase
-      if n == lower then exact += f.relativePath
-      else if n.startsWith(lower) then prefix += f.relativePath
-      else if n.contains(lower) then contains += f.relativePath
-      else if camelCaseMatch(lower, fileName) then fuzzy += f.relativePath
+      nameMatchTier(lower, fileName).foreach {
+        case MatchTier.Exact     => exact += f.relativePath
+        case MatchTier.Prefix    => prefix += f.relativePath
+        case MatchTier.Contains  => contains += f.relativePath
+        case MatchTier.CamelCase => fuzzy += f.relativePath
+        case MatchTier.ReverseContains => () // not a useful tier for filenames
+      }
     }
     exact.toList ++ prefix.toList ++ contains.toList ++ fuzzy.sortBy(_.length).toList
 
@@ -572,34 +641,24 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       (candidates, allCandidates, fileAliasMap)
     }
 
-    val deadline = System.nanoTime() + timeoutMs * 1_000_000
-    var timedOut = false
-    val results = ConcurrentLinkedQueue[Reference]()
+    val scan = DeadlineScan(timeoutMs)
     val seen = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
-    val refsUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
     Timings.phase("text-search") {
-      allCandidates.asJava.parallelStream().forEach { idxFile =>
-        if System.nanoTime() < deadline then
-          val path = workspace.resolve(idxFile.relativePath)
-          val lines = try Files.readAllLines(path).asScala catch
-            case _: java.io.IOException => refsUnreadable.incrementAndGet(); Seq.empty
-          val aliasName = fileAliasMap.get(idxFile.relativePath)
-          lines.zipWithIndex.foreach {
-            case (line, idx) if System.nanoTime() < deadline =>
-              val key = s"${idxFile.relativePath}:${idx + 1}"
-              if wordMatch(line, name) && seen.add(key) then
-                results.add(Reference(path, idx + 1, line.trim))
-              else aliasName match
-                case Some(alias) if wordMatch(line, alias) && seen.add(key) =>
-                  results.add(Reference(path, idx + 1, line.trim, Some(s"via alias $alias")))
-                case _ =>
+      scan.scanParallel(allCandidates)(f => workspace.resolve(f.relativePath)) { (idxFile, path, lines) =>
+        val aliasName = fileAliasMap.get(idxFile.relativePath)
+        scan.forEachLine(lines) { (line, lineNum) =>
+          val key = s"${idxFile.relativePath}:$lineNum"
+          if wordMatch(line, name) && seen.add(key) then
+            scan.emit(Reference(path, lineNum, line.trim))
+          else aliasName match
+            case Some(alias) if wordMatch(line, alias) && seen.add(key) =>
+              scan.emit(Reference(path, lineNum, line.trim, Some(s"via alias $alias")))
             case _ =>
-          }
-        else timedOut = true
+        }
       }
     }
-    if refsUnreadable.get() > 0 then System.err.println(s"scalex: ${refsUnreadable.get()} file(s) unreadable during refs")
-    (results.asScala.toList, timedOut)
+    scan.reportUnreadable("refs")
+    (scan.results, scan.timedOut)
 
   def categorizeReferences(name: String, strict: Boolean = false): (grouped: Map[RefCategory, List[Reference]], timedOut: Boolean) =
     val (refs, timedOut) = findReferences(name, strict = strict)
@@ -626,54 +685,44 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   def findImports(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): (results: List[Reference], timedOut: Boolean) =
     val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
     val candidates = indexedFiles.filter(f => f.identifierBloom.forall(_.mightContain(name)))
-    val deadline = System.nanoTime() + timeoutMs * 1_000_000
-    var timedOut = false
-    val results = ConcurrentLinkedQueue[Reference]()
+    val scan = DeadlineScan(timeoutMs)
     val resultPaths = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
-    val importsUnreadable = java.util.concurrent.atomic.AtomicInteger(0)
-    candidates.asJava.parallelStream().forEach { idxFile =>
-      if System.nanoTime() < deadline then
-        val path = workspace.resolve(idxFile.relativePath)
-        val lines = try Files.readAllLines(path).asScala catch
-          case _: java.io.IOException => importsUnreadable.incrementAndGet(); Seq.empty
-        lines.zipWithIndex.foreach {
-          case (line, idx) if System.nanoTime() < deadline && line.trim.startsWith("import ") && wordMatch(line, name) =>
-            results.add(Reference(path, idx + 1, line.trim))
-            resultPaths.add(s"${idxFile.relativePath}:${idx + 1}")
-          case _ =>
-        }
-      else timedOut = true
+    scan.scanParallel(candidates)(f => workspace.resolve(f.relativePath)) { (idxFile, path, lines) =>
+      scan.forEachLine(lines) { (line, lineNum) =>
+        if line.trim.startsWith("import ") && wordMatch(line, name) then
+          scan.emit(Reference(path, lineNum, line.trim))
+          resultPaths.add(s"${idxFile.relativePath}:$lineNum")
+      }
     }
 
     // Also find wildcard imports that resolve to a package containing the target symbol
     val targetPkgs = symbolsByName.getOrElse(name.toLowerCase, Nil).map(_.packageName).toSet
     if targetPkgs.nonEmpty then
-      for idxFile <- indexedFiles if System.nanoTime() < deadline do
+      for idxFile <- indexedFiles if scan.inTime do
         for imp <- idxFile.imports do
-          val trimmed = imp.trim.stripPrefix("import ")
-          if (trimmed.endsWith("._") || trimmed.endsWith(".*")) then
-            val pkg = trimmed.dropRight(2)
-            if targetPkgs.contains(pkg) then
-              val path = workspace.resolve(idxFile.relativePath)
-              try {
-                val lines = Files.readAllLines(path).asScala
-                lines.zipWithIndex.foreach { case (line, lineIdx) =>
-                  if line.trim == imp.trim then
-                    val key = s"${idxFile.relativePath}:${lineIdx + 1}"
-                    if !resultPaths.contains(key) then
-                      results.add(Reference(path, lineIdx + 1, line.trim))
-                      resultPaths.add(key)
-                }
-              } catch { case _: java.io.IOException => importsUnreadable.incrementAndGet(); () }
+          if wildcardImportPkg(imp).exists(targetPkgs.contains) then
+            val path = workspace.resolve(idxFile.relativePath)
+            scan.forEachLine(scan.readLines(path)) { (line, lineNum) =>
+              if line.trim == imp.trim then
+                val key = s"${idxFile.relativePath}:$lineNum"
+                if !resultPaths.contains(key) then
+                  scan.emit(Reference(path, lineNum, line.trim))
+                  resultPaths.add(key)
+            }
 
-    if importsUnreadable.get() > 0 then System.err.println(s"scalex: ${importsUnreadable.get()} file(s) unreadable during imports")
-    (results.asScala.toList, timedOut)
+    scan.reportUnreadable("imports")
+    (scan.results, scan.timedOut)
 
   private def filePackage(idxFile: IndexedFile): String =
     idxFile.symbols.headOption.map(_.packageName).getOrElse("")
 
   def filePackageByPath(relPath: String): Option[String] =
     indexedByPath.get(relPath).map(filePackage)
+
+  /** Import lines recorded at index time for the file at `path` (absolute).
+    * Lets callers avoid re-parsing source just to read imports. */
+  def fileImports(path: Path): List[String] =
+    indexedByPath.get(workspace.relativize(path).toString).map(_.imports).getOrElse(Nil)
 
   def resolveConfidence(ref: Reference, targetName: String, targetPackages: Set[String]): Confidence =
     val relPath = workspace.relativize(ref.file).toString
@@ -693,34 +742,9 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
           }
           if hasExplicit || hasAliasMatch then Confidence.High
           else
-            val hasWildcard = imports.exists { imp =>
-              val trimmed = imp.trim.stripPrefix("import ")
-              (trimmed.endsWith("._") || trimmed.endsWith(".*")) && {
-                val pkg = trimmed.dropRight(2)
-                targetPackages.contains(pkg)
-              }
-            }
+            val hasWildcard = imports.exists(imp => wildcardImportPkg(imp).exists(targetPackages.contains))
             if hasWildcard then Confidence.Medium
             else Confidence.Low
-
-  private def isSegmentStart(name: String, i: Int): Boolean =
-    i == 0 || name(i).isUpper || (i > 0 && name(i - 1) == '_')
-
-  private def camelCaseMatch(query: String, name: String): Boolean =
-    query.length >= 2 && {
-      val qLower = query.toLowerCase
-      val nLower = name.toLowerCase
-      var qi = 0
-      var ni = 0
-      while qi < qLower.length && ni < nLower.length do
-        if qLower(qi) == nLower(ni) then
-          qi += 1
-          ni += 1
-        else
-          ni += 1
-          while ni < nLower.length && !isSegmentStart(name, ni) do ni += 1
-      qi == qLower.length
-    }
 
   /** True if `word` occurs in `line` with no word character (per `isWordChar`)
     * directly before or after the occurrence. */
@@ -792,42 +816,51 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       }
     }
 
-  private def parseImportTarget(imp: String): Option[(pkg: String, names: List[String], isWildcard: Boolean)] =
-    val trimmed = imp.trim.stripPrefix("import ")
-    if trimmed.isEmpty then None
-    else {
+// ── Import line parsing ──────────────────────────────────────────────────────
 
-    // Handle brace-enclosed imports: import pkg.{A, B, C as D, _}
-    val braceStart = trimmed.indexOf('{')
-    if braceStart >= 0 then
-      val pkg = trimmed.substring(0, braceStart).stripSuffix(".")
-      val braceEnd = trimmed.indexOf('}', braceStart)
-      val inner = if braceEnd >= 0 then trimmed.substring(braceStart + 1, braceEnd) else trimmed.substring(braceStart + 1)
-      val parts = inner.split(',').map(_.trim).filter(_.nonEmpty)
-      var isWildcard = false
-      val names = mutable.ListBuffer.empty[String]
-      parts.foreach { part =>
-        if part == "_" || part == "*" then isWildcard = true
-        else
-          // Handle "Foo as Bar" or "Foo => Bar" — we want the original name (Foo)
-          val asIdx = part.indexOf(" as ")
-          val arrowIdx = part.indexOf(" => ")
-          val name = if asIdx >= 0 then part.substring(0, asIdx).trim
-                     else if arrowIdx >= 0 then part.substring(0, arrowIdx).trim
-                     else part.trim
-          if name.nonEmpty && name != "_" && name != "*" then names += name
-      }
-      Some((pkg, names.toList, isWildcard))
-    else
-      // Simple import: import pkg.Name or import pkg._ or import pkg.*
-      val lastDot = trimmed.lastIndexOf('.')
-      if lastDot < 0 then None
+/** Parse an import line into its package, imported names, and wildcard flag.
+  * Handles brace imports ("import pkg.{A, B as C, _}") and simple imports. */
+def parseImportTarget(imp: String): Option[(pkg: String, names: List[String], isWildcard: Boolean)] =
+  val trimmed = imp.trim.stripPrefix("import ")
+  if trimmed.isEmpty then None
+  else {
+
+  // Handle brace-enclosed imports: import pkg.{A, B, C as D, _}
+  val braceStart = trimmed.indexOf('{')
+  if braceStart >= 0 then
+    val pkg = trimmed.substring(0, braceStart).stripSuffix(".")
+    val braceEnd = trimmed.indexOf('}', braceStart)
+    val inner = if braceEnd >= 0 then trimmed.substring(braceStart + 1, braceEnd) else trimmed.substring(braceStart + 1)
+    val parts = inner.split(',').map(_.trim).filter(_.nonEmpty)
+    var isWildcard = false
+    val names = mutable.ListBuffer.empty[String]
+    parts.foreach { part =>
+      if part == "_" || part == "*" then isWildcard = true
       else
-        val pkg = trimmed.substring(0, lastDot)
-        val name = trimmed.substring(lastDot + 1)
-        if name == "_" || name == "*" then Some((pkg, Nil, true))
-        else Some((pkg, List(name), false))
+        // Handle "Foo as Bar" or "Foo => Bar" — we want the original name (Foo)
+        val asIdx = part.indexOf(" as ")
+        val arrowIdx = part.indexOf(" => ")
+        val name = if asIdx >= 0 then part.substring(0, asIdx).trim
+                   else if arrowIdx >= 0 then part.substring(0, arrowIdx).trim
+                   else part.trim
+        if name.nonEmpty && name != "_" && name != "*" then names += name
     }
+    Some((pkg, names.toList, isWildcard))
+  else
+    // Simple import: import pkg.Name or import pkg._ or import pkg.*
+    val lastDot = trimmed.lastIndexOf('.')
+    if lastDot < 0 then None
+    else
+      val pkg = trimmed.substring(0, lastDot)
+      val name = trimmed.substring(lastDot + 1)
+      if name == "_" || name == "*" then Some((pkg, Nil, true))
+      else Some((pkg, List(name), false))
+  }
+
+/** Package of a wildcard import line ("import pkg._" / "import pkg.*"), or None. */
+def wildcardImportPkg(imp: String): Option[String] =
+  val trimmed = imp.trim.stripPrefix("import ")
+  if trimmed.endsWith("._") || trimmed.endsWith(".*") then Some(trimmed.dropRight(2)) else None
 
 // ── Filtering helpers ────────────────────────────────────────────────────────
 
@@ -843,3 +876,11 @@ def isTestFile(path: Path, workspace: Path): Boolean =
 def matchesPath(file: Path, prefix: String, workspace: Path): Boolean =
   val rel = workspace.relativize(file).toString
   rel.startsWith(prefix)
+
+/** Predicate combining the --no-tests / --path / --exclude-path file filters,
+  * shared by symbol/ref filtering and the file-scanning commands. */
+def pathPredicate(noTests: Boolean, pathFilter: Option[String], excludePath: Option[String], workspace: Path): Path => Boolean =
+  path =>
+    (!noTests || !isTestFile(path, workspace)) &&
+    pathFilter.forall(p => matchesPath(path, p, workspace)) &&
+    excludePath.forall(p => !matchesPath(path, p, workspace))

@@ -1,7 +1,5 @@
 def cmdAnnotated(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex annotated <annotation>")
-    case Some(query) =>
+  requireArg(args, "Usage: scalex annotated <annotation>") { query =>
       val annot = query.stripPrefix("@")
       val results = filterSymbols(ctx.idx.findAnnotated(annot), ctx)
       CmdResult.SymbolList(
@@ -9,3 +7,4 @@ def cmdAnnotated(args: List[String], ctx: CommandContext): CmdResult =
         symbols = results,
         total = results.size,
         emptyMessage = s"No symbols with @$annot annotation found")
+  }

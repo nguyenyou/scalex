@@ -5,14 +5,31 @@
 ### Changed
 - When both `-w` and `--workspace` are passed, the last occurrence now wins (previously `--workspace` always took precedence regardless of position)
 - `refs --top` now uses the same timed-out suffix as every other command (`(timed out — partial results)` instead of `(timed out — results may be incomplete)`)
+- `overview --architecture/--concise/--focus-package` reads imports recorded in the index instead of re-parsing every source file — on the scala3 corpus (17.7k files) this drops `overview --concise` from ~3.7s to ~0.75s (4.9×)
+- Native-image note: bloom-loading commands (`refs`/`imports`/`coverage`) run 7–15% slower in this build (~50–90ms on the scala3 corpus) while most other commands got 10–18% faster. The slowdown is entirely in the untouched index-deserialization phase and does not reproduce on the JVM (parity there) — it traces to GraalVM GC pacing/codegen shifts from the binary growing, not to any changed code path. Pinning the heap (`-Xms1g`) recovers most of it on both old and new binaries
+- Line-number gutters are now uniformly left-aligned: `refs -C` previously right-aligned line numbers while `body` left-aligned them
+- `refs`/`imports` now report `timedOut: true` when the deadline expires mid-file on the last scanned file (previously the partial result could be reported as complete)
 
 ### Fixed
+- `grep --json` no longer emits invalid JSON when the auto-corrected pattern contains backslashes or quotes (e.g. `grep 'foo\|\d+' --json` produced an unescaped `"corrected":"foo|\d+"` hint)
+- `graph` no longer corrupts its edge-list args when a value-taking global flag (e.g. `--limit 5`) is passed — the flag strip-list is now derived from the flag registry instead of a hardcoded subset
 - `--expand` without a numeric value no longer consumes a following flag (e.g. `explain Foo --expand --no-doc` now applies `--no-doc`; bare `--expand` still means depth 1)
 - A positional argument that equals a flag's value elsewhere in the arg list (e.g. `scalex def --kind class class`) is no longer dropped — flag parsing is now a single position-aware pass
 - Corrupted or truncated index caches now report the failure cause on stderr (`index load failed (EOFException: …) — rebuilding`) instead of a generic message
 - Git subprocess readers are closed after use; a missing `git` binary now produces a clear error instead of a stack trace
 
 ### Changed (internal)
+- JSON emission helpers (`jStr`/`jArr`/`jStrArr`/`jOpt`, `jsonMemberFields`, `jsonBodyFields`) replace ~50 hand-rolled `jsonEscape` interpolation fragments across all renderers — every string value is escaped exactly once by construction
+- One `DeadlineScan` chassis (deadline, result queue, unreadable-file counter, parallel per-file/per-line scanning) behind `grepFiles`, `findReferences`, and `findImports`
+- Shared `pathPredicate` for the `--no-tests`/`--path`/`--exclude-path` filter chain (previously copied in `filterSymbols`, `filterRefs`, `grepFiles`, `astPatternSearch`, `tests`)
+- One `nameMatchTier` classifier (exact/prefix/contains/reverse-contains/camelCase) behind symbol search, file search, and owner-scoped suggestions
+- `requireArg` helper replaces the 21 identical `args.headOption match … UsageError` command preambles
+- `buildMultiIndex` builds the inverted lazy indexes (`parentIndex`, `typeParamParentIndex`, `annotationIndex`); `distinctSymbols` uses `distinctBy`
+- Java extraction shares `javaParams`/`javaMethodSig`/`javaFieldInfo`/`javaLine` between file-symbol and member extraction (signatures can no longer drift apart), and Java body extraction uses one `addBody` slice helper
+- `findTypeDefs` names the repeated "definitions that are types" lookup; `SymbolKind.label`, `Confidence.label/explanation`, `refCategoryOrder`, `wildcardImportPkg`, `pkgSuffix`, `numberedLine`, `renderShown` (the `... and N more` footer), and a single recursive hierarchy printer replace their scattered copies
+- `renderSourceBlocks` reads each file at most once for context windows (previously twice per block in text mode); context slicing shares one `contextWindow` helper and `readSourceLines`
+- `coverage` computes its not-found hint in the command instead of inside the renderer; `bench.scala` is `return`-free
+- New tests: a structural JSON validator sweeps every `--json` command output; locks on search ranking, overview package-dependency edges, Java signature consistency, truncation footers, and context-line rendering
 - New `clibase` Mill module — app-agnostic CLI plumbing usable as a base for other CLIs: declarative flag registry (each flag declared once: spellings, value shape, default, help text), single-pass lenient parser (unknown `--long` flags ignored), typed `Flags` bag, generated `Options:` help, `Timings`, `OutputBudget` (line-boundary truncation), `BatchLoop` (stdin REPL)
 - The self-contained `asciiGraph` package moved from `src/graph/` to its own `graph` Mill module
 - Deleted `ParsedFlags` (45 parallel fields), the hand-written parser match, and the hand-written options help — flag spellings, defaults, and help text now live in one declaration per flag in `src/flags.scala`, and `CommandContext` is built in a single place (`flagsToContext`)

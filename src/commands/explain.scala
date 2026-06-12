@@ -1,9 +1,7 @@
 import scala.util.boundary, boundary.break
 
 def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = boundary {
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex explain <symbol>")
-    case Some(symbol) =>
+  requireArg(args, "Usage: scalex explain <symbol>") { symbol =>
       var defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(kindFilter = None))
       defs = rankSymbols(defs, ctx.workspace)
       // If no results and symbol contains ".", try Owner.member resolution
@@ -104,6 +102,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = boundary {
           CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls,
             otherMatches = otherMatches, totalImpls = totalImpls, inherited = inherited,
             relatedTypes = relatedTypes)
+  }
 }
 
 private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,

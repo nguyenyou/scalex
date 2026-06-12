@@ -1,7 +1,5 @@
 def cmdApi(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex api <package>")
-    case Some(pkg) =>
+  requireArg(args, "Usage: scalex api <package>") { pkg =>
       withResolvedPackage(pkg, ctx, "api") { resolvedPkg =>
         val surface = ctx.idx.findApiSurface(resolvedPkg, ctx.usedByFilter)
         // Apply kind/test/path filters to the symbols
@@ -17,3 +15,4 @@ def cmdApi(args: List[String], ctx: CommandContext): CmdResult =
           internalOnly = internal.map(_.symbol.name).sorted
         )
       }
+  }

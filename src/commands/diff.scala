@@ -2,9 +2,7 @@ import scala.collection.mutable
 import java.nio.file.Files
 
 def cmdDiff(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex diff <git-ref> (e.g. scalex diff HEAD~1)")
-    case Some(ref) =>
+  requireArg(args, "Usage: scalex diff <git-ref> (e.g. scalex diff HEAD~1)") { ref =>
       val changedFiles = runGitDiff(ctx.workspace, ref)
       val added = mutable.ListBuffer.empty[DiffSymbol]
       val removed = mutable.ListBuffer.empty[DiffSymbol]
@@ -39,3 +37,4 @@ def cmdDiff(args: List[String], ctx: CommandContext): CmdResult =
       }
 
       CmdResult.SymbolDiff(ref, changedFiles.size, added.toList, removed.toList, modified.toList)
+  }

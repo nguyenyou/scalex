@@ -3,6 +3,14 @@ import scala.collection.mutable
 
 // ── Command helpers ─────────────────────────────────────────────────────────
 
+/** Standard command preamble: the first positional arg is required; without it
+  * the command answers with its usage line. */
+def requireArg(args: List[String], usage: String)(f: String => CmdResult): CmdResult =
+  args.headOption match {
+    case None => CmdResult.UsageError(usage)
+    case Some(arg) => f(arg)
+  }
+
 def hasRegexHint(pattern: String): Boolean =
   pattern.contains("\\|")
 
@@ -52,8 +60,7 @@ def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String):
 
 /** Build owner-scoped suggestions ranked by similarity to `symbol`. */
 def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext): List[String] =
-  val ownerDefs = filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
-    .filter(s => typeKinds.contains(s.kind))
+  val ownerDefs = filterSymbols(findTypeDefs(owner, ctx), ctx.copy(kindFilter = None))
   val members = ownerDefs.headOption.toList.flatMap(s => extractMembers(s.file, s.name, Some(s.kind)))
   // Rank by similarity: exact > prefix > contains > rest
   val lower = symbol.toLowerCase
@@ -62,14 +69,15 @@ def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext)
   val contains = mutable.ListBuffer.empty[MemberInfo]
   val rest = mutable.ListBuffer.empty[MemberInfo]
   members.foreach { m =>
-    val n = m.name.toLowerCase
-    if n == lower then exact += m
-    else if n.startsWith(lower) then prefix += m
-    else if n.contains(lower) then contains += m
-    else rest += m
+    nameMatchTier(lower, m.name) match {
+      case Some(MatchTier.Exact)    => exact += m
+      case Some(MatchTier.Prefix)   => prefix += m
+      case Some(MatchTier.Contains) => contains += m
+      case _                        => rest += m
+    }
   }
   (exact.toList ++ prefix.toList ++ contains.toList ++ rest.toList).take(5).map { m =>
-    s"${m.kind.toString.toLowerCase} ${m.name} in $owner"
+    s"${m.kind.label} ${m.name} in $owner"
   }
 
 // ── Package resolution (shared by package, api, summary) ────────────────────
@@ -107,26 +115,26 @@ def withResolvedPackage(pkg: String, ctx: CommandContext, cmd: String)(f: String
 
 // ── Shared filters ──────────────────────────────────────────────────────────
 
+/** The --no-tests / --path / --exclude-path predicate for `ctx`, or None when
+  * no file-level filters are active (callers skip the pass entirely). */
+private def ctxPathPredicate(ctx: CommandContext): Option[Path => Boolean] =
+  if ctx.noTests || ctx.pathFilter.isDefined || ctx.excludePath.isDefined then
+    Some(pathPredicate(ctx.noTests, ctx.pathFilter, ctx.excludePath, ctx.workspace))
+  else None
+
 def filterSymbols(symbols: List[SymbolInfo], ctx: CommandContext): List[SymbolInfo] =
   var r = symbols
   ctx.kindFilter.foreach { k =>
     val kk = k.toLowerCase
-    r = r.filter(_.kind.toString.toLowerCase == kk)
+    r = r.filter(_.kind.label == kk)
   }
-  if ctx.noTests then r = r.filter(s => !isTestFile(s.file, ctx.workspace))
-  ctx.pathFilter.foreach { p => r = r.filter(s => matchesPath(s.file, p, ctx.workspace)) }
-  ctx.excludePath.foreach { p => r = r.filter(s => !matchesPath(s.file, p, ctx.workspace)) }
-  ctx.inPackageFilter.foreach { pkg =>
-    val prefix = pkg + "."
-    r = r.filter(s => s.packageName == pkg || s.packageName.startsWith(prefix))
-  }
+  ctxPathPredicate(ctx).foreach { keep => r = r.filter(s => keep(s.file)) }
+  ctx.inPackageFilter.foreach { pkg => r = symbolsInPackage(pkg, r) }
   r
 
 def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
   var r = refs
-  if ctx.noTests then r = r.filter(ref => !isTestFile(ref.file, ctx.workspace))
-  ctx.pathFilter.foreach { p => r = r.filter(ref => matchesPath(ref.file, p, ctx.workspace)) }
-  ctx.excludePath.foreach { p => r = r.filter(ref => !matchesPath(ref.file, p, ctx.workspace)) }
+  ctxPathPredicate(ctx).foreach { keep => r = r.filter(ref => keep(ref.file)) }
   ctx.inPackageFilter.foreach { pkg =>
     val prefix = pkg + "."
     r = r.filter { ref =>
@@ -141,6 +149,10 @@ def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
 // ── Shared constants ─────────────────────────────────────────────────────────
 
 val typeKinds: Set[SymbolKind] = Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Object, SymbolKind.Enum)
+
+/** Definitions of `name` that are types (class/trait/object/enum). */
+def findTypeDefs(name: String, ctx: CommandContext): List[SymbolInfo] =
+  ctx.idx.findDefinition(name).filter(s => typeKinds.contains(s.kind))
 
 // ── Stdlib package detection ─────────────────────────────────────────────────
 
@@ -190,7 +202,7 @@ private def collectInheritedMembersImpl(sym: SymbolInfo, ctx: CommandContext): (
     parentNames.foreach { pName =>
       if !visited.contains(pName.toLowerCase) then {
         visited += pName.toLowerCase
-        val parentDefs = ctx.idx.findDefinition(pName).filter(s => typeKinds.contains(s.kind))
+        val parentDefs = findTypeDefs(pName, ctx)
         parentDefs.headOption.foreach { pd =>
           val parentMembers = extractMembers(pd.file, pd.name, Some(pd.kind))
           parentMembers.foreach(m => allParentKeys += ((name = m.name, kind = m.kind)))

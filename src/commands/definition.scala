@@ -1,7 +1,5 @@
 def cmdDef(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex def <symbol>")
-    case Some(symbol) =>
+  requireArg(args, "Usage: scalex def <symbol>") { symbol =>
       var results = filterSymbols(ctx.idx.findDefinition(symbol), ctx)
       results = rankSymbols(results, ctx.workspace)
       // If no results and symbol contains ".", try Owner.member resolution
@@ -25,11 +23,12 @@ def cmdDef(args: List[String], ctx: CommandContext): CmdResult =
           header = s"""Definition of "$symbol":""",
           symbols = results,
           total = results.size)
+  }
 
 /** Resolve Owner.member syntax: if Owner is a type, extract its members and filter to the member name */
 private def resolveDottedMember(symbol: String, ctx: CommandContext): Option[List[SymbolInfo]] = {
   splitOwnerMember(symbol).flatMap { (ownerName, memberName) =>
-    val ownerDefs = filterSymbols(ctx.idx.findDefinition(ownerName), ctx).filter(s => typeKinds.contains(s.kind))
+    val ownerDefs = filterSymbols(findTypeDefs(ownerName, ctx), ctx)
     val memberResults = ownerDefs.flatMap { owner =>
       val members = extractMembers(owner.file, simpleNameOf(ownerName))
       members.filter(_.name.equalsIgnoreCase(memberName)).map { m =>

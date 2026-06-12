@@ -1,13 +1,10 @@
 def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex body <symbol> [--in <owner>]")
-    case Some(symbol) =>
+  requireArg(args, "Usage: scalex body <symbol> [--in <owner>]") { symbol =>
       // Find files containing the symbol
       val defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(kindFilter = None))
       val ownerFiles = ctx.inOwner match
         case Some(owner) =>
-          filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
-            .filter(s => typeKinds.contains(s.kind)).map(_.file).distinct
+          filterSymbols(findTypeDefs(owner, ctx), ctx.copy(kindFilter = None)).map(_.file).distinct
         case None => Nil
       val filesToSearch = if defs.nonEmpty then {
         // When --in is specified, also include the owner's files — the symbol may
@@ -30,8 +27,7 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
       val (displayName, effectiveBlocks) =
         splitOwnerMember(symbol) match {
           case Some((ownerName, memberName)) if blocks.isEmpty && ctx.inOwner.isEmpty =>
-            val dottedOwnerFiles = filterSymbols(ctx.idx.findDefinition(ownerName), ctx)
-              .filter(s => typeKinds.contains(s.kind))
+            val dottedOwnerFiles = filterSymbols(findTypeDefs(ownerName, ctx), ctx)
               .map(_.file).distinct
             val dottedBlocks = dottedOwnerFiles.flatMap { f =>
               extractBody(f, memberName, Some(ownerName)).map(b => (file = f, body = b))
@@ -55,3 +51,4 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
         CmdResult.NotFound(msg, scopedHint)
       else
         CmdResult.SourceBlocks(displayName, effectiveBlocks, ctx.contextLines, ctx.showImports)
+  }

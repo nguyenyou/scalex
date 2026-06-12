@@ -18,7 +18,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
         if isLiteralQuoted then Some(s"""  Note: invalid regex, treating as literal search: "$rawPattern"""")
         else if wasFixed then Some(s"""  Note: auto-corrected POSIX regex to Java regex: "$rawPattern" → "$pattern"""")
         else None
-      val hint = if wasFixed && !isLiteralQuoted then Some(s""","corrected":"$pattern"""") else None
+      val hint = if wasFixed && !isLiteralQuoted then Some(s""","corrected":${jStr(pattern)}""") else None
       ctx.inOwner match
         case Some(owner) if ctx.eachMethod =>
           // Per-method grep: iterate members, grep each body, report which methods matched

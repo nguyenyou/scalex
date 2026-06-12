@@ -1,7 +1,5 @@
 def cmdDoc(args: List[String], ctx: CommandContext): CmdResult =
-  args.headOption match
-    case None => CmdResult.UsageError("Usage: scalex doc <Symbol>")
-    case Some(symbol) =>
+  requireArg(args, "Usage: scalex doc <Symbol>") { symbol =>
       val defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx)
       if defs.isEmpty then
         CmdResult.NotFound(
@@ -12,3 +10,4 @@ def cmdDoc(args: List[String], ctx: CommandContext): CmdResult =
           DocEntryData(s, extractDoc(s.file, s.line))
         }
         CmdResult.DocEntries(symbol, entries)
+  }

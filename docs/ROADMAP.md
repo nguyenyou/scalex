@@ -4,6 +4,25 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Dedup refactor: extract reusable units across src/ (no behavior change except noted)
+
+- [x] JSON emission helpers (`jStr`/`jArr`/`jStrArr`/`jOpt`/`jsonMemberFields`/`jsonBodyFields`) replacing ~50 hand-rolled `jsonEscape` interpolation fragments in `format.scala`
+- [x] Bug fix: `grep --json` emits invalid JSON when the auto-corrected pattern contains `\` or `"` (unescaped `"corrected"` hint in `cmdGrep`)
+- [x] `overview --architecture/--concise` reads imports from the index (`WorkspaceIndex.fileImports`) instead of re-parsing every file from disk; reuses `parseImportTarget` instead of the hand-rolled lastDot package split (~3.7s → warm-query latency on scala3)
+- [x] Deadline-scan chassis (`DeadlineScan`): one shared parallel file-scan (deadline + result queue + unreadable counter + stderr report) behind `grepFiles`, `findReferences`, `findImports`; behavior fix: per-line deadline expiry now sets `timedOut` in all three
+- [x] Shared path/test filter predicate (`pathPredicate`) behind `filterSymbols`, `filterRefs`, `grepFiles`, `astPatternSearch`, `cmdTests`
+- [x] `requireArg` helper for the 21 identical `args.headOption match … UsageError` command preambles
+- [x] `buildMultiIndex` helper for the inverted lazy indexes (`parentIndex`, `typeParamParentIndex`, `annotationIndex`); `distinctBy` for `distinctSymbols`
+- [x] Shared name-match tier classifier (`nameMatchTier`) behind `search`, `searchFiles`, `mkOwnerScopedSuggestions`
+- [x] Context-window slicing helper + `readSourceLines` reuse in `format.scala` (fixes `renderSourceBlocks` reading the same file twice)
+- [x] Numbered source-line printer + member-line formatters; behavior change: line numbers uniformly left-aligned (refs `-C` previously right-aligned)
+- [x] `renderShown` truncation-footer helper across the render sites
+- [x] Java extraction helpers (`javaParams`, `javaMethodSig`, `javaFieldInfo`, `javaLine`, `addBody`) deduplicating symbol vs member vs body extraction
+- [x] `findTypeDefs` shared type-definition lookup across `members`/`body`/`def`/inherited-member collection
+- [x] Shared constants: `refCategoryOrder`, `Confidence.label/explanation`, `wildcardImportPkg`, `SymbolKind.label`; one recursive hierarchy printer for both directions
+- [x] Policy/layering: removed `return` from `bench.scala`; graph-command flag strip-list derived from `scalexFlags` registry (fixes `graph --render … --limit 5` corrupting the edge list); not-found hint computed in `cmdCoverage` instead of the renderer
+- [x] Guard tests: structural JSON validator sweep over every `--json` command; locks on search ranking, overview package deps, Java signature consistency, truncation footers, context rendering
+
 ### clibase: reusable CLI base module + graph module extraction
 
 - [x] New `clibase` Mill module — app-agnostic CLI plumbing: declarative flag registry (declare a flag once: names, value shape, default, help), single-pass lenient parser (unknown `--long` flags ignored), typed `Flags` bag, generated options help, `Timings`, `OutputBudget` (line-boundary truncation), `BatchLoop` (stdin REPL)
