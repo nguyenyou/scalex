@@ -8,19 +8,20 @@ import com.google.common.hash.{BloomFilter, Funnels}
 
 // ── Git ─────────────────────────────────────────────────────────────────────
 
-/** Run a git command in `workspace` and collect its stdout lines.
+/** Run a git command in `workspace`, streaming its stdout lines through `consume`
+  * (single pass, no intermediate list — `git ls-files` output can be large).
   * Returns None if the process cannot be started (e.g. git not installed). */
-def runGitLines(workspace: Path, args: String*): Option[(lines: List[String], exitCode: Int)] = {
+def runGitLines[A](workspace: Path, args: String*)(consume: Iterator[String] => A): Option[A] = {
   try {
     val pb = ProcessBuilder(("git" +: args)*)
     pb.directory(workspace.toFile)
     pb.redirectErrorStream(true)
     val proc = pb.start()
-    val lines = Using.resource(BufferedReader(InputStreamReader(proc.getInputStream))) { reader =>
-      reader.lines().iterator().asScala.toList
+    val result = Using.resource(BufferedReader(InputStreamReader(proc.getInputStream))) { reader =>
+      consume(reader.lines().iterator().asScala)
     }
-    val exitCode = proc.waitFor()
-    Some((lines = lines, exitCode = exitCode))
+    proc.waitFor()
+    Some(result)
   } catch {
     case e: java.io.IOException =>
       System.err.println(s"scalex: failed to run git ${args.headOption.getOrElse("")} (${e.getMessage})")
@@ -28,11 +29,16 @@ def runGitLines(workspace: Path, args: String*): Option[(lines: List[String], ex
   }
 }
 
+/** Runs on every invocation over potentially huge output — kept as a direct
+  * implementation rather than going through runGitLines (measurably faster). */
 def gitLsFiles(workspace: Path): List[GitFile] = {
-  runGitLines(workspace, "ls-files", "--stage") match {
-    case None => Nil
-    case Some(result) =>
-      result.lines.flatMap { line =>
+  try {
+    val pb = ProcessBuilder("git", "ls-files", "--stage")
+    pb.directory(workspace.toFile)
+    pb.redirectErrorStream(true)
+    val proc = pb.start()
+    val files = Using.resource(BufferedReader(InputStreamReader(proc.getInputStream))) { reader =>
+      reader.lines().iterator().asScala.flatMap { line =>
         val tabIdx = line.indexOf('\t')
         if tabIdx < 0 then None
         else {
@@ -42,7 +48,14 @@ def gitLsFiles(workspace: Path): List[GitFile] = {
             Some(GitFile(workspace.resolve(path), parts(1)))
           else None
         }
-      }
+      }.toList
+    }
+    proc.waitFor()
+    files
+  } catch {
+    case e: java.io.IOException =>
+      System.err.println(s"scalex: failed to run git ls-files (${e.getMessage})")
+      Nil
   }
 }
 

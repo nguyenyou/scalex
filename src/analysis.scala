@@ -164,10 +164,9 @@ def extractDeps(idx: WorkspaceIndex, symbolName: String, workspace: Path, maxDep
 // ── Diff extraction ─────────────────────────────────────────────────────────
 
 def runGitDiff(workspace: Path, ref: String): List[String] =
-  runGitLines(workspace, "diff", "--name-only", ref) match {
-    case None => Nil
-    case Some(result) => result.lines.filter(f => f.endsWith(".scala") || f.endsWith(".java"))
-  }
+  runGitLines(workspace, "diff", "--name-only", ref) { lines =>
+    lines.filter(f => f.endsWith(".scala") || f.endsWith(".java")).toList
+  }.getOrElse(Nil)
 
 def gitShowFile(workspace: Path, ref: String, relPath: String): Option[String] = {
   try {
