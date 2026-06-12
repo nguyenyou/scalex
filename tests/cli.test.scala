@@ -1828,72 +1828,83 @@ class CliSuite extends ScalexTestBase:
 
   test("parseFlags extracts --path from arg list") {
     val flags = parseFlags(List("Parser", "--verbose", "--no-tests", "--path", "compiler/src/"))
-    assertEquals(flags.pathFilter, Some("compiler/src/"))
-    assert(flags.verbose)
-    assert(flags.noTests)
-    assertEquals(flags.cleanArgs, List("Parser"))
+    assertEquals(flags(PathFlag), Some("compiler/src/"))
+    assert(flags(VerboseFlag))
+    assert(flags(NoTestsFlag))
+    assertEquals(flags.positional, List("Parser"))
   }
 
   test("parseFlags strips leading / from --path") {
     val flags = parseFlags(List("Foo", "--path", "/src/main/"))
-    assertEquals(flags.pathFilter, Some("src/main/"))
+    assertEquals(flags(PathFlag), Some("src/main/"))
   }
 
   test("parseFlags extracts --in owner") {
     val flags = parseFlags(List("runPhases", "--in", "Run", "--no-tests"))
-    assertEquals(flags.inOwner, Some("Run"))
-    assert(flags.noTests)
-    assertEquals(flags.cleanArgs, List("runPhases"))
+    assertEquals(flags(InFlag), Some("Run"))
+    assert(flags(NoTestsFlag))
+    assertEquals(flags.positional, List("runPhases"))
   }
 
-  test("parseFlags with no flags returns defaults and full cleanArgs") {
+  test("parseFlags with no flags returns defaults and full positional list") {
     val flags = parseFlags(List("UserService"))
-    assertEquals(flags.pathFilter, None)
-    assertEquals(flags.inOwner, None)
-    assert(!flags.noTests)
-    assert(!flags.verbose)
-    assertEquals(flags.cleanArgs, List("UserService"))
+    assertEquals(flags(PathFlag), None)
+    assertEquals(flags(InFlag), None)
+    assert(!flags(NoTestsFlag))
+    assert(!flags(VerboseFlag))
+    assertEquals(flags.positional, List("UserService"))
   }
 
   test("parseFlags keeps a positional arg that equals a flag value") {
     // Regression: the old indexOf-based cleanArgs dropped every occurrence of
     // a token that appeared anywhere as a flag value
     val flags = parseFlags(List("def", "--kind", "class", "class"))
-    assertEquals(flags.kindFilter, Some("class"))
-    assertEquals(flags.cleanArgs, List("def", "class"))
+    assertEquals(flags(KindFlag), Some("class"))
+    assertEquals(flags.positional, List("def", "class"))
   }
 
-  test("parseFlags --limit 0 means unlimited") {
-    assertEquals(parseFlags(List("--limit", "0")).limit, Int.MaxValue)
+  test("parseFlags --limit 0 means unlimited in the command context") {
+    val idx = WorkspaceIndex(workspace)
+    assertEquals(flagsToContext(parseFlags(List("--limit", "0")), idx, workspace).limit, Int.MaxValue)
   }
 
   test("parseFlags collects repeated -e patterns in order") {
     val flags = parseFlags(List("grep", "-e", "foo", "-e", "bar"))
-    assertEquals(flags.grepPatterns, List("foo", "bar"))
-    assertEquals(flags.cleanArgs, List("grep"))
+    assertEquals(flags(GrepPatternFlag), List("foo", "bar"))
+    assertEquals(flags.positional, List("grep"))
   }
 
-  test("parseFlags --workspace takes precedence over -w regardless of order") {
-    assertEquals(parseFlags(List("-w", "short", "--workspace", "long")).explicitWorkspace, Some("long"))
-    assertEquals(parseFlags(List("--workspace", "long", "-w", "short")).explicitWorkspace, Some("long"))
+  test("parseFlags last occurrence wins when both -w and --workspace are passed") {
+    assertEquals(parseFlags(List("-w", "short", "--workspace", "long"))(WorkspaceFlag), Some("long"))
+    assertEquals(parseFlags(List("--workspace", "long", "-w", "short"))(WorkspaceFlag), Some("short"))
   }
 
   test("parseFlags --up and --down together keep both directions") {
-    val both = parseFlags(List("Foo", "--up", "--down"))
+    val idx = WorkspaceIndex(workspace)
+    val both = flagsToContext(parseFlags(List("Foo", "--up", "--down")), idx, workspace)
     assert(both.goUp)
     assert(both.goDown)
-    val onlyUp = parseFlags(List("Foo", "--up"))
+    val onlyUp = flagsToContext(parseFlags(List("Foo", "--up")), idx, workspace)
     assert(onlyUp.goUp)
     assert(!onlyUp.goDown)
   }
 
   test("parseFlags --exact wins over --prefix") {
-    assertEquals(parseFlags(List("Foo", "--prefix", "--exact")).searchMode, Some("exact"))
-    assertEquals(parseFlags(List("Foo", "--prefix")).searchMode, Some("prefix"))
+    val idx = WorkspaceIndex(workspace)
+    assertEquals(flagsToContext(parseFlags(List("Foo", "--prefix", "--exact")), idx, workspace).searchMode, Some("exact"))
+    assertEquals(flagsToContext(parseFlags(List("Foo", "--prefix")), idx, workspace).searchMode, Some("prefix"))
   }
 
   test("parseFlags ignores unknown long flags without treating them as positionals") {
-    assertEquals(parseFlags(List("Foo", "--does-not-exist")).cleanArgs, List("Foo"))
+    assertEquals(parseFlags(List("Foo", "--does-not-exist")).positional, List("Foo"))
+  }
+
+  test("parseFlags --expand without a value does not swallow a following flag") {
+    val flags = parseFlags(List("explain", "Foo", "--expand", "--no-doc"))
+    assertEquals(flags(ExpandFlag), 1)
+    assert(flags(NoDocFlag))
+    val withValue = parseFlags(List("explain", "Foo", "--expand", "2"))
+    assertEquals(withValue(ExpandFlag), 2)
   }
 
   test("batch per-line flags override: --path applied to per-line context") {
@@ -1906,7 +1917,7 @@ class CliSuite extends ScalexTestBase:
     assertEquals(ctx.pathFilter, Some("src/main/scala/com/example/"))
     assert(ctx.batchMode)
     // Run command with per-line context — should find UserService in that path
-    val output = captureOut { runCommand("def", lineFlags.cleanArgs, ctx) }
+    val output = captureOut { runCommand("def", lineFlags.positional, ctx) }
     assert(output.contains("UserService"), s"Should find UserService with per-line --path: $output")
   }
 
@@ -1917,7 +1928,7 @@ class CliSuite extends ScalexTestBase:
     val lineArgs = List("Registry", "--path", "src/main/scala/com/other/")
     val lineFlags = parseFlags(lineArgs)
     val ctx = flagsToContext(lineFlags, idx, workspace, batchMode = true)
-    val output = captureOut { runCommand("def", lineFlags.cleanArgs, ctx) }
+    val output = captureOut { runCommand("def", lineFlags.positional, ctx) }
     assert(output.contains("com.other"), s"Should find com.other.Registry: $output")
     assert(!output.contains("com.example"), s"Should NOT find com.example.Registry: $output")
   }
@@ -1928,12 +1939,12 @@ class CliSuite extends ScalexTestBase:
     // Without --no-tests, UserServiceSpec (in src/test/) should appear
     val withTests = parseFlags(List("UserServiceSpec"))
     val ctxWith = flagsToContext(withTests, idx, workspace, batchMode = true)
-    val outWith = captureOut { runCommand("def", withTests.cleanArgs, ctxWith) }
+    val outWith = captureOut { runCommand("def", withTests.positional, ctxWith) }
     assert(outWith.contains("UserServiceSpec"), s"Should find test class without --no-tests: $outWith")
     // With --no-tests, it should be filtered out
     val noTests = parseFlags(List("UserServiceSpec", "--no-tests"))
     val ctxNo = flagsToContext(noTests, idx, workspace, batchMode = true)
-    val outNo = captureOut { runCommand("def", noTests.cleanArgs, ctxNo) }
+    val outNo = captureOut { runCommand("def", noTests.positional, ctxNo) }
     assert(!outNo.contains("UserServiceSpec") || outNo.contains("not found"),
       s"Should NOT find test class with --no-tests: $outNo")
   }
@@ -2091,7 +2102,7 @@ class CliSuite extends ScalexTestBase:
     idx.index()
     // --with-bodies is parsed as withBody = true
     val f = parseFlags(List("explain", "PaymentServiceLive", "--with-bodies"))
-    assert(f.withBody, "--with-bodies should set withBody = true")
+    assert(f(BodyFlag), "--with-bodies should set withBody = true")
   }
 
   // ── #180: body -C N (context lines) ───────────────────────────────────
@@ -2432,40 +2443,40 @@ class CliSuite extends ScalexTestBase:
 
   test("parseFlags parses --body flag") {
     val f = parseFlags(List("members", "Foo", "--body"))
-    assert(f.withBody, "--body should be true")
+    assert(f(BodyFlag), "--body should be true")
   }
 
   test("parseFlags parses --with-bodies alias") {
     val f = parseFlags(List("explain", "Foo", "--with-bodies"))
-    assert(f.withBody, "--with-bodies should set withBody = true")
+    assert(f(BodyFlag), "--with-bodies should set withBody = true")
   }
 
   test("parseFlags parses --max-lines flag with argument") {
     val f = parseFlags(List("members", "Foo", "--body", "--max-lines", "20"))
-    assert(f.withBody, "--body should be true")
-    assertEquals(f.maxBodyLines, 20)
+    assert(f(BodyFlag), "--body should be true")
+    assertEquals(f(MaxLinesFlag), 20)
   }
 
   test("parseFlags --max-lines defaults to 0") {
     val f = parseFlags(List("members", "Foo", "--body"))
-    assertEquals(f.maxBodyLines, 0)
+    assertEquals(f(MaxLinesFlag), 0)
   }
 
   test("parseFlags parses --imports flag") {
     val f = parseFlags(List("body", "Foo", "--imports"))
-    assert(f.showImports, "--imports should be true")
+    assert(f(ImportsFlag), "--imports should be true")
   }
 
   test("parseFlags --imports defaults to false") {
     val f = parseFlags(List("body", "Foo"))
-    assert(!f.showImports, "--imports should default to false")
+    assert(!f(ImportsFlag), "--imports should default to false")
   }
 
-  test("parseFlags --max-lines is excluded from cleanArgs") {
+  test("parseFlags --max-lines is excluded from positionals") {
     val f = parseFlags(List("members", "Foo", "--body", "--max-lines", "10"))
-    assert(!f.cleanArgs.contains("--max-lines"), "--max-lines should be excluded from cleanArgs")
-    assert(!f.cleanArgs.contains("10"), "10 (max-lines value) should be excluded from cleanArgs")
-    assert(f.cleanArgs.contains("Foo"), "Foo should remain in cleanArgs")
+    assert(!f.positional.contains("--max-lines"), "--max-lines should be excluded from positionals")
+    assert(!f.positional.contains("10"), "10 (max-lines value) should be excluded from positionals")
+    assert(f.positional.contains("Foo"), "Foo should remain in positionals")
   }
 
   // ── #180: body -C N + --imports combined ──────────────────────────────
@@ -2630,24 +2641,24 @@ class CliSuite extends ScalexTestBase:
 
   test("parseFlags parses --offset flag") {
     val f = parseFlags(List("members", "Foo", "--offset", "10"))
-    assertEquals(f.offset, 10)
+    assertEquals(f(OffsetFlag), 10)
   }
 
   test("parseFlags --offset defaults to 0") {
     val f = parseFlags(List("members", "Foo"))
-    assertEquals(f.offset, 0)
+    assertEquals(f(OffsetFlag), 0)
   }
 
-  test("parseFlags --offset is excluded from cleanArgs") {
+  test("parseFlags --offset is excluded from positionals") {
     val f = parseFlags(List("members", "Foo", "--offset", "5"))
-    assert(!f.cleanArgs.contains("--offset"), "--offset should be excluded from cleanArgs")
-    assert(!f.cleanArgs.contains("5"), "5 (offset value) should be excluded from cleanArgs")
-    assert(f.cleanArgs.contains("Foo"), "Foo should remain in cleanArgs")
+    assert(!f.positional.contains("--offset"), "--offset should be excluded from positionals")
+    assert(!f.positional.contains("5"), "5 (offset value) should be excluded from positionals")
+    assert(f.positional.contains("Foo"), "Foo should remain in positionals")
   }
 
-  test("parseFlags --limit 0 is converted to Int.MaxValue") {
+  test("parseFlags --limit 0 is converted to Int.MaxValue in the context") {
     val f = parseFlags(List("members", "Foo", "--limit", "0"))
-    assertEquals(f.limit, Int.MaxValue)
+    assertEquals(flagsToContext(f, WorkspaceIndex(workspace), workspace).limit, Int.MaxValue)
   }
 
   // ── Orphan header suppression ──────────────────────────────────────────
@@ -2932,35 +2943,35 @@ class CliSuite extends ScalexTestBase:
 
   test("#252: parseFlags parses --max-output flag") {
     val f = parseFlags(List("overview", "--max-output", "500"))
-    assertEquals(f.maxOutput, 500)
+    assertEquals(f(MaxOutputFlag), 500)
   }
 
   test("#252: parseFlags --max-output defaults to 0") {
     val f = parseFlags(List("overview"))
-    assertEquals(f.maxOutput, 0)
+    assertEquals(f(MaxOutputFlag), 0)
   }
 
-  test("#252: parseFlags --max-output is excluded from cleanArgs") {
+  test("#252: parseFlags --max-output is excluded from positionals") {
     val f = parseFlags(List("overview", "--max-output", "500"))
-    assert(!f.cleanArgs.contains("--max-output"), s"cleanArgs should not contain --max-output: ${f.cleanArgs}")
-    assert(!f.cleanArgs.contains("500"), s"cleanArgs should not contain 500: ${f.cleanArgs}")
+    assert(!f.positional.contains("--max-output"), s"positionals should not contain --max-output: ${f.positional}")
+    assert(!f.positional.contains("500"), s"positionals should not contain 500: ${f.positional}")
   }
 
   test("#252: parseFlags parses --in-package flag") {
     val f = parseFlags(List("refs", "Foo", "--in-package", "com.example"))
-    assertEquals(f.inPackageFilter, Some("com.example"))
+    assertEquals(f(InPackageFlag), Some("com.example"))
   }
 
   test("#252: parseFlags --in-package defaults to None") {
     val f = parseFlags(List("refs", "Foo"))
-    assertEquals(f.inPackageFilter, None)
+    assertEquals(f(InPackageFlag), None)
   }
 
-  test("#252: parseFlags --in-package is excluded from cleanArgs") {
+  test("#252: parseFlags --in-package is excluded from positionals") {
     val f = parseFlags(List("refs", "Foo", "--in-package", "com.example"))
-    assert(!f.cleanArgs.contains("--in-package"), s"cleanArgs should not contain --in-package: ${f.cleanArgs}")
-    assert(!f.cleanArgs.contains("com.example"), s"cleanArgs should not contain com.example: ${f.cleanArgs}")
-    assert(f.cleanArgs.contains("Foo"), s"cleanArgs should still contain Foo: ${f.cleanArgs}")
+    assert(!f.positional.contains("--in-package"), s"positionals should not contain --in-package: ${f.positional}")
+    assert(!f.positional.contains("com.example"), s"positionals should not contain com.example: ${f.positional}")
+    assert(f.positional.contains("Foo"), s"positionals should still contain Foo: ${f.positional}")
   }
 
   // ── #252: --max-output truncation ─────────────────────────────────────
@@ -3113,7 +3124,7 @@ class CliSuite extends ScalexTestBase:
   test("#252: flagsToContext wires maxOutput and inPackageFilter") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val f = ParsedFlags(maxOutput = 1000, inPackageFilter = Some("com.test"))
+    val f = parseFlags(List("--max-output", "1000", "--in-package", "com.test"))
     val ctx = flagsToContext(f, idx, workspace)
     assertEquals(ctx.maxOutput, 1000)
     assertEquals(ctx.inPackageFilter, Some("com.test"))
