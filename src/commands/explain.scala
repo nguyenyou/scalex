@@ -66,7 +66,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = boundary {
         else Nil
         // Members (for types)
         val inheritResult = if typeKinds.contains(sym.kind) then collectInheritedMembers(sym, ctx)
-          else (inherited = Nil: List[(parentName: String, parentFile: Option[java.nio.file.Path], parentPackage: String, members: List[MemberInfo])], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
+          else (inherited = Nil: List[InheritedGroup], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
         val inherited = inheritResult.inherited
         val parentKeys = inheritResult.parentMemberKeys
         val members = decorateMembers(rawMembers, parentKeys, sym.file, simpleName, ctx)

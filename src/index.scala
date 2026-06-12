@@ -312,6 +312,13 @@ def nameMatchTier(lowerQuery: String, name: String): Option[MatchTier] = {
   else None
 }
 
+/** Bucket items by their name-match tier against `lowerQuery`, preserving
+  * encounter order within each tier. Items that match no tier are dropped.
+  * One bucketer behind symbol search and file search. */
+private def bucketByTier[A](items: List[A], lowerQuery: String)(nameOf: A => String): Map[MatchTier, List[A]] =
+  items.flatMap(a => nameMatchTier(lowerQuery, nameOf(a)).map(t => (tier = t, item = a)))
+    .groupMap(_.tier)(_.item)
+
 /** Inverted index: group items under each (already-normalized) key produced by `keys`. */
 private def buildMultiIndex[A, K](items: List[A])(keys: A => IterableOnce[K]): Map[K, List[A]] = {
   val idx = mutable.HashMap.empty[K, mutable.ListBuffer[A]]
@@ -433,47 +440,34 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     fileCount = gitFiles.size
 
     val cached = Timings.phase("cache-load") { IndexPersistence.load(workspace, needBlooms) }
+    cachedLoad = cached.isDefined
+    // No cache = empty map: every file misses the OID compare and gets parsed
+    val cachedMap = cached.getOrElse(Map.empty)
     val result = mutable.ListBuffer.empty[IndexedFile]
+    val toParse = mutable.ListBuffer.empty[GitFile]
 
-    cached match
-      case Some(cachedMap) =>
-        cachedLoad = true
-        val toParseQueue = ConcurrentLinkedQueue[IndexedFile]()
-        val toParse = mutable.ListBuffer.empty[GitFile]
+    Timings.phase("oid-compare") {
+      gitFiles.foreach { gf =>
+        val rel = workspace.relativize(gf.path).toString
+        cachedMap.get(rel) match
+          case Some(cf) if cf.oid == gf.oid =>
+            result += cf
+            skippedCount += 1
+          case _ =>
+            toParse += gf
+      }
+    }
 
-        Timings.phase("oid-compare") {
-          gitFiles.foreach { gf =>
-            val rel = workspace.relativize(gf.path).toString
-            cachedMap.get(rel) match
-              case Some(cf) if cf.oid == gf.oid =>
-                result += cf
-                skippedCount += 1
-              case _ =>
-                toParse += gf
-          }
-        }
-
-        Timings.phase("parse") {
-          toParse.asJava.parallelStream().forEach { gf =>
-            val rel = workspace.relativize(gf.path).toString
-            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
-            toParseQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
-          }
-        }
-        result ++= toParseQueue.asScala
-        parsedCount = toParse.size
-
-      case None =>
-        val queue = ConcurrentLinkedQueue[IndexedFile]()
-        Timings.phase("parse") {
-          gitFiles.asJava.parallelStream().forEach { gf =>
-            val rel = workspace.relativize(gf.path).toString
-            val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
-            queue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
-          }
-        }
-        result ++= queue.asScala
-        parsedCount = gitFiles.size
+    val parsedQueue = ConcurrentLinkedQueue[IndexedFile]()
+    Timings.phase("parse") {
+      toParse.asJava.parallelStream().forEach { gf =>
+        val rel = workspace.relativize(gf.path).toString
+        val (syms, bloom, imports, aliases, failed) = extractSymbols(gf.path)
+        parsedQueue.add(IndexedFile(rel, gf.oid, syms, bloom, imports, aliases, failed))
+      }
+    }
+    result ++= parsedQueue.asScala
+    parsedCount = toParse.size
 
     indexedFiles = result.toList
     parseFailedFiles = indexedFiles.collect {
@@ -525,20 +519,12 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
   }
 
   def findImplementations(name: String): List[SymbolInfo] = {
-    if name.contains(".") then {
-      val resolved = findDefinition(name)
-      if resolved.isEmpty then Nil
-      else {
-        val simpleName = name.substring(name.lastIndexOf('.') + 1)
-        val direct = parentIndex.getOrElse(simpleName.toLowerCase, Nil)
-        val viaTp = typeParamParentIndex.getOrElse(simpleName.toLowerCase, Nil)
-        (direct ++ viaTp).distinctBy(s => (name = s.name, file = s.file, line = s.line))
-      }
-    }
+    // A qualified name must resolve before its simple name is looked up
+    if name.contains(".") && findDefinition(name).isEmpty then Nil
     else {
-      val direct = parentIndex.getOrElse(name.toLowerCase, Nil)
-      val viaTp = typeParamParentIndex.getOrElse(name.toLowerCase, Nil)
-      (direct ++ viaTp).distinctBy(s => (name = s.name, file = s.file, line = s.line))
+      val simpleName = name.substring(name.lastIndexOf('.') + 1).toLowerCase
+      (parentIndex.getOrElse(simpleName, Nil) ++ typeParamParentIndex.getOrElse(simpleName, Nil))
+        .distinctBy(s => (name = s.name, file = s.file, line = s.line))
     }
   }
 
@@ -571,22 +557,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
         None
 
   def search(query: String): List[SymbolInfo] =
-    val lower = query.toLowerCase
-    val exact = mutable.ListBuffer.empty[SymbolInfo]
-    val prefix = mutable.ListBuffer.empty[SymbolInfo]
-    val contains = mutable.ListBuffer.empty[SymbolInfo]
-    val reverseContains = mutable.ListBuffer.empty[SymbolInfo]
-    val fuzzy = mutable.ListBuffer.empty[SymbolInfo]
-
-    distinctSymbols.foreach { s =>
-      nameMatchTier(lower, s.name).foreach {
-        case MatchTier.Exact           => exact += s
-        case MatchTier.Prefix          => prefix += s
-        case MatchTier.Contains        => contains += s
-        case MatchTier.ReverseContains => reverseContains += s
-        case MatchTier.CamelCase       => fuzzy += s
-      }
-    }
+    val byTier = bucketByTier(distinctSymbols, query.toLowerCase)(_.name)
+    def tier(t: MatchTier) = byTier.getOrElse(t, Nil)
     def searchRank(s: SymbolInfo): (kindRank: Int, testRank: Int, stdlibRank: Int, importRank: Int, pathLen: Int) =
       val kindRank = s.kind match
         case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => 0
@@ -599,7 +571,8 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
       val importRank = -symbolImportRank.getOrElse(s.name.toLowerCase, 0)
       val pathLen = s.file.toString.length
       (kindRank, testRank, stdlibRank, importRank, pathLen)
-    exact.toList.sortBy(searchRank) ++ prefix.toList.sortBy(searchRank) ++ contains.toList.sortBy(searchRank) ++ reverseContains.toList.sortBy(searchRank) ++ fuzzy.sortBy(_.name.length).toList
+    List(MatchTier.Exact, MatchTier.Prefix, MatchTier.Contains, MatchTier.ReverseContains)
+      .flatMap(t => tier(t).sortBy(searchRank)) ++ tier(MatchTier.CamelCase).sortBy(_.name.length)
 
   def fileSymbols(path: String): List[SymbolInfo] =
     val resolved = if Path.of(path).isAbsolute then Path.of(path)
@@ -607,38 +580,27 @@ class WorkspaceIndex(val workspace: Path, val needBlooms: Boolean = true):
     filesByPath.getOrElse(resolved, Nil)
 
   def searchFiles(query: String): List[String] =
-    val lower = query.toLowerCase
-    val exact = mutable.ListBuffer.empty[String]
-    val prefix = mutable.ListBuffer.empty[String]
-    val contains = mutable.ListBuffer.empty[String]
-    val fuzzy = mutable.ListBuffer.empty[String]
-
-    indexedFiles.foreach { f =>
-      val fileName = f.relativePath.substring(f.relativePath.lastIndexOf('/') + 1).stripSuffix(".scala").stripSuffix(".java")
-      nameMatchTier(lower, fileName).foreach {
-        case MatchTier.Exact     => exact += f.relativePath
-        case MatchTier.Prefix    => prefix += f.relativePath
-        case MatchTier.Contains  => contains += f.relativePath
-        case MatchTier.CamelCase => fuzzy += f.relativePath
-        case MatchTier.ReverseContains => () // not a useful tier for filenames
-      }
-    }
-    exact.toList ++ prefix.toList ++ contains.toList ++ fuzzy.sortBy(_.length).toList
+    def fileName(f: IndexedFile): String =
+      f.relativePath.substring(f.relativePath.lastIndexOf('/') + 1).stripSuffix(".scala").stripSuffix(".java")
+    val byTier = bucketByTier(indexedFiles, query.toLowerCase)(fileName)
+    def tier(t: MatchTier) = byTier.getOrElse(t, Nil).map(_.relativePath)
+    // ReverseContains is not a useful tier for filenames
+    tier(MatchTier.Exact) ++ tier(MatchTier.Prefix) ++ tier(MatchTier.Contains) ++
+      tier(MatchTier.CamelCase).sortBy(_.length)
 
   private val defaultTimeoutMs = 20_000L
 
   def findReferences(name: String, timeoutMs: Long = defaultTimeoutMs, strict: Boolean = false): (results: List[Reference], timedOut: Boolean) =
     val wordMatch: (String, String) => Boolean = if strict then containsWordStrict else containsWord
-    val (candidates, allCandidates, fileAliasMap) = Timings.phase("bloom-screen") {
+    val (allCandidates, fileAliasMap) = Timings.phase("bloom-screen") {
       val candidates = indexedFiles.filter(f => f.identifierBloom.forall(_.mightContain(name)))
       val aliasFiles = aliasIndex.getOrElse(name, Nil)
       val candidateSet = candidates.map(_.relativePath).toSet
       val extraFiles = aliasFiles.collect {
         case (f, _) if !candidateSet.contains(f.relativePath) => f
       }
-      val allCandidates = candidates ++ extraFiles
       val fileAliasMap = aliasFiles.map((f, alias) => f.relativePath -> alias).toMap
-      (candidates, allCandidates, fileAliasMap)
+      (allCandidates = candidates ++ extraFiles, fileAliasMap = fileAliasMap)
     }
 
     val scan = DeadlineScan(timeoutMs)

@@ -43,6 +43,5 @@ def cmdSearch(args: List[String], ctx: CommandContext): CmdResult =
       else
         CmdResult.SymbolList(
           header = s"""Found ${results.size} symbols matching "$query":""",
-          symbols = results,
-          total = results.size)
+          symbols = results)
   }

@@ -174,34 +174,24 @@ def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: Strin
   val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
   val buf = mutable.ListBuffer.empty[RawSymbol]
 
+  // One path for every template-carrying definition (class/trait/object/enum)
+  def addTypeDefn(t: Tree, name: String, kind: SymbolKind, keyword: String, templ: Template,
+                  tparams: List[String], mods: List[Mod]): Unit =
+    val (parents, tpParents) = extractParents(templ)
+    val sig = buildSignature(name, keyword, parents, tparams)
+    buf += RawSymbol(name, kind, t.pos.startLine + 1, parents, tpParents, sig, extractAnnotations(mods))
+
   def visit(t: Tree): Unit = t match
     case d: Defn.Class =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "class", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += RawSymbol(d.name.value, SymbolKind.Class, d.pos.startLine + 1, parents, tpParents, sig, annots)
+      addTypeDefn(d, d.name.value, SymbolKind.Class, "class", d.templ, d.tparamClause.values.map(_.name.value).toList, d.mods)
     case d: Defn.Trait =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "trait", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += RawSymbol(d.name.value, SymbolKind.Trait, d.pos.startLine + 1, parents, tpParents, sig, annots)
+      addTypeDefn(d, d.name.value, SymbolKind.Trait, "trait", d.templ, d.tparamClause.values.map(_.name.value).toList, d.mods)
     case d: Defn.Object =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val sig = buildSignature(d.name.value, "object", parents)
-      val annots = extractAnnotations(d.mods)
-      buf += RawSymbol(d.name.value, SymbolKind.Object, d.pos.startLine + 1, parents, tpParents, sig, annots)
+      addTypeDefn(d, d.name.value, SymbolKind.Object, "object", d.templ, Nil, d.mods)
     case d: Pkg.Object =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val sig = buildSignature(d.name.value, "object", parents)
-      buf += RawSymbol(d.name.value, SymbolKind.Object, d.pos.startLine + 1, parents, tpParents, sig)
+      addTypeDefn(d, d.name.value, SymbolKind.Object, "object", d.templ, Nil, Nil)
     case d: Defn.Enum =>
-      val (parents, tpParents) = extractParents(d.templ)
-      val tparams = d.tparamClause.values.map(_.name.value)
-      val sig = buildSignature(d.name.value, "enum", parents, tparams)
-      val annots = extractAnnotations(d.mods)
-      buf += RawSymbol(d.name.value, SymbolKind.Enum, d.pos.startLine + 1, parents, tpParents, sig, annots)
+      addTypeDefn(d, d.name.value, SymbolKind.Enum, "enum", d.templ, d.tparamClause.values.map(_.name.value).toList, d.mods)
     case d: Defn.Given =>
       if d.name.value.nonEmpty then
         val annots = extractAnnotations(d.mods)
@@ -433,13 +423,13 @@ def extractTests(file: Path): List[TestSuiteInfo] = {
     case Some(tree) =>
       val suites = mutable.ListBuffer.empty[TestSuiteInfo]
 
-      def collectTests(stats: List[Tree], suiteName: String): (tests: List[TestCaseInfo], dynamicSites: Int) = {
+      def collectTests(stats: List[Tree]): (tests: List[TestCaseInfo], dynamicSites: Int) = {
         val tests = mutable.ListBuffer.empty[TestCaseInfo]
         var dynamicCount = 0
         def visit(t: Tree): Unit = {
           classifyTestCall(t) match
             case TestCallMatch.Literal(name, line) =>
-              tests += TestCaseInfo(name, line, suiteName, file)
+              tests += TestCaseInfo(name, line)
               // Don't recurse into matched test node — avoids double-counting
               // when inner Term.Apply also matches (e.g. test("name")(body))
             case TestCallMatch.Dynamic(_) =>
@@ -455,11 +445,11 @@ def extractTests(file: Path): List[TestSuiteInfo] = {
       def findSuites(t: Tree): Unit = {
         t match
           case d: Defn.Class =>
-            val (tests, dynSites) = collectTests(d.templ.body.stats, d.name.value)
+            val (tests, dynSites) = collectTests(d.templ.body.stats)
             if tests.nonEmpty || dynSites > 0 then
               suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests, dynSites)
           case d: Defn.Object =>
-            val (tests, dynSites) = collectTests(d.templ.body.stats, d.name.value)
+            val (tests, dynSites) = collectTests(d.templ.body.stats)
             if tests.nonEmpty || dynSites > 0 then
               suites += TestSuiteInfo(d.name.value, file, d.pos.startLine + 1, tests, dynSites)
           case _ =>
@@ -592,9 +582,6 @@ private def parseJavaSource(source: String, path: Path): Option[JavaCU] =
 private def parseJavaFile(path: Path): Option[JavaCU] =
   readSource(path).flatMap(source => parseJavaSource(source, path))
 
-private def javaTypeToString(tpe: com.github.javaparser.ast.`type`.Type): String =
-  tpe.asString()
-
 /** 1-based start line of a JavaParser node (0 when unknown). */
 private def javaLine(node: JavaNode): Int =
   node.getBegin.map(_.line).orElse(0)
@@ -602,19 +589,19 @@ private def javaLine(node: JavaNode): Int =
 /** "name: Type, name: Type" rendering of a Java parameter list. */
 private def javaParams(params: NodeList[Parameter]): String =
   val buf = mutable.ListBuffer.empty[String]
-  params.forEach(p => buf += s"${p.getNameAsString}: ${javaTypeToString(p.getType)}")
+  params.forEach(p => buf += s"${p.getNameAsString}: ${p.getType.asString()}")
   buf.mkString(", ")
 
 /** Scala-style `def` signature for a Java method — the one shape used by both
   * file-symbol extraction and member extraction. */
 private def javaMethodSig(m: MethodDeclaration): String =
-  s"def ${m.getNameAsString}(${javaParams(m.getParameters)}): ${javaTypeToString(m.getType)}"
+  s"def ${m.getNameAsString}(${javaParams(m.getParameters)}): ${m.getType.asString()}"
 
 /** Kind + Scala-style signature for one declarator of a Java field. */
 private def javaFieldInfo(f: FieldDeclaration, v: VariableDeclarator): (kind: SymbolKind, sig: String) =
   val prefix = if f.isFinal then "val" else "var"
   val kind = if f.isFinal then SymbolKind.Val else SymbolKind.Var
-  (kind = kind, sig = s"$prefix ${v.getNameAsString}: ${javaTypeToString(f.getCommonType)}")
+  (kind = kind, sig = s"$prefix ${v.getNameAsString}: ${f.getCommonType.asString()}")
 
 private def javaParentsFromType(td: TypeDeclaration[?]): List[String] =
   val buf = mutable.ListBuffer.empty[String]

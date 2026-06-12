@@ -8,6 +8,5 @@ def cmdImpl(args: List[String], ctx: CommandContext): CmdResult =
       else
         CmdResult.SymbolList(
           header = s"""Implementations of "$symbol" — ${results.size} found:""",
-          symbols = results,
-          total = results.size)
+          symbols = results)
   }

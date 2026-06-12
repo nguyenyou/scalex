@@ -35,14 +35,15 @@ private def recoverSignature(lower: String, symbolsByName: Map[String, List[Symb
   recoverSymbol(lower, symbolsByName).map(_.signature).getOrElse("")
 
 def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
-  var allSymbols = filterSymbols(ctx.idx.symbols, ctx)
+  val allSymbols = filterSymbols(ctx.idx.symbols, ctx)
 
   val symbolsByKind = countByKind(allSymbols)
   val topPackages: List[(pkg: String, syms: List[SymbolInfo])] = allSymbols.groupBy(_.packageName)
     .filter(_._1.nonEmpty).toList.sortBy(-_._2.size).take(ctx.limit)
     .map((p, s) => (pkg = p, syms = s))
 
-  // Most-extended non-stdlib parents, ranked — feeds both mostExtended and hubTypes
+  // Most-extended non-stdlib parents, ranked — rendered as "most extended" or
+  // as "hub types" depending on the architecture flag
   val mostExtended = ctx.idx.parentIndex.toList
     .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) && !isStdlibPackageOnly(name, ctx.idx.symbolsByName))
     .filter((name, _) => recoverName(name, ctx.idx.symbolsByName).length > 1) // exclude single-char names
@@ -87,15 +88,6 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
         .map((pkg, deps) => pkg -> deps.filter(relevant.contains))
     case None => archPkgDeps
 
-  // Architecture: hub types — same ranking as mostExtended, different projection
-  val hubTypes: List[(name: String, score: Int, signature: String)] = if effectiveArch then {
-    mostExtended.map(t => (
-      name = recoverName(t.name, ctx.idx.symbolsByName),
-      score = t.impls.size,
-      signature = recoverSignature(t.name, ctx.idx.symbolsByName)
-    ))
-  } else Nil
-
   CmdResult.Overview(OverviewData(
     fileCount = allSymbols.map(_.file).distinct.size,
     symbolCount = allSymbols.size,
@@ -108,7 +100,6 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
       signature = recoverSignature(t.name, ctx.idx.symbolsByName)
     )),
     pkgDeps = filteredPkgDeps,
-    hubTypes = hubTypes,
     hasArchitecture = effectiveArch,
     focusPackage = ctx.focusPackage
   ))

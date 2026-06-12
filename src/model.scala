@@ -58,16 +58,10 @@ val refCategoryOrder: List[RefCategory] = List(
   RefCategory.Definition, RefCategory.ExtendedBy, RefCategory.ImportedBy,
   RefCategory.UsedAsType, RefCategory.Usage, RefCategory.Comment)
 
-case class CategorizedRef(ref: Reference, category: RefCategory)
-
 enum Confidence:
   case High, Medium, Low
 
-  def label: String = this match {
-    case Confidence.High   => "High confidence"
-    case Confidence.Medium => "Medium confidence"
-    case Confidence.Low    => "Low confidence"
-  }
+  def label: String = s"$this confidence"
 
   /** Parenthetical shown next to the label in categorized refs output. */
   def explanation: String = this match {
@@ -80,9 +74,17 @@ enum Confidence:
 
 case class MemberInfo(name: String, kind: SymbolKind, line: Int, signature: String = "", annotations: List[String] = Nil, isOverride: Boolean = false, body: Option[BodyInfo] = None)
 
+/** Members grouped under the parent type they are inherited from. */
+type InheritedGroup = (parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])
+
 case class BodyInfo(ownerName: String, symbolName: String, sourceText: String, startLine: Int, endLine: Int, isAbstract: Boolean = false)
 
-case class HierarchyNode(name: String, kind: Option[SymbolKind], file: Option[Path], line: Option[Int], packageName: String, isExternal: Boolean)
+/** A node in a hierarchy tree: the resolved symbol, or just a name when the
+  * type is defined outside the workspace (`sym` empty = external). */
+case class HierarchyNode(name: String, sym: Option[SymbolInfo]) {
+  def isExternal: Boolean = sym.isEmpty
+  def packageName: String = sym.map(_.packageName).getOrElse("")
+}
 case class HierarchyTree(root: HierarchyNode, parents: List[HierarchyTree], children: List[HierarchyTree], truncatedChildren: Int = 0)
 
 case class OverrideInfo(file: Path, line: Int, enclosingClass: String, enclosingKind: SymbolKind, signature: String, packageName: String, body: Option[BodyInfo] = None)
@@ -91,16 +93,12 @@ case class ScopeInfo(name: String, kind: String, line: Int)
 
 case class DiffSymbol(name: String, kind: SymbolKind, file: String, line: Int, packageName: String, signature: String)
 
-case class TestCaseInfo(name: String, line: Int, suiteName: String, suiteFile: Path)
+case class TestCaseInfo(name: String, line: Int)
 case class TestSuiteInfo(name: String, file: Path, line: Int, tests: List[TestCaseInfo], dynamicSites: Int = 0)
 
 // ── Dependency extraction types ─────────────────────────────────────────────
 
 case class DepInfo(name: String, kind: String, file: Option[Path], line: Option[Int], packageName: String, depth: Int = 0)
-
-// ── AST pattern matching types ──────────────────────────────────────────────
-
-case class AstPatternMatch(name: String, kind: SymbolKind, file: Path, line: Int, packageName: String, signature: String)
 
 case class MethodGrepMatch(member: MemberInfo, file: Path, matchCount: Int, matchLines: List[(lineNum: Int, text: String)] = Nil)
 
@@ -165,7 +163,7 @@ case class NotFoundHint(symbol: String, fileCount: Int, parseFailures: Int, cmd:
 case class MemberSectionData(
   file: Path, ownerKind: SymbolKind, packageName: String, line: Int,
   ownMembers: List[MemberInfo],
-  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
+  inherited: List[InheritedGroup],
   companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None
 )
 
@@ -177,7 +175,6 @@ case class OverviewData(
   topPackages: List[(pkg: String, count: Int)],
   mostExtended: List[(name: String, count: Int, signature: String)],
   pkgDeps: Map[String, Set[String]],
-  hubTypes: List[(name: String, score: Int, signature: String)],
   hasArchitecture: Boolean,
   focusPackage: Option[String] = None
 )
@@ -186,11 +183,11 @@ case class TestCaseResult(name: String, line: Int, body: Option[BodyInfo])
 case class TestSuiteResult(name: String, file: Path, line: Int, tests: List[TestCaseResult])
 
 enum CmdResult:
-  case SymbolList(header: String, symbols: List[SymbolInfo], total: Int, emptyMessage: String = "", truncate: Boolean = true)
+  case SymbolList(header: String, symbols: List[SymbolInfo], emptyMessage: String = "", truncate: Boolean = true)
   case RefList(header: String, refs: List[Reference], timedOut: Boolean, hint: Option[String] = None, useContext: Boolean = true, emptyMessage: String = "", stderrHint: Option[String] = None)
   case CategorizedRefs(symbol: String, grouped: Map[RefCategory, List[Reference]], targetPkgs: Set[String], timedOut: Boolean, stderrHint: Option[String] = None)
   case FlatRefs(symbol: String, refs: List[Reference], targetPkgs: Set[String], timedOut: Boolean)
-  case StringList(header: String, items: List[String], total: Int, emptyMessage: String = "")
+  case StringList(header: String, items: List[String], emptyMessage: String = "")
   case IndexStats(fileCount: Int, symbolCount: Int, packageCount: Int, symbolsByKind: List[(kind: SymbolKind, count: Int)], indexTimeMs: Long, cachedLoad: Boolean, parsedCount: Int, skippedCount: Int, parseFailures: Int, parseFailedFiles: List[String])
   case MemberSections(symbol: String, sections: List[MemberSectionData])
   case DocEntries(symbol: String, entries: List[DocEntryData])
@@ -205,12 +202,12 @@ enum CmdResult:
     companion: Option[(sym: SymbolInfo, members: List[MemberInfo])] = None,
     expandedImpls: List[ExplainedImpl] = Nil,
     otherMatches: List[String] = Nil, totalImpls: Int = 0,
-    inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])] = Nil,
+    inherited: List[InheritedGroup] = Nil,
     relatedTypes: List[SymbolInfo] = Nil)
   case Dependencies(symbol: String, importDeps: List[DepInfo], bodyDeps: List[DepInfo])
   case Scopes(file: Path, line: Int, scopes: List[ScopeInfo])
   case SymbolDiff(ref: String, filesChanged: Int, added: List[DiffSymbol], removed: List[DiffSymbol], modified: List[(before: DiffSymbol, after: DiffSymbol)])
-  case AstMatches(filters: String, results: List[AstPatternMatch])
+  case AstMatches(filters: String, results: List[SymbolInfo])
   case GrepCount(matches: Int, files: Int, timedOut: Boolean, hint: Option[String] = None, stderrHint: Option[String] = None)
   case GrepByMethod(pattern: String, owner: String, methods: List[MethodGrepMatch], hint: Option[String] = None, stderrHint: Option[String] = None, timedOut: Boolean = false)
   case Packages(packages: List[String])
@@ -224,3 +221,5 @@ enum CmdResult:
   case GraphOutput(text: String)
   case NotFound(message: String, hint: NotFoundHint)
   case UsageError(message: String)
+  /** The command printed its own output; the renderer does nothing. */
+  case Silent

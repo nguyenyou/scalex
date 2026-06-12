@@ -14,9 +14,8 @@ class AnalysisSuite extends ScalexTestBase:
     val tree = result.get
     assertEquals(tree.root.name, "UserServiceLive")
     assert(!tree.root.isExternal, "Root should not be external")
-    assert(tree.root.kind.contains(SymbolKind.Class), s"Should be a class: ${tree.root.kind}")
-    assert(tree.root.file.isDefined, "Root should have a file")
-    assert(tree.root.line.isDefined, "Root should have a line")
+    assert(tree.root.sym.map(_.kind).contains(SymbolKind.Class), s"Should be a class: ${tree.root.sym.map(_.kind)}")
+    assert(tree.root.sym.isDefined, "Root should have a resolved symbol")
   }
 
   test("buildHierarchy returns root for UserService trait") {

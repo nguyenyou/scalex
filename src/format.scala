@@ -136,6 +136,7 @@ def render(result: CmdResult, ctx: CommandContext): Unit = {
     case r: GraphOutput      => println(r.text)
     case r: NotFound         => renderNotFound(r, ctx)
     case r: UsageError       => println(r.message)
+    case Silent              => ()
   }
 }
 
@@ -204,18 +205,20 @@ private def renderCategorizedRefs(r: CmdResult.CategorizedRefs, ctx: CommandCont
     val total = r.grouped.values.map(_.size).sum
     val suffix = timedOutSuffix(r.timedOut)
     println(s"""References to "${r.symbol}" — $total found:$suffix""")
+    // Resolve each ref's confidence once, then group per confidence level
+    val annotated = r.grouped.toList.flatMap { (cat, refs) =>
+      refs.map(ref => (cat = cat, ref = ref, conf = ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
+    }
     Confidence.values.foreach { conf =>
-      val catRefs = r.grouped.flatMap { (cat, refs) =>
-        refs.map(ref => (cat, ref, ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
-      }.filter(_._3 == conf).toList
-      if catRefs.nonEmpty then {
+      val confRefs = annotated.filter(_.conf == conf)
+      if confRefs.nonEmpty then {
         println(s"\n  ${conf.label} (${conf.explanation}):")
-        val byCat = catRefs.groupBy(_._1)
+        val byCat = confRefs.groupBy(_.cat)
         refCategoryOrder.foreach { cat =>
           byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
-            val sorted = entries.sortBy((_, ref, _) => (path = ctx.workspace.relativize(ref.file).toString, line = ref.line))
+            val sorted = entries.sortBy(e => (path = ctx.workspace.relativize(e.ref.file).toString, line = e.ref.line))
             println(s"\n    ${cat.toString}:")
-            renderShown(sorted, ctx.limit, "      ")((_, ref, _) => println(s"    ${ctx.fmtRef(ref)}"))
+            renderShown(sorted, ctx.limit, "      ")(e => println(s"    ${ctx.fmtRef(e.ref)}"))
           }
         }
       }
@@ -229,19 +232,15 @@ private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
   } else {
     val suffix = timedOutSuffix(r.timedOut)
     println(s"""References to "${r.symbol}" — ${r.refs.size} found:$suffix""")
-    val annotated = r.refs.map(ref => (ref, ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
-    val sorted = annotated.sortBy { case (ref, c) => (confidence = c.ordinal, path = ctx.workspace.relativize(ref.file).toString, line = ref.line) }
+    val annotated = r.refs.map(ref => (ref = ref, conf = ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
+    val sorted = annotated.sortBy(e => (confidence = e.conf.ordinal, path = ctx.workspace.relativize(e.ref.file).toString, line = e.ref.line))
     var lastConf: Option[Confidence] = None
-    var shown = 0
-    sorted.foreach { case (ref, conf) =>
-      if shown < ctx.limit then {
-        if !lastConf.contains(conf) then {
-          println(s"\n  [${conf.label}]")
-          lastConf = Some(conf)
-        }
-        println(ctx.fmtRef(ref))
-        shown += 1
+    sorted.take(ctx.limit).foreach { (ref, conf) =>
+      if !lastConf.contains(conf) then {
+        println(s"\n  [${conf.label}]")
+        lastConf = Some(conf)
       }
+      println(ctx.fmtRef(ref))
     }
     if r.refs.size > ctx.limit then println(s"  ... and ${r.refs.size - ctx.limit} more")
   }
@@ -249,9 +248,7 @@ private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
 
 private def renderStringList(r: CmdResult.StringList, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
-    // Skip only when output was already printed (empty items + empty header + empty emptyMessage)
-    if r.items.nonEmpty || r.header.nonEmpty || r.emptyMessage.nonEmpty then
-      println(jStrArr(r.items.take(ctx.limit)))
+    println(jStrArr(r.items.take(ctx.limit)))
   } else {
     if r.items.isEmpty then {
       if r.emptyMessage.nonEmpty then println(r.emptyMessage)
@@ -264,8 +261,7 @@ private def renderStringList(r: CmdResult.StringList, ctx: CommandContext): Unit
 
 private def renderIndexStats(r: CmdResult.IndexStats, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
-    val byKind = r.symbolsByKind.map((k, c) => s""""${k.label}":$c""").mkString(",")
-    println(s"""{"fileCount":${r.fileCount},"symbolCount":${r.symbolCount},"packageCount":${r.packageCount},"symbolsByKind":{$byKind},"indexTimeMs":${r.indexTimeMs},"cachedLoad":${r.cachedLoad},"parsedCount":${r.parsedCount},"skippedCount":${r.skippedCount},"parseFailures":${r.parseFailures}}""")
+    println(s"""{"fileCount":${r.fileCount},"symbolCount":${r.symbolCount},"packageCount":${r.packageCount},"symbolsByKind":${jKindCounts(r.symbolsByKind)},"indexTimeMs":${r.indexTimeMs},"cachedLoad":${r.cachedLoad},"parsedCount":${r.parsedCount},"skippedCount":${r.skippedCount},"parseFailures":${r.parseFailures}}""")
   } else {
     if r.cachedLoad then
       println(s"Indexed ${r.fileCount} files (${r.skippedCount} cached, ${r.parsedCount} parsed) in ${r.indexTimeMs}ms")
@@ -412,10 +408,26 @@ private def renderDocEntries(r: CmdResult.DocEntries, ctx: CommandContext): Unit
   }
 }
 
+/** `{"class":12,"def":3,...}` JSON object from kind counts — shared by overview,
+  * index stats, and the symbols --summary command. */
+def jKindCounts(counts: List[(kind: SymbolKind, count: Int)]): String =
+  counts.map((k, c) => s""""${k.label}":$c""").mkString("{", ",", "}")
+
+/** "  pkg.padded  count" rows shared by the overview modes. */
+private def printPackageRows(rows: List[(pkg: String, count: Int)]): Unit =
+  rows.foreach((pkg, count) => println(s"  ${pkg.padTo(50, ' ')} $count"))
+
+/** "  Name.padded  N <label>  sig" rows shared by hub-types / most-extended output. */
+private def printRankedTypeRows(rows: List[(name: String, count: Int, signature: String)], countLabel: String): Unit =
+  rows.foreach { (name, count, sig) =>
+    val sigHint = if sig.nonEmpty then s"  $sig" else ""
+    println(s"  ${name.padTo(30, ' ')} $count $countLabel$sigHint")
+  }
+
 private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
   val d = r.data
   if ctx.jsonOutput then {
-    val kindJson = d.symbolsByKind.map((k, c) => s""""${k.label}":$c""").mkString("{", ",", "}")
+    val kindJson = jKindCounts(d.symbolsByKind)
     val pkgJson = jArr(d.topPackages.map((p, c) => s"""{"package":${jStr(p)},"count":$c}"""))
     if d.hasArchitecture then {
       val depsJson = if ctx.concise then {
@@ -429,7 +441,7 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
           s"""${jStr(pkg)}:${jStrArr(deps)}"""
         }.mkString("{", ",", "}")
       }
-      val hubJson = jArr(d.hubTypes.map((n, c, sig) => s"""{"name":${jStr(n)},"score":$c,"signature":${jStr(sig)}}"""))
+      val hubJson = jArr(d.mostExtended.map((n, c, sig) => s"""{"name":${jStr(n)},"score":$c,"signature":${jStr(sig)}}"""))
       val focusPkgJson = d.focusPackage.map(p => s""","focusPackage":${jStr(p)}""").getOrElse("")
       val conciseJson = if ctx.concise then {
         val totalEdges = d.pkgDeps.values.map(_.size).sum
@@ -453,9 +465,7 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     // Top packages — capped at conciseLimit
     val shownPkgs = d.topPackages.take(conciseLimit)
     println(s"Top packages:")
-    shownPkgs.foreach { (pkg, count) =>
-      println(s"  ${pkg.padTo(50, ' ')} $count")
-    }
+    printPackageRows(shownPkgs)
     val remainingPkgs = d.packageCount - shownPkgs.size
     if remainingPkgs > 0 then
       println(s"  ... and $remainingPkgs more (use overview --limit N to show more)")
@@ -473,13 +483,10 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
     }
 
     // Hub types — capped at conciseLimit
-    val shownHubs = d.hubTypes.take(conciseLimit)
+    val shownHubs = d.mostExtended.take(conciseLimit)
     if shownHubs.nonEmpty then {
       println(s"\nHub types (top ${shownHubs.size}):")
-      shownHubs.foreach { (name, count, sig) =>
-        val sigHint = if sig.nonEmpty then s"  $sig" else ""
-        println(s"  ${name.padTo(30, ' ')} $count references$sigHint")
-      }
+      printRankedTypeRows(shownHubs, "references")
     }
 
     println(s"\nDrill down: overview --architecture, overview --focus-package PKG, entrypoints")
@@ -490,15 +497,10 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
       println(s"  ${kind.toString.padTo(10, ' ')} $count")
     }
     println(s"\nTop packages (by symbol count):")
-    d.topPackages.foreach { (pkg, count) =>
-      println(s"  ${pkg.padTo(50, ' ')} $count")
-    }
+    printPackageRows(d.topPackages)
     if !d.hasArchitecture then {
       println(s"\nMost extended (by package spread, then implementation count):")
-      d.mostExtended.foreach { (name, count, sig) =>
-        val sigHint = if sig.nonEmpty then s"  $sig" else ""
-        println(s"  ${name.padTo(30, ' ')} $count impl$sigHint")
-      }
+      printRankedTypeRows(d.mostExtended, "impl")
     }
     if d.hasArchitecture then {
       d.focusPackage match {
@@ -520,11 +522,8 @@ private def renderOverview(r: CmdResult.Overview, ctx: CommandContext): Unit = {
           }
       }
       println(s"\nHub types (by package spread, then extension count):")
-      if d.hubTypes.isEmpty then println("  (none)")
-      else d.hubTypes.foreach { (name, count, sig) =>
-        val sigHint = if sig.nonEmpty then s"  $sig" else ""
-        println(s"  ${name.padTo(30, ' ')} $count references$sigHint")
-      }
+      if d.mostExtended.isEmpty then println("  (none)")
+      else printRankedTypeRows(d.mostExtended, "references")
     }
   }
 }
@@ -578,10 +577,7 @@ private def renderSourceBlocks(r: CmdResult.SourceBlocks, ctx: CommandContext): 
       val (before, after) = windowFor(file, b)
       before.foreach((i, text) => println(s"  ${numberedLine(i, text)}"))
       if before.nonEmpty then println("  ---")
-      val bodyLines = b.sourceText.split("\n")
-      bodyLines.zipWithIndex.foreach { case (line, i) =>
-        println(s"  ${numberedLine(b.startLine + i, line)}")
-      }
+      renderInlineBody(Some(b), "  ")
       if after.nonEmpty then println("  ---")
       after.foreach((i, text) => println(s"  ${numberedLine(i, text)}"))
       println()
@@ -663,9 +659,9 @@ private def renderCoverageReport(r: CmdResult.CoverageReport, ctx: CommandContex
 private def renderHierarchyResult(r: CmdResult.HierarchyResult, ctx: CommandContext): Unit = {
   val tree = r.tree
   def nodeJson(n: HierarchyNode): String = {
-    val file = jOpt(n.file.map(f => ctx.workspace.relativize(f).toString))
-    val kind = jOpt(n.kind.map(_.label))
-    val line = n.line.map(_.toString).getOrElse("null")
+    val file = jOpt(n.sym.map(s => ctx.workspace.relativize(s.file).toString))
+    val kind = jOpt(n.sym.map(_.kind.label))
+    val line = n.sym.map(_.line.toString).getOrElse("null")
     s"""{"name":${jStr(n.name)},"kind":$kind,"file":$file,"line":$line,"package":${jStr(n.packageName)},"isExternal":${n.isExternal}}"""
   }
   def treeJson(t: HierarchyTree): String = {
@@ -682,9 +678,9 @@ private def renderHierarchyResult(r: CmdResult.HierarchyResult, ctx: CommandCont
       val prefix = if isLast then s"$indent└── " else s"$indent├── "
       val nextIndent = if isLast then s"$indent    " else s"$indent│   "
       val n = t.root
-      val nkind = n.kind.map(_.label + " ").getOrElse("")
+      val nkind = n.sym.map(_.kind.label + " ").getOrElse("")
       val nloc = if !down && n.isExternal then " [external]"
-                 else n.file.map(f => s" — ${ctx.workspace.relativize(f)}:${n.line.getOrElse(0)}").getOrElse("")
+                 else n.sym.map(s => s" — ${ctx.workspace.relativize(s.file)}:${s.line}").getOrElse("")
       println(s"$prefix$nkind${n.name}${pkgSuffix(n.packageName)}$nloc")
       printLevel(if down then t.children else t.parents, nextIndent, down)
       if down && t.truncatedChildren > 0 then
@@ -695,8 +691,8 @@ private def renderHierarchyResult(r: CmdResult.HierarchyResult, ctx: CommandCont
     println(treeJson(tree))
   } else {
     val rootNode = tree.root
-    val kind = rootNode.kind.map(_.label).getOrElse("unknown")
-    val loc = rootNode.file.map(f => s" — ${ctx.workspace.relativize(f)}:${rootNode.line.getOrElse(0)}").getOrElse("")
+    val kind = rootNode.sym.map(_.kind.label).getOrElse("unknown")
+    val loc = rootNode.sym.map(s => s" — ${ctx.workspace.relativize(s.file)}:${s.line}").getOrElse("")
     println(s"Hierarchy of $kind ${rootNode.name}${pkgSuffix(rootNode.packageName)}$loc:")
     if ctx.goUp then {
       println("  Parents:")
@@ -732,16 +728,18 @@ private def renderOverrideList(r: CmdResult.OverrideList, ctx: CommandContext): 
 private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Unit = {
   val sym = r.sym
   val rel = ctx.workspace.relativize(sym.file)
+  // Companion members identical to primary members are deduplicated in both modes
+  val primaryKeys = r.members.map(m => (name = m.name, kind = m.kind)).toSet
+  def uniqueCompanionMembers(compMembers: List[MemberInfo]): List[MemberInfo] =
+    compMembers.filter(m => !primaryKeys.contains((name = m.name, kind = m.kind)))
   if ctx.jsonOutput then {
     val membersJson = jArr(r.members.map { m =>
       val overrideJson = if m.isOverride then ""","isOverride":true""" else ""
       s"""{${jsonMemberFields(m)}$overrideJson${jsonBodyFields(m.body)}}"""
     })
     val implsJson = jArr(r.impls.map(s => jsonSymbol(s, ctx.workspace)))
-    val primaryKeys = r.members.map(m => (name = m.name, kind = m.kind)).toSet
     val companionJson = r.companion.map { (compSym, compMembers) =>
-      val uniqueCompMembers = compMembers.filter(m => !primaryKeys.contains((name = m.name, kind = m.kind)))
-      val cMembers = jArr(uniqueCompMembers.map(m => s"{${jsonMemberFields(m)}}"))
+      val cMembers = jArr(uniqueCompanionMembers(compMembers).map(m => s"{${jsonMemberFields(m)}}"))
       s"""{"definition":${jsonSymbol(compSym, ctx.workspace)},"members":$cMembers}"""
     }.getOrElse("null")
     def explainedImplJson(ei: ExplainedImpl): String = {
@@ -802,9 +800,7 @@ private def renderExplanation(r: CmdResult.Explanation, ctx: CommandContext): Un
       val compRel = ctx.workspace.relativize(compSym.file)
       println(s"  Companion ${compSym.kind.label} ${compSym.name} — $compRel:${compSym.line}")
       if compMembers.nonEmpty then
-        // Deduplicate: skip companion members that are identical to primary members
-        val primaryKeys = r.members.map(m => (name = m.name, kind = m.kind)).toSet
-        val uniqueCompMembers = compMembers.filter(m => !primaryKeys.contains((name = m.name, kind = m.kind)))
+        val uniqueCompMembers = uniqueCompanionMembers(compMembers)
         val dupeCount = compMembers.size - uniqueCompMembers.size
         if uniqueCompMembers.nonEmpty then
           uniqueCompMembers.foreach(m => println(s"    ${explainMemberLine(m, ctx.verbose)}"))
@@ -935,20 +931,13 @@ private def renderSymbolDiff(r: CmdResult.SymbolDiff, ctx: CommandContext): Unit
 
 private def renderAstMatches(r: CmdResult.AstMatches, ctx: CommandContext): Unit = {
   if ctx.jsonOutput then {
-    val arr = r.results.map { m =>
-      val rel = ctx.workspace.relativize(m.file).toString
-      s"""{"name":${jStr(m.name)},"kind":${jStr(m.kind.label)},"file":${jStr(rel)},"line":${m.line},"package":${jStr(m.packageName)},"signature":${jStr(m.signature)}}"""
-    }
-    println(jArr(arr))
+    println(jArr(r.results.map(s => jsonSymbol(s, ctx.workspace))))
   } else {
     if r.results.isEmpty then
       println(s"No types matching AST pattern (${r.filters})")
     else {
       println(s"Types matching AST pattern (${r.filters}) — ${r.results.size} found:")
-      r.results.foreach { m =>
-        val rel = ctx.workspace.relativize(m.file)
-        println(s"  ${m.kind.label.padTo(9, ' ')} ${m.name}${pkgSuffix(m.packageName)} — $rel:${m.line}")
-      }
+      r.results.foreach(s => println(formatSymbol(s, ctx.workspace)))
     }
   }
 }
@@ -1158,28 +1147,22 @@ private def renderRefsSummary(r: CmdResult.RefsSummary, ctx: CommandContext): Un
 private def renderEntrypoints(r: CmdResult.Entrypoints, ctx: CommandContext): Unit = {
   import EntrypointCategory.*
   val byCategory = r.entries.groupBy(_.category)
-  val categoryOrder = List(MainAnnotation, MainMethod, ExtendsApp, TestSuite)
-  val categoryLabels = Map(
-    MainAnnotation -> "@main annotated",
-    MainMethod -> "def main(...) methods",
-    ExtendsApp -> "extends App",
-    TestSuite -> "Test suites"
-  )
-  val categoryJsonKeys = Map(
-    MainAnnotation -> "mainAnnotated",
-    MainMethod -> "mainMethods",
-    ExtendsApp -> "extendsApp",
-    TestSuite -> "testSuites"
+  // Display order, text label, and JSON key per category — one table
+  val categories = List(
+    (cat = MainAnnotation, label = "@main annotated", jsonKey = "mainAnnotated"),
+    (cat = MainMethod, label = "def main(...) methods", jsonKey = "mainMethods"),
+    (cat = ExtendsApp, label = "extends App", jsonKey = "extendsApp"),
+    (cat = TestSuite, label = "Test suites", jsonKey = "testSuites"),
   )
   if ctx.jsonOutput then {
-    val groups = categoryOrder.map { cat =>
-      val entries = byCategory.getOrElse(cat, Nil).take(ctx.limit)
+    val groups = categories.map { c =>
+      val entries = byCategory.getOrElse(c.cat, Nil).take(ctx.limit)
       val arr = jArr(entries.map { e =>
         val rel = ctx.workspace.relativize(e.sym.file).toString
         val line = e.memberLine.getOrElse(e.sym.line)
         s"""{"name":${jStr(e.sym.name)},"kind":${jStr(e.sym.kind.label)},"file":${jStr(rel)},"line":$line,"package":${jStr(e.sym.packageName)}}"""
       })
-      s""""${categoryJsonKeys(cat)}":$arr"""
+      s""""${c.jsonKey}":$arr"""
     }.mkString(",")
     println(s"""{"entrypoints":{$groups},"total":${r.total}}""")
   } else {
@@ -1187,10 +1170,10 @@ private def renderEntrypoints(r: CmdResult.Entrypoints, ctx: CommandContext): Un
       println("No entrypoints found")
     else {
       println(s"Entrypoints — ${r.total} found:\n")
-      categoryOrder.foreach { cat =>
-        val entries = byCategory.getOrElse(cat, Nil)
+      categories.foreach { c =>
+        val entries = byCategory.getOrElse(c.cat, Nil)
         if entries.nonEmpty then {
-          println(s"  ${categoryLabels(cat)} (${entries.size}):")
+          println(s"  ${c.label} (${entries.size}):")
           renderShown(entries, ctx.limit, "    ") { e =>
             val rel = ctx.workspace.relativize(e.sym.file)
             val line = e.memberLine.getOrElse(e.sym.line)
@@ -1211,10 +1194,9 @@ private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
         // hierarchy never emits JSON for not-found case (matches original behavior)
         println(r.message)
         renderHint(r.hint)
-      case "explain" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
+      case "explain" | "package" | "api" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
       case "imports" => println(s"""{"results":[],"timedOut":${r.hint.timedOut},"suggestions":$suggestionsJson}""")
       case "deps" => println(s"""{"imports":[],"bodyReferences":[],"suggestions":$suggestionsJson}""")
-      case "package" | "api" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
       case _ => println(s"""{"results":[],"suggestions":$suggestionsJson}""")
     }
   } else {
