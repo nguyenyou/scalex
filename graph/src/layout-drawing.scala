@@ -12,7 +12,6 @@ sealed trait DrawingElement
     extends Translatable[DrawingElement]
     with Transposable[DrawingElement]:
   def translate(down: Int = 0, right: Int = 0): DrawingElement
-  def points: List[Point]
   def transpose: DrawingElement
 
 case class VertexDrawingElement(region: Region, textLines: List[String])
@@ -21,7 +20,6 @@ case class VertexDrawingElement(region: Region, textLines: List[String])
     with Transposable[VertexDrawingElement]
     with HasRegion:
   def translate(down: Int = 0, right: Int = 0) = copy(region = region.translate(down, right))
-  def points = region.points
   def transpose: VertexDrawingElement = copy(region = region.transpose)
 
 case class EdgeDrawingElement(
@@ -31,8 +29,6 @@ case class EdgeDrawingElement(
 ) extends DrawingElement
     with Translatable[EdgeDrawingElement]
     with Transposable[EdgeDrawingElement]:
-
-  lazy val points: List[Point] = segments.flatMap(_.points).distinct
 
   def translate(down: Int = 0, right: Int = 0) =
     copy(bendPoints = bendPoints.map(_.translate(down, right)))
@@ -59,17 +55,10 @@ case class EdgeDrawingElement(
     val newBendPoints = bendPoints.patch(oldIndex, List(newStart, newFinish), 2)
     copy(bendPoints = newBendPoints)
 
-  def startPoint = points.head
-  def finishPoint = points.last
+  def startPoint = bendPoints.head
+  def finishPoint = bendPoints.last
 
 case class EdgeSegment(start: Point, direction: Direction, finish: Point) extends HasRegion:
-  def points: List[Point] =
-    @tailrec
-    def scanForPoints(start: Point, direction: Direction, finish: Point, accum: List[Point]): List[Point] =
-      if start == finish then finish :: accum
-      else scanForPoints(start.go(direction), direction, finish, accum = start :: accum)
-    scanForPoints(start, direction, finish, accum = Nil).reverse
-
   def region =
     if start.column < finish.column || start.row < finish.row then Region(start, finish)
     else Region(finish, start)
@@ -118,7 +107,7 @@ case class Drawing(elements: List[DrawingElement]) extends Transposable[Drawing]
 
   def transpose: Drawing = Drawing(elements.map(_.transpose))
 
-  override def toString = Renderer.render(this, LayoutPrefsImpl())
+  override def toString = Renderer.render(this, LayoutPrefs())
 
 // ── Grid ────────────────────────────────────────────────────────────────────
 
@@ -143,23 +132,6 @@ class Grid(dimension: Dimension):
   private def region = Region(Point(0, 0), dimension)
   def contains(point: Point) = region.contains(point)
   override def toString = chars.map(new String(_)).mkString("\n")
-
-// ── OccupancyGrid ───────────────────────────────────────────────────────────
-
-class OccupancyGrid(drawing: Drawing):
-  private val grid: Array[Array[Int]] = Array.fill(drawing.dimension.height, drawing.dimension.width)(0)
-  drawing.elements.foreach(add)
-
-  def apply(point: Point): Boolean = grid(point.row)(point.column) > 0
-  def isOccupied(point: Point) = this(point)
-  private def add(element: DrawingElement) = adjust(element, 1)
-  private def remove(element: DrawingElement) = adjust(element, -1)
-  def replace(element1: DrawingElement, element2: DrawingElement): Unit =
-    remove(element1)
-    add(element2)
-  private def adjust(drawingElement: DrawingElement, delta: Int) =
-    for point <- drawingElement.points do
-      grid(point.row)(point.column) += delta
 
 // ── EdgeTracker ─────────────────────────────────────────────────────────────
 
@@ -324,7 +296,10 @@ object EdgeElevator:
     for
       segmentInfo <- segmentInfos.sortBy(_.row)
       updatedEdgeSegment <- elevate(segmentInfo, edgeTracker)
-    do segmentUpdates = addToMultimap(segmentUpdates, segmentInfo.edgeElement, segmentInfo.segment2 -> updatedEdgeSegment)
+    do
+      val edge = segmentInfo.edgeElement
+      val update = segmentInfo.segment2 -> updatedEdgeSegment
+      segmentUpdates += edge -> (update :: segmentUpdates.getOrElse(edge, Nil))
 
     for (edge, updates) <- segmentUpdates do
       currentDrawing = currentDrawing.replaceElement(edge, updateEdge(edge, updates))
@@ -388,10 +363,7 @@ object RedundantRowRemover:
     val upShift = toRow - fromRow + 1
     val newElements = drawing.elements.map {
       case ede: EdgeDrawingElement =>
-        val newBendPoints = conditionallyMap(ede.bendPoints) {
-          case p if p.row >= fromRow => p.up(upShift)
-        }
-        ede.copy(bendPoints = newBendPoints)
+        ede.copy(bendPoints = ede.bendPoints.map(p => if p.row >= fromRow then p.up(upShift) else p))
       case vde: VertexDrawingElement =>
         if vde.region.topRow < fromRow then vde
         else vde.up(upShift)
@@ -406,11 +378,11 @@ object BoxDrawingCharacters:
 // ── Renderer ────────────────────────────────────────────────────────────────
 
 object Renderer:
-  def render(drawing: Drawing, rendererPrefs: RendererPrefs) =
-    new Renderer(rendererPrefs).render(drawing)
+  def render(drawing: Drawing, prefs: LayoutPrefs) =
+    new Renderer(prefs).render(drawing)
 
-class Renderer(rendererPrefs: RendererPrefs):
-  import rendererPrefs.*
+class Renderer(prefs: LayoutPrefs):
+  import prefs.*
 
   def render(drawing: Drawing): String =
     val grid = new Grid(drawing.dimension)
@@ -421,11 +393,11 @@ class Renderer(rendererPrefs: RendererPrefs):
   @tailrec
   private def drawLine(grid: Grid, point1: Point, direction: Direction, point2: Point): Unit =
     val lineChar = direction match
-      case Up | Down => lineHorizontalChar
-      case Right | Left => lineVerticalChar
+      case Up | Down => verticalLineChar
+      case Right | Left => horizontalLineChar
     grid(point1) =
       if grid(point1) == backgroundChar then lineChar
-      else intersectionCharOpt.getOrElse(lineChar)
+      else intersectionChar
     if point1 != point2 then drawLine(grid, point1.go(direction), direction, point2)
 
   private def renderEdge(grid: Grid, element: EdgeDrawingElement, drawing: Drawing): Unit =
@@ -440,19 +412,19 @@ class Renderer(rendererPrefs: RendererPrefs):
           throw RuntimeException("Problem drawing segment " + segment + " in edge " + element, e)
 
       condOpt((previousSegmentOpt.map(_.direction), direction)) {
-        case (Some(Up), Right) | (Some(Left), Down) => grid(point1) = bendChar1
-        case (Some(Up), Left) | (Some(Right), Down) => grid(point1) = bendChar2
-        case (Some(Down), Right) | (Some(Left), Up) => grid(point1) = bendChar3
-        case (Some(Down), Left) | (Some(Right), Up) => grid(point1) = bendChar4
+        case (Some(Up), Right) | (Some(Left), Down) => grid(point1) = bendChars(0)
+        case (Some(Up), Left) | (Some(Right), Down) => grid(point1) = bendChars(1)
+        case (Some(Down), Right) | (Some(Left), Up) => grid(point1) = bendChars(2)
+        case (Some(Down), Left) | (Some(Right), Up) => grid(point1) = bendChars(3)
       }
 
     def drawBoxIntersection(intersectionPoint: Point, direction: Direction) =
       if unicode && drawing.vertexElementAt(intersectionPoint).isDefined && grid.contains(intersectionPoint) then
         grid(intersectionPoint) = direction match
-          case Up => joinChar1
-          case Down => joinChar2
-          case Right => joinChar3
-          case Left => joinChar4
+          case Up => joinChars(0)
+          case Down => joinChars(1)
+          case Right => joinChars(2)
+          case Left => joinChars(3)
 
     for EdgeSegment(point, direction, _) <- element.segments.headOption do
       if element.hasArrow1 then grid(point) = arrow(direction.opposite)
@@ -464,10 +436,10 @@ class Renderer(rendererPrefs: RendererPrefs):
 
   private def renderVertex(grid: Grid, element: VertexDrawingElement): Unit =
     val region = element.region
-    grid(region.topLeft) = topLeftChar
-    grid(region.topRight) = topRightChar
-    grid(region.bottomLeft) = bottomLeftChar
-    grid(region.bottomRight) = bottomRightChar
+    grid(region.topLeft) = cornerChars(0)
+    grid(region.topRight) = cornerChars(1)
+    grid(region.bottomLeft) = cornerChars(2)
+    grid(region.bottomRight) = cornerChars(3)
 
     for column <- (region.leftColumn + 1).to(region.rightColumn - 1) do
       grid(Point(region.topRow, column)) = boxHorizontalChar
@@ -479,66 +451,32 @@ class Renderer(rendererPrefs: RendererPrefs):
     for (line, index) <- element.textLines.zipWithIndex do
       grid(region.topLeft.right.down(index + 1)) = line
 
+    // Where an edge line meets a box side, replace the border with a junction
     if unicode then
-      for
-        row <- (element.region.topRow + 1).to(element.region.bottomRow - 1)
-        point = Point(row, element.region.leftColumn)
-        if grid(point.right) == '\u2500' // '─'
-      do grid(point) = if doubleVertices then '\u255f' else '\u251c' // '╟' or '├'
-      for
-        row <- (element.region.topRow + 1).to(element.region.bottomRow - 1)
-        point = Point(row, element.region.rightColumn)
-        if grid(point.left) == '\u2500' // '─'
-      do grid(point) = if doubleVertices then '\u2562' else '\u2524' // '╢' or '┤'
+      for row <- (region.topRow + 1).to(region.bottomRow - 1) do
+        val left = Point(row, region.leftColumn)
+        if grid(left.right) == '\u2500' then grid(left) = joinChars(3)
+        val right = Point(row, region.rightColumn)
+        if grid(right.left) == '\u2500' then grid(right) = joinChars(2)
 
-  private def lineHorizontalChar = if unicode then '\u2502' else '|' // '│'
-  private def lineVerticalChar = if unicode then '\u2500' else '-' // '─'
+  private def verticalLineChar = if unicode then '\u2502' else '|' // '│'
+  private def horizontalLineChar = if unicode then '\u2500' else '-' // '─'
+  private def intersectionChar = if unicode then '\u253c' else '-' // '┼'
 
-  private def bendChar1 =
-    if unicode then (if rounded then '\u256d' else '\u250c') // '╭' or '┌'
-    else if explicitAsciiBends then '/'
-    else '-'
-  private def bendChar2 =
-    if unicode then (if rounded then '\u256e' else '\u2510') // '╮' or '┐'
-    else if explicitAsciiBends then '\\'
-    else '-'
-  private def bendChar3 =
-    if unicode then (if rounded then '\u2570' else '\u2514') // '╰' or '└'
-    else if explicitAsciiBends then '\\'
-    else '-'
-  private def bendChar4 =
-    if unicode then (if rounded then '\u256f' else '\u2518') // '╯' or '┘'
-    else if explicitAsciiBends then '/'
-    else '-'
+  // Indexed glyph sets; call sites map junction kinds to indexes 0-3
+  private val bendChars: String = // up\u2192right/left\u2192down, up\u2192left/right\u2192down, down\u2192right/left\u2192up, down\u2192left/right\u2192up
+    if unicode then (if rounded then "\u256d\u256e\u2570\u256f" else "\u250c\u2510\u2514\u2518") // "╭╮╰╯" or "┌┐└┘"
+    else if explicitAsciiBends then "/\\\\/"
+    else "----"
 
-  private def intersectionCharOpt =
-    if unicode then Some('\u253c') // '┼'
-    else Some('-')
+  private val cornerChars: String = // top-left, top-right, bottom-left, bottom-right
+    if !unicode then "++++"
+    else if doubleVertices then "\u2554\u2557\u255a\u255d" // "╔╗╚╝"
+    else if rounded then "\u256d\u256e\u2570\u256f" // "╭╮╰╯"
+    else "\u250c\u2510\u2514\u2518" // "┌┐└┘"
 
-  private def topLeftChar =
-    if unicode then
-      if doubleVertices then '\u2554' // '╔'
-      else if rounded then '\u256d' // '╭'
-      else '\u250c' // '┌'
-    else '+'
-  private def topRightChar =
-    if unicode then
-      if doubleVertices then '\u2557' // '╗'
-      else if rounded then '\u256e' // '╮'
-      else '\u2510' // '┐'
-    else '+'
-  private def bottomLeftChar =
-    if unicode then
-      if doubleVertices then '\u255a' // '╚'
-      else if rounded then '\u2570' // '╰'
-      else '\u2514' // '└'
-    else '+'
-  private def bottomRightChar =
-    if unicode then
-      if doubleVertices then '\u255d' // '╝'
-      else if rounded then '\u256f' // '╯'
-      else '\u2518' // '┘'
-    else '+'
+  private val joinChars: String = // edge enters box: from above, below, right, left
+    if doubleVertices then "\u2564\u2567\u2562\u255f" else "\u252c\u2534\u2524\u251c" // "╤╧╢╟" or "┬┴┤├"
 
   private def boxHorizontalChar =
     if unicode then (if doubleVertices then '\u2550' else '\u2500') // '═' or '─'
@@ -546,11 +484,6 @@ class Renderer(rendererPrefs: RendererPrefs):
   private def boxVerticalChar =
     if unicode then (if doubleVertices then '\u2551' else '\u2502') // '║' or '│'
     else '|'
-
-  private def joinChar1 = if doubleVertices then '\u2564' else '\u252c' // '╤' or '┬'
-  private def joinChar2 = if doubleVertices then '\u2567' else '\u2534' // '╧' or '┴'
-  private def joinChar3 = if doubleVertices then '\u2562' else '\u2524' // '╢' or '┤'
-  private def joinChar4 = if doubleVertices then '\u255f' else '\u251c' // '╟' or '├'
 
   private def backgroundChar = ' '
 

@@ -33,26 +33,24 @@ private case class ParsedGraphEdges(vertices: Set[String], edges: List[(String, 
 
 private def parseGraphFlags(args: List[String]): (flags: GraphCmdFlags, remaining: List[String]) =
   var flags = GraphCmdFlags()
-  val remaining = scala.collection.mutable.ListBuffer[String]()
-  var i = 0
-  while i < args.size do
-    args(i) match
-      case "--unicode" => flags = flags.copy(unicode = true)
-      case "--no-unicode" => flags = flags.copy(unicode = false)
-      case "--vertical" => flags = flags.copy(vertical = true)
-      case "--horizontal" => flags = flags.copy(vertical = false)
-      case "--rounded" => flags = flags.copy(rounded = true)
-      case "--double" => flags = flags.copy(double = true)
-      case "--json" => flags = flags.copy(json = true)
-      case other => remaining += other
-    i += 1
-  (flags = flags, remaining = remaining.toList)
+  val remaining = List.newBuilder[String]
+  args.foreach {
+    case "--unicode" => flags = flags.copy(unicode = true)
+    case "--no-unicode" => flags = flags.copy(unicode = false)
+    case "--vertical" => flags = flags.copy(vertical = true)
+    case "--horizontal" => flags = flags.copy(vertical = false)
+    case "--rounded" => flags = flags.copy(rounded = true)
+    case "--double" => flags = flags.copy(double = true)
+    case "--json" => flags = flags.copy(json = true)
+    case other => remaining += other
+  }
+  (flags = flags, remaining = remaining.result())
 
 private def renderGraphCmd(edgeListStr: String, flags: GraphCmdFlags): CmdResult =
   try
     val parsed = parseGraphEdgeList(edgeListStr)
     val graph = asciiGraph.Graph(parsed.vertices, parsed.edges)
-    val prefs = asciiGraph.LayoutPrefsImpl(
+    val prefs = asciiGraph.LayoutPrefs(
       unicode = flags.unicode,
       vertical = flags.vertical,
       rounded = flags.rounded,
@@ -93,8 +91,6 @@ private def parseGraphCmd(input: String, flags: GraphCmdFlags): CmdResult =
         sb.append(s"\n  ${edge.box1.text.trim}$arrow${edge.box2.text.trim}$labelStr")
       CmdResult.GraphOutput(sb.toString)
   catch
-    case e: asciiGraph.DiagramParserException =>
-      CmdResult.UsageError(s"Error parsing diagram: ${e.getMessage}")
     case e: Exception =>
       CmdResult.UsageError(s"Error parsing diagram: ${e.getMessage}")
 

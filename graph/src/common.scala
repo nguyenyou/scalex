@@ -26,8 +26,6 @@ case class Point(row: Int, column: Int)
   def maxRowCol(that: Point): Point =
     Point(math.max(this.row, that.row), math.max(this.column, that.column))
 
-  type Self = Point
-
   def translate(down: Int = 0, right: Int = 0): Point =
     Point(row + down, column + right)
 
@@ -36,8 +34,6 @@ case class Point(row: Int, column: Int)
   def neighbours: List[Point] = List(up, right, down, left)
 
   def withRow(newRow: Int) = copy(row = newRow)
-
-  def withColumn(newColumn: Int) = copy(column = newColumn)
 
   def region: Region = Region(this, this)
 
@@ -111,36 +107,34 @@ case class Dimension(height: Int, width: Int) extends Transposable[Dimension]:
 
 // ── Direction ───────────────────────────────────────────────────────────────
 
-sealed trait Direction:
+enum Direction {
+  case Up, Down, Left, Right
   import Direction.*
 
-  val turnLeft: Direction
-  val turnRight: Direction
-  val opposite: Direction
+  def turnLeft: Direction = this match {
+    case Up => Left
+    case Down => Right
+    case Left => Down
+    case Right => Up
+  }
+
+  def turnRight: Direction = this match {
+    case Up => Right
+    case Down => Left
+    case Left => Up
+    case Right => Down
+  }
+
+  def opposite: Direction = this match {
+    case Up => Down
+    case Down => Up
+    case Left => Right
+    case Right => Left
+  }
 
   def isVertical = this == Up || this == Down
   def isHorizontal = !isVertical
-
-object Direction:
-  case object Up extends Direction:
-    val turnLeft = Left
-    val turnRight = Right
-    val opposite: Direction = Down
-
-  case object Down extends Direction:
-    val turnLeft = Right
-    val turnRight = Left
-    val opposite: Direction = Up
-
-  case object Left extends Direction:
-    val turnLeft = Down
-    val turnRight = Up
-    val opposite: Direction = Right
-
-  case object Right extends Direction:
-    val turnLeft = Up
-    val turnRight = Down
-    val opposite: Direction = Left
+}
 
 // ── Translatable ────────────────────────────────────────────────────────────
 

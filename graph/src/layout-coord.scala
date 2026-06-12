@@ -2,20 +2,15 @@ package asciiGraph
 
 import Utils.*
 
-// ── VertexRenderingStrategy ─────────────────────────────────────────────────
+// ── VertexRendering ─────────────────────────────────────────────────────────
 
-trait VertexRenderingStrategy[-V]:
-  def getPreferredSize(v: V): Dimension
-  def getText(v: V, allocatedSize: Dimension): List[String]
-
-// ── ToStringVertexRenderingStrategy ─────────────────────────────────────────
-
-object ToStringVertexRenderingStrategy extends VertexRenderingStrategy[Any]:
-  def getPreferredSize(v: Any): Dimension =
+/** Renders a vertex's contents (via toString) into box text lines. */
+object VertexRendering:
+  def preferredSize(v: Any): Dimension =
     val lines = splitLines(v.toString)
     Dimension(lines.size, if lines.isEmpty then 0 else lines.map(_.size).max)
 
-  def getText(v: Any, allocatedSize: Dimension): List[String] =
+  def text(v: Any, allocatedSize: Dimension): List[String] =
     val unpaddedLines = splitLines(v.toString).take(allocatedSize.height).map(line => centerLine(allocatedSize, line))
     val verticalDiscrepancy = Math.max(0, allocatedSize.height - unpaddedLines.size)
     val verticalPadding = List.fill(verticalDiscrepancy / 2)("")
@@ -44,7 +39,6 @@ case class EdgeInfo(
   def finishColumn = finishPort.column
   def requiresBend = !isStraight
   def isStraight = startColumn == finishColumn
-  def withFinishColumn(column: Int) = copy(finishPort = finishPort.withColumn(column))
 
 // ── VertexInfo ──────────────────────────────────────────────────────────────
 
@@ -64,8 +58,8 @@ case class VertexInfo(
     VertexInfo(
       boxRegion.translate(down, right),
       greaterRegion.translate(down, right),
-      transformValues(inEdgeToPortMap)(_.translate(down, right)),
-      transformValues(outEdgeToPortMap)(_.translate(down, right)),
+      inEdgeToPortMap.transform((_, p) => p.translate(down, right)),
+      outEdgeToPortMap.transform((_, p) => p.translate(down, right)),
       selfInPorts.map(_.translate(down, right)),
       selfOutPorts.map(_.translate(down, right))
     )
@@ -90,7 +84,7 @@ case class LayerInfo(vertexInfos: Map[LayeringVertex, VertexInfo])
   def topSelfEdgeBuffer: Int = vertexInfos.values.map(getSelfEdgeBuffer).fold(0)(_ max _)
 
   def translate(down: Int = 0, right: Int = 0) =
-    copy(vertexInfos = transformValues(vertexInfos)(_.translate(down, right)))
+    copy(vertexInfos = vertexInfos.transform((_, info) => info.translate(down, right)))
 
   def realVertexInfos: List[(RealVertex, VertexInfo)] =
     vertexInfos.toList.collect { case (vertex: RealVertex, info) => (vertex, info) }
@@ -101,7 +95,7 @@ class EdgeBendCalculator(edgeInfos: List[EdgeInfo], edgeZoneTopRow: Int, selfEdg
   private val edgeRows: Map[EdgeInfo, Int] = orderEdgeBends(edgeInfos)
   require(edgeInfos.forall(edge => edge.isStraight || edgeRows.contains(edge)))
 
-  private def bendRow(rowIndex: Int) = edgeZoneTopRow + rowIndex * 1 + 1
+  private def bendRow(rowIndex: Int) = edgeZoneTopRow + rowIndex + 1
 
   val edgeZoneBottomRow =
     (if edgeInfos.isEmpty then -1
@@ -112,9 +106,7 @@ class EdgeBendCalculator(edgeInfos: List[EdgeInfo], edgeZoneTopRow: Int, selfEdg
 
   private def orderEdgeBends(edgeInfos: List[EdgeInfo]): Map[EdgeInfo, Int] =
     def edgeRank(edgeInfo: EdgeInfo): Int =
-      val startColumn = edgeInfo.startColumn
-      val finishColumn = edgeInfo.finishColumn
-      signum(startColumn - finishColumn) * finishColumn
+      math.signum(edgeInfo.startColumn - edgeInfo.finishColumn) * edgeInfo.finishColumn
     val orderedEdges = edgeInfos.filter(_.requiresBend).sortBy(edgeRank)
     val edgeToRowMap: Map[EdgeInfo, Int] = orderedEdges.zipWithIndex.toMap
     reorderEdgesWithSameStartAndEndColumns(edgeToRowMap)
@@ -197,24 +189,19 @@ object PortNudger:
     vertexInfo.copy(inEdgeToPortMap = newInEdgeToPortMap, outEdgeToPortMap = newOutEdgeToPortMap)
 
   private def isStraight(edge: LayeringEdge, vertexInfo: VertexInfo, previousLayerInfoOpt: Option[LayerInfo]) =
-    val column1: Option[Int] =
+    val outColumn: Option[Int] =
       for
         previousLayerInfo <- previousLayerInfoOpt
         previousVertexInfo <- previousLayerInfo.vertexInfo(edge.startVertex)
-        outPort = previousVertexInfo.outEdgeToPortMap(edge)
-      yield outPort.column
-    val column2: Option[Int] = Some(vertexInfo.inEdgeToPortMap(edge).column)
-    column1 == column2
+      yield previousVertexInfo.outEdgeToPortMap(edge).column
+    outColumn.contains(vertexInfo.inEdgeToPortMap(edge).column)
 
 // ── Layouter ────────────────────────────────────────────────────────────────
 
 object Layouter:
   private val MINIMUM_VERTEX_HEIGHT = 3
 
-class Layouter(
-    vertexRenderingStrategy: VertexRenderingStrategy[?],
-    vertical: Boolean = true
-):
+class Layouter(vertical: Boolean = true):
   import Layouter.*
 
   case class LayoutState(
@@ -228,20 +215,17 @@ class Layouter(
 
   def layout(layering: Layering): Drawing =
     val layerInfos: Map[Layer, LayerInfo] = calculateLayerInfos(layering)
-    var layoutState = LayoutState(LayerInfo(Map()), Map(), Nil)
-    for layer <- layering.layers do
-      val layerResult = layoutLayer(
-        layoutState.previousLayerInfo, layerInfos(layer),
-        layering.edges, layoutState.incompleteEdges
+    val finalState = layering.layers.foldLeft(LayoutState(LayerInfo(Map()), Map(), Nil)) { (state, layer) =>
+      state.mergeLayerResult(
+        layoutLayer(state.previousLayerInfo, layerInfos(layer), layering.edges, state.incompleteEdges)
       )
-      layoutState = layoutState.mergeLayerResult(layerResult)
-    Drawing(layoutState.drawingElements)
+    }
+    Drawing(finalState.drawingElements)
 
   private def calculateLayerInfos(layering: Layering): Map[Layer, LayerInfo] =
-    var layerInfos: Map[Layer, LayerInfo] = Map()
-    for (previousLayerOpt, currentLayer, nextLayerOpt) <- withPreviousAndNext(layering.layers) do
-      val layerInfo = calculateLayerInfo(currentLayer, layering.edges, previousLayerOpt, nextLayerOpt)
-      layerInfos += currentLayer -> layerInfo
+    val layerInfos = withPreviousAndNext(layering.layers).map { (previousLayerOpt, currentLayer, nextLayerOpt) =>
+      currentLayer -> calculateLayerInfo(currentLayer, layering.edges, previousLayerOpt, nextLayerOpt)
+    }.toMap
     PortNudger.nudge(layering, spaceVertices(layerInfos))
 
   private def calculateLayerInfo(
@@ -276,8 +260,8 @@ class Layouter(
     vertex match
       case realVertex: RealVertex =>
         makeRealVertexInfo(realVertex, boxRegion, greaterRegion, inEdges, outEdges)
-      case dummyVertex: DummyVertex =>
-        makeDummyVertexInfo(dummyVertex, boxRegion, greaterRegion, inEdges, outEdges)
+      case _: DummyVertex =>
+        makeDummyVertexInfo(boxRegion, greaterRegion, inEdges, outEdges)
 
   private def makeRealVertexInfo(
       vertex: RealVertex, boxRegion: Region, greaterRegion: Region,
@@ -294,15 +278,11 @@ class Layouter(
     VertexInfo(boxRegion, greaterRegion, inEdgeToPortMap, outEdgeToPortMap, selfInPorts, selfOutPorts)
 
   private def makeDummyVertexInfo(
-      vertex: DummyVertex, boxRegion: Region, greaterRegion: Region,
+      boxRegion: Region, greaterRegion: Region,
       inEdges: List[LayeringEdge], outEdges: List[LayeringEdge]
   ): VertexInfo =
-    val inVertex = inEdges.head
-    val outVertex = outEdges.head
     val port = boxRegion.topLeft
-    val inEdgeToPortMap = Map(inVertex -> port)
-    val outEdgeToPortMap = Map(outVertex -> port)
-    VertexInfo(boxRegion, greaterRegion, inEdgeToPortMap, outEdgeToPortMap, Nil, Nil)
+    VertexInfo(boxRegion, greaterRegion, Map(inEdges.head -> port), Map(outEdges.head -> port), Nil, Nil)
 
   private def portOffsets(portCount: Int, vertexWidth: Int): List[Int] =
     val factor = vertexWidth / (portCount + 1)
@@ -310,14 +290,9 @@ class Layouter(
     0.until(portCount).toList.map(i => (i + 1) * factor + centraliser)
 
   private def calculateVertexDimension(v: RealVertex, inDegree: Int, outDegree: Int) =
-    val selfEdges = v.selfEdges
-    def requiredWidth(degree: Int) =
-      if vertical then (degree + selfEdges) * 2 + 1 + 2
-      else (degree + selfEdges) * 2 + 1 + 2
-    val requiredInputWidth = requiredWidth(inDegree)
-    val requiredOutputWidth = requiredWidth(outDegree)
-    val Dimension(preferredHeight, preferredWidth) = getPreferredSize(vertexRenderingStrategy, v)
-    val width = math.max(math.max(requiredInputWidth, requiredOutputWidth), preferredWidth + 2)
+    def requiredWidth(degree: Int) = (degree + v.selfEdges) * 2 + 1 + 2
+    val Dimension(preferredHeight, preferredWidth) = preferredSize(v)
+    val width = math.max(math.max(requiredWidth(inDegree), requiredWidth(outDegree)), preferredWidth + 2)
     val height = math.max(MINIMUM_VERTEX_HEIGHT, preferredHeight + 2)
     Dimension(height = height, width = width)
 
@@ -448,18 +423,11 @@ class Layouter(
 
   private def makeVertexElements(layerInfo: LayerInfo): List[VertexDrawingElement] =
     layerInfo.realVertexInfos.map { case (realVertex, info) =>
-      val text = getText(vertexRenderingStrategy, realVertex, info.contentRegion.dimension)
+      val allocatedSize = info.contentRegion.dimension
+      val text = VertexRendering.text(realVertex.contents, if vertical then allocatedSize else allocatedSize.transpose)
       VertexDrawingElement(info.boxRegion, text)
     }
 
-  private def getPreferredSize[V](vertexRenderingStrategy: VertexRenderingStrategy[V], realVertex: RealVertex): Dimension =
-    val preferredSize = vertexRenderingStrategy.getPreferredSize(realVertex.contents.asInstanceOf[V])
-    if vertical then preferredSize else preferredSize.transpose
-
-  private def getText[V](
-      vertexRenderingStrategy: VertexRenderingStrategy[V],
-      realVertex: RealVertex,
-      preferredSize: Dimension
-  ) =
-    val actualPreferredSize = if vertical then preferredSize else preferredSize.transpose
-    vertexRenderingStrategy.getText(realVertex.contents.asInstanceOf[V], actualPreferredSize)
+  private def preferredSize(realVertex: RealVertex): Dimension =
+    val size = VertexRendering.preferredSize(realVertex.contents)
+    if vertical then size else size.transpose
