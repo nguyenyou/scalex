@@ -22,27 +22,24 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
       }
       // Collect (file, body) pairs
       // For dotted --in owners like "Outer.Inner", use simple name for body extraction
-      val effectiveOwner = ctx.inOwner.map { o =>
-        if o.contains(".") then o.substring(o.lastIndexOf('.') + 1) else o
-      }
+      val effectiveOwner = ctx.inOwner.map(simpleNameOf)
       val blocks = filesToSearch.flatMap { f =>
         extractBody(f, symbol, effectiveOwner).map(b => (file = f, body = b))
       }
       // Fallback: if no results and symbol has a dot, split into Owner.member
       val (displayName, effectiveBlocks) =
-        if blocks.isEmpty && symbol.contains(".") && ctx.inOwner.isEmpty && symbol.lastIndexOf('.') > 0 then
-          val lastDot = symbol.lastIndexOf('.')
-          val ownerName = symbol.substring(0, lastDot)
-          val memberName = symbol.substring(lastDot + 1)
-          val dottedOwnerFiles = filterSymbols(ctx.idx.findDefinition(ownerName), ctx)
-            .filter(s => typeKinds.contains(s.kind))
-            .map(_.file).distinct
-          val dottedBlocks = dottedOwnerFiles.flatMap { f =>
-            extractBody(f, memberName, Some(ownerName)).map(b => (file = f, body = b))
-          }
-          if dottedBlocks.nonEmpty then (displayName = memberName, effectiveBlocks = dottedBlocks)
-          else (displayName = symbol, effectiveBlocks = blocks)
-        else (displayName = symbol, effectiveBlocks = blocks)
+        splitOwnerMember(symbol) match {
+          case Some((ownerName, memberName)) if blocks.isEmpty && ctx.inOwner.isEmpty =>
+            val dottedOwnerFiles = filterSymbols(ctx.idx.findDefinition(ownerName), ctx)
+              .filter(s => typeKinds.contains(s.kind))
+              .map(_.file).distinct
+            val dottedBlocks = dottedOwnerFiles.flatMap { f =>
+              extractBody(f, memberName, Some(ownerName)).map(b => (file = f, body = b))
+            }
+            if dottedBlocks.nonEmpty then (displayName = memberName, effectiveBlocks = dottedBlocks)
+            else (displayName = symbol, effectiveBlocks = blocks)
+          case _ => (displayName = symbol, effectiveBlocks = blocks)
+        }
 
       if effectiveBlocks.isEmpty then
         val msg = ctx.inOwner match

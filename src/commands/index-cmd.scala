@@ -1,5 +1,5 @@
 def cmdIndex(args: List[String], ctx: CommandContext): CmdResult =
-  val byKind = ctx.idx.symbols.groupBy(_.kind).toList.sortBy(-_._2.size).map((k, v) => (kind = k, count = v.size))
+  val byKind = countByKind(ctx.idx.symbols)
   CmdResult.IndexStats(
     fileCount = ctx.idx.fileCount,
     symbolCount = ctx.idx.symbols.size,

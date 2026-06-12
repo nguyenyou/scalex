@@ -4,6 +4,7 @@
 
 ### Changed
 - When both `-w` and `--workspace` are passed, the last occurrence now wins (previously `--workspace` always took precedence regardless of position)
+- `refs --top` now uses the same timed-out suffix as every other command (`(timed out — partial results)` instead of `(timed out — results may be incomplete)`)
 
 ### Fixed
 - `--expand` without a numeric value no longer consumes a following flag (e.g. `explain Foo --expand --no-doc` now applies `--no-doc`; bare `--expand` still means depth 1)
@@ -19,6 +20,7 @@
 - `findReferences`, `findImports`, and `categorizeReferences` return `timedOut` as part of their result instead of mutating shared state on `WorkspaceIndex` — concurrent queries can no longer clobber each other's timeout flag
 - Member extraction (`members`, `grep --each-method`) now shares one traversal; body extraction and the Scala 3 → 2.13 parse fallback are deduplicated
 - Removed all remaining `return` statements from production code (34) per the codebase-wide policy
+- Deduplicated command-layer logic into shared helpers: dotted-name splitting (`simpleNameOf`, `splitOwnerMember`), member decoration (`decorateMembers`), body-size gating (`bodyWithinLimit`), package resolve-or-not-found (`withResolvedPackage`), stdlib package detection/ranking (`isStdlibPackage`, `stdlibPkgRank`), timed-out suffix, and kind counting (`countByKind`); `grep` shares one owner-lookup and span-scan path, and `overview` computes its parent ranking once for both most-extended and hub types
 
 ## [1.40.0] — 2026-06-01
 

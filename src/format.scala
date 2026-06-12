@@ -189,7 +189,7 @@ private def renderCategorizedRefs(r: CmdResult.CategorizedRefs, ctx: CommandCont
     println(s"""{"categories":{$entries},"timedOut":${r.timedOut}}""")
   } else {
     val total = r.grouped.values.map(_.size).sum
-    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    val suffix = timedOutSuffix(r.timedOut)
     println(s"""References to "${r.symbol}" — $total found:$suffix""")
     val confidenceOrder = List(Confidence.High, Confidence.Medium, Confidence.Low)
     confidenceOrder.foreach { conf =>
@@ -224,7 +224,7 @@ private def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): Unit = {
     val arr = r.refs.take(ctx.limit).map(ctx.jRef).mkString("[", ",", "]")
     println(s"""{"results":$arr,"timedOut":${r.timedOut}}""")
   } else {
-    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    val suffix = timedOutSuffix(r.timedOut)
     println(s"""References to "${r.symbol}" — ${r.refs.size} found:$suffix""")
     val annotated = r.refs.map(ref => (ref, ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
     val sorted = annotated.sortBy { case (ref, c) => (confidence = c.ordinal, path = ctx.workspace.relativize(ref.file).toString, line = ref.line) }
@@ -1038,14 +1038,14 @@ private def renderGrepCount(r: CmdResult.GrepCount, ctx: CommandContext): Unit =
     val hintStr = r.hint.getOrElse("")
     println(s"""{"matches":${r.matches},"files":${r.files},"timedOut":${r.timedOut}$hintStr}""")
   } else {
-    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    val suffix = timedOutSuffix(r.timedOut)
     println(s"${r.matches} matches across ${r.files} files$suffix")
   }
 }
 
 private def renderGrepByMethod(r: CmdResult.GrepByMethod, ctx: CommandContext): Unit = {
   r.stderrHint.foreach(System.err.println)
-  val suffix = if r.timedOut then " (timed out — partial results)" else ""
+  val suffix = timedOutSuffix(r.timedOut)
   if ctx.jsonOutput then {
     val shown = r.methods.take(ctx.limit)
     val items = shown.map { m =>
@@ -1210,7 +1210,7 @@ private def renderApiSurface(r: CmdResult.ApiSurface, ctx: CommandContext): Unit
 }
 
 private def renderRefsTop(r: CmdResult.RefsTop, ctx: CommandContext): Unit = {
-  val timedOutSuffix = if r.timedOut then " (timed out — results may be incomplete)" else ""
+  val suffix = timedOutSuffix(r.timedOut)
   if ctx.jsonOutput then {
     val filesJson = r.fileRanking.map { (file, count) =>
       val rel = jsonEscape(ctx.workspace.relativize(file).toString)
@@ -1219,7 +1219,7 @@ private def renderRefsTop(r: CmdResult.RefsTop, ctx: CommandContext): Unit = {
     println(s"""{"symbol":"${jsonEscape(r.symbol)}","files":$filesJson,"total":${r.total},"timedOut":${r.timedOut}}""")
   } else {
     val fileCount = r.fileRanking.size
-    println(s"Top $fileCount files referencing '${r.symbol}' (${r.total} total references)$timedOutSuffix:")
+    println(s"Top $fileCount files referencing '${r.symbol}' (${r.total} total references)$suffix:")
     r.fileRanking.foreach { (file, count) =>
       val rel = ctx.workspace.relativize(file)
       println(f"  $count%4d  $rel")
@@ -1232,7 +1232,7 @@ private def renderRefsSummary(r: CmdResult.RefsSummary, ctx: CommandContext): Un
     val counts = r.categoryCounts.map((cat, count) => s""""${cat.toString}":$count""").mkString("{", ",", "}")
     println(s"""{"symbol":"${jsonEscape(r.symbol)}","counts":$counts,"total":${r.total},"timedOut":${r.timedOut}}""")
   } else {
-    val suffix = if r.timedOut then " (timed out — partial results)" else ""
+    val suffix = timedOutSuffix(r.timedOut)
     val parts = r.categoryCounts.map { (cat, count) =>
       val label = cat match {
         case RefCategory.Definition => "definitions"

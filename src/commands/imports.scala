@@ -9,7 +9,7 @@ def cmdImports(args: List[String], ctx: CommandContext): CmdResult =
           s"""No imports of "$symbol" found""",
           mkNotFoundWithSuggestions(symbol, ctx, "imports").copy(timedOut = timedOut))
       else
-        val suffix = if timedOut then " (timed out — partial results)" else ""
+        val suffix = timedOutSuffix(timedOut)
         CmdResult.RefList(
           header = s"""Imports of "$symbol" — ${results.size} found:$suffix""",
           refs = results,

@@ -59,7 +59,7 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = boundary {
               s"${otherSym.name} --path ${rel}/"
           }
         // For qualified lookups, use the simple name for member/impl queries
-        val simpleName = if symbol.contains(".") then symbol.substring(symbol.lastIndexOf('.') + 1) else symbol
+        val simpleName = simpleNameOf(symbol)
         // Scaladoc
         val doc = if ctx.noDoc then None else extractDoc(sym.file, sym.line)
         // Extract raw members once — reused for members, related, and brief
@@ -71,10 +71,8 @@ def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = boundary {
           else (inherited = Nil: List[(parentName: String, parentFile: Option[java.nio.file.Path], parentPackage: String, members: List[MemberInfo])], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
         val inherited = inheritResult.inherited
         val parentKeys = inheritResult.parentMemberKeys
-        val members = rawMembers.map { m =>
-          val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
-          if ctx.withBody then enrichMemberWithBody(m2, sym.file, simpleName, ctx.maxBodyLines) else m2
-        }.sortBy(memberKindRank).take(ctx.membersLimit)
+        val members = decorateMembers(rawMembers, parentKeys, sym.file, simpleName, ctx)
+          .sortBy(memberKindRank).take(ctx.membersLimit)
         // Companion lookup
         val companion = findCompanion(sym, simpleName, defs)
           .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.membersLimit)))

@@ -30,7 +30,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
             val fileCount = scopedResults.map(_.file).distinct.size
             CmdResult.GrepCount(scopedResults.size, fileCount, scopedTimedOut, hint, stderrHint)
           else
-            val suffix = if scopedTimedOut then " (timed out — partial results)" else ""
+            val suffix = timedOutSuffix(scopedTimedOut)
             val inStr = s""" in $owner"""
             CmdResult.RefList(
               header = s"""Matches for "$displayPattern"$inStr — ${scopedResults.size} found:$suffix""",
@@ -45,7 +45,7 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
             val fileCount = results.map(_.file).distinct.size
             CmdResult.GrepCount(results.size, fileCount, grepTimedOut, hint, stderrHint)
           else
-            val suffix = if grepTimedOut then " (timed out — partial results)" else ""
+            val suffix = timedOutSuffix(grepTimedOut)
             CmdResult.RefList(
               header = s"""Matches for "$displayPattern" — ${results.size} found:$suffix""",
               refs = results,
@@ -54,19 +54,40 @@ def cmdGrep(args: List[String], ctx: CommandContext): CmdResult =
               emptyMessage = s"""No matches for "$displayPattern"$suffix""",
               stderrHint = stderrHint)
 
+/** Find a symbol's definitions for scoped grep, falling back to an exact-name
+  * scan over type symbols when the indexed lookup misses. */
+private def findOwnerDefs(name: String, ctx: CommandContext, typesOnly: Boolean): List[SymbolInfo] = {
+  val primary = filterSymbols(ctx.idx.findDefinition(name), ctx.copy(kindFilter = None))
+  val defs = if typesOnly then primary.filter(s => typeKinds.contains(s.kind)) else primary
+  if defs.nonEmpty then defs
+  else filterSymbols(ctx.idx.symbols.filter(s => s.name == name && typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
+}
+
+/** Grep a 1-indexed inclusive line span, returning matched lines. */
+private def grepSpan(lines: collection.Seq[String], startLine: Int, endLine: Int,
+                     regex: java.util.regex.Pattern): List[(lineNum: Int, text: String)] = {
+  val matched = scala.collection.mutable.ListBuffer.empty[(lineNum: Int, text: String)]
+  var lineIdx = startLine - 1 // 0-indexed
+  val endIdx = math.min(endLine, lines.size) // 1-indexed inclusive -> exclusive in 0-indexed
+  while lineIdx < endIdx do {
+    if regex.matcher(lines(lineIdx)).find() then
+      matched += ((lineNum = lineIdx + 1, text = lines(lineIdx).trim))
+    lineIdx += 1
+  }
+  matched.toList
+}
+
 private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (results: List[Reference], timedOut: Boolean) = boundary {
   val regex = java.util.regex.Pattern.compile(pattern) // pattern is pre-validated by fixPosixRegex
 
   // Split Owner.member if present
-  val (ownerName, memberName) = if owner.contains(".") then
-    val lastDot = owner.lastIndexOf('.')
-    (owner.substring(0, lastDot), Some(owner.substring(lastDot + 1)))
-  else (owner, None)
+  val (ownerName, memberName) = splitOwnerMember(owner) match {
+    case Some((o, m)) => (o, Some(m))
+    case None => (owner, None)
+  }
 
   // Find the owner's files
-  var ownerDefs = filterSymbols(ctx.idx.findDefinition(ownerName), ctx.copy(kindFilter = None))
-  if ownerDefs.isEmpty then
-    ownerDefs = filterSymbols(ctx.idx.symbols.filter(s => s.name == ownerName && typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
+  val ownerDefs = findOwnerDefs(ownerName, ctx, typesOnly = false)
   if ownerDefs.isEmpty then break((Nil, false))
 
   val results = scala.collection.mutable.ListBuffer.empty[Reference]
@@ -79,14 +100,9 @@ private def grepInSymbol(pattern: String, owner: String, ctx: CommandContext): (
     bodies.foreach { b =>
       val lines = try java.nio.file.Files.readAllLines(sym.file).asScala catch
         case _: java.io.IOException => break((Nil, false))
-      // Grep within the body span
-      var lineIdx = b.startLine - 1 // 0-indexed
-      val endIdx = math.min(b.endLine, lines.size) // 1-indexed inclusive -> exclusive in 0-indexed
-      while lineIdx < endIdx do
-        val line = lines(lineIdx)
-        if regex.matcher(line).find() then
-          results += Reference(sym.file, lineIdx + 1, line.trim)
-        lineIdx += 1
+      grepSpan(lines, b.startLine, b.endLine, regex).foreach { m =>
+        results += Reference(sym.file, m.lineNum, m.text)
+      }
     }
   }
   (results.toList, false)
@@ -98,10 +114,7 @@ private def grepEachMethod(pattern: String, displayPattern: String, owner: Strin
   val regex = java.util.regex.Pattern.compile(pattern) // pattern is pre-validated by fixPosixRegex
 
   // Find the owner type
-  var ownerDefs = filterSymbols(ctx.idx.findDefinition(owner), ctx.copy(kindFilter = None))
-    .filter(s => typeKinds.contains(s.kind))
-  if ownerDefs.isEmpty then
-    ownerDefs = filterSymbols(ctx.idx.symbols.filter(s => s.name == owner && typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
+  val ownerDefs = findOwnerDefs(owner, ctx, typesOnly = true)
   if ownerDefs.isEmpty then
     break(CmdResult.NotFound(s"Type not found: $owner", mkNotFoundWithSuggestions(owner, ctx, "grep")))
 
@@ -120,15 +133,9 @@ private def grepEachMethod(pattern: String, displayPattern: String, owner: Strin
       if lines.nonEmpty then
         membersWithSpans.foreach { ms =>
           if System.nanoTime() < deadline then
-            val matchedLines = scala.collection.mutable.ListBuffer.empty[(lineNum: Int, text: String)]
-            var lineIdx = ms.startLine - 1
-            val endIdx = math.min(ms.endLine, lines.size)
-            while lineIdx < endIdx do
-              if regex.matcher(lines(lineIdx)).find() then
-                matchedLines += ((lineNum = lineIdx + 1, text = lines(lineIdx).trim))
-              lineIdx += 1
+            val matchedLines = grepSpan(lines, ms.startLine, ms.endLine, regex)
             if matchedLines.nonEmpty then
-              matches += MethodGrepMatch(ms.member, sym.file, matchedLines.size, matchedLines.toList)
+              matches += MethodGrepMatch(ms.member, sym.file, matchedLines.size, matchedLines)
           else timedOut = true
         }
   }

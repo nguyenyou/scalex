@@ -22,11 +22,7 @@ private def isStdlibParent(name: String): Boolean =
 private def isStdlibPackageOnly(lowerName: String, symbolsByName: Map[String, List[SymbolInfo]]): Boolean =
   symbolsByName.get(lowerName) match
     case None => false
-    case Some(syms) => syms.forall { s =>
-      val pkg = s.packageName.toLowerCase
-      pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg.startsWith("scala.") ||
-        pkg == "java" || pkg == "javax" || pkg == "scala"
-    }
+    case Some(syms) => syms.forall(s => isStdlibPackage(s.packageName.toLowerCase))
 
 private def recoverName(lower: String, symbolsByName: Map[String, List[SymbolInfo]]): String =
   symbolsByName.get(lower).flatMap(_.headOption).map(_.name).getOrElse(lower)
@@ -37,11 +33,12 @@ private def recoverSignature(lower: String, symbolsByName: Map[String, List[Symb
 def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
   var allSymbols = filterSymbols(ctx.idx.symbols, ctx)
 
-  val symbolsByKind = allSymbols.groupBy(_.kind).toList.sortBy(-_._2.size)
+  val symbolsByKind = countByKind(allSymbols)
   val topPackages: List[(pkg: String, syms: List[SymbolInfo])] = allSymbols.groupBy(_.packageName)
     .filter(_._1.nonEmpty).toList.sortBy(-_._2.size).take(ctx.limit)
     .map((p, s) => (pkg = p, syms = s))
 
+  // Most-extended non-stdlib parents, ranked — feeds both mostExtended and hubTypes
   val mostExtended = ctx.idx.parentIndex.toList
     .filter((name, _) => ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) && !isStdlibPackageOnly(name, ctx.idx.symbolsByName))
     .filter((name, _) => recoverName(name, ctx.idx.symbolsByName).length > 1) // exclude single-char names
@@ -92,32 +89,20 @@ def cmdOverview(args: List[String], ctx: CommandContext): CmdResult =
         .map((pkg, deps) => pkg -> deps.filter(relevant.contains))
     case None => archPkgDeps
 
-  // Architecture: hub types (most-referenced + most-extended)
+  // Architecture: hub types — same ranking as mostExtended, different projection
   val hubTypes: List[(name: String, score: Int, signature: String)] = if effectiveArch then {
-    val refCounts = mutable.HashMap.empty[String, (count: Int, distinctPkgs: Int)]
-    ctx.idx.parentIndex.foreach { (name, impls) =>
-      if ctx.idx.symbolsByName.contains(name) && !isStdlibParent(name) &&
-         !isStdlibPackageOnly(name, ctx.idx.symbolsByName) &&
-         recoverName(name, ctx.idx.symbolsByName).length > 1 then
-        val filtered = filterSymbols(impls, ctx)
-        if filtered.nonEmpty then
-          refCounts(name) = (count = filtered.size, distinctPkgs = filtered.map(_.packageName).distinct.size)
-    }
-    refCounts.toList
-      .sortBy((_, data) => (-data.distinctPkgs, -data.count))
-      .take(ctx.limit)
-      .map((name, data) => (
-        name = recoverName(name, ctx.idx.symbolsByName),
-        score = data.count,
-        signature = recoverSignature(name, ctx.idx.symbolsByName)
-      ))
+    mostExtended.map(t => (
+      name = recoverName(t.name, ctx.idx.symbolsByName),
+      score = t.impls.size,
+      signature = recoverSignature(t.name, ctx.idx.symbolsByName)
+    ))
   } else Nil
 
   CmdResult.Overview(OverviewData(
     fileCount = allSymbols.map(_.file).distinct.size,
     symbolCount = allSymbols.size,
     packageCount = allSymbols.map(_.packageName).filter(_.nonEmpty).distinct.size,
-    symbolsByKind = symbolsByKind.map((k, syms) => (kind = k, count = syms.size)),
+    symbolsByKind = symbolsByKind,
     topPackages = topPackages.map((p, syms) => (pkg = p, count = syms.size)),
     mostExtended = mostExtended.map(t => (
       name = recoverName(t.name, ctx.idx.symbolsByName),
