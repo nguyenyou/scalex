@@ -4,6 +4,17 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Simplicity review: remove dead code and single-use abstractions (no behavior change except noted)
+
+- [x] graph module: delete dead library surface (`EdgeType`/`connections`, `CrossingCalculator`, `OccupancyGrid`, `GraphUtils.topologicalSort`/`hasCycle`, six unused `Graph` methods, `QuadTree.collisions`, `Utils.removeFirst`/`signum`, misc dead members)
+- [x] graph module: collapse single-implementation abstractions (`Lens` machinery, `VertexRenderingStrategy`, `LayoutPrefs`/`RendererPrefs` trait tower, redundant `renderGraph` overload); replace the twelve per-character renderer defs with three indexed glyph strings; fix swapped `lineHorizontalChar`/`lineVerticalChar` names; `Direction` as Scala 3 enum
+- [x] Bug fix: `Diagram` parsing drops sibling nested boxes (`boxContains` keyed `.toMap` by outer box keeps only the last pair); each box now links to its smallest container (regression test added)
+- [x] Perf fix: `collectText` rebuilds the all-edge-labels point set once per scanned character; hoisted to a parser-level lazy val
+- [x] src/: delete parallel types (`AstPatternMatch` → reuse `SymbolInfo`; dead `CategorizedRef`; `OverviewData.hubTypes` → derive from `mostExtended`; dead `SymbolList.total`/`StringList.total`; dead `TestCaseInfo.suiteName`/`suiteFile`; `HierarchyNode` holds `Option[SymbolInfo]` instead of four parallel `Option` fields; explicit `CmdResult.Silent` replaces the empty-`StringList` sentinel). Behavior change: `ast-pattern --json` gains `parents`/`typeParamParents`/`annotations` fields (now shares `jsonSymbol`)
+- [x] src/: fold duplicated logic (`index()` cached/uncached parse branches, tier-ranking behind `search`/`searchFiles`/owner-scoped suggestions, `findImplementations` branches, `cmdGrep` result-building arms, `grepInSymbol` per-body file re-read, `renderOverview` concise/full print blocks, `renderCategorizedRefs` triple confidence resolve, `extractRawSymbols` type-defn arms, `fixPosixRegex` fallback, `jKindCounts`/`InheritedGroup` shared fragments)
+- [x] Micro-cleanups: identical `if` branches (`requiredWidth`), identical `catch` arms, `var`→`val`, pass-through aliases/wrappers, hand-rolled stdlib equivalents
+- Net: −443 lines across 29 files; deferred as not worth the churn: `KinkRemover` mirror-case helper (delicate choreography), `gitShowFile`/`runGitLines` unification (semantic differences in a perf-tuned area), `TestCaseResult`/`TestSuiteResult` merge, `SymbolKind.id` vs `ordinal` (persisted-format decoupling is deliberate)
+
 ### Dedup refactor: extract reusable units across src/ (no behavior change except noted)
 
 - [x] JSON emission helpers (`jStr`/`jArr`/`jStrArr`/`jOpt`/`jsonMemberFields`/`jsonBodyFields`) replacing ~50 hand-rolled `jsonEscape` interpolation fragments in `format.scala`

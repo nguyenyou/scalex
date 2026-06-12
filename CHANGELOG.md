@@ -2,7 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- `graph --parse` no longer drops sibling nested boxes: a box containing two or more boxes side by side wrongly promoted all but one of them to top level (and leaked their border characters into the parent's text). Box containment is now resolved by linking each box to its smallest container
+- `grep --in <owner>`: an unreadable file no longer discards matches already found in other files defining the same owner; the file is skipped instead
+
 ### Changed
+- `ast-pattern --json` now emits the same symbol object as `search`/`def` (gains `parents`, `typeParamParents`, and `annotations` fields) — one JSON shape for all symbol-returning commands
 - When both `-w` and `--workspace` are passed, the last occurrence now wins (previously `--workspace` always took precedence regardless of position)
 - `refs --top` now uses the same timed-out suffix as every other command (`(timed out — partial results)` instead of `(timed out — results may be incomplete)`)
 - `overview --architecture/--concise/--focus-package` reads imports recorded in the index instead of re-parsing every source file — on the scala3 corpus (17.7k files) this drops `overview --concise` from ~3.7s to ~0.75s (4.9×)
@@ -38,6 +43,11 @@
 - Member extraction (`members`, `grep --each-method`) now shares one traversal; body extraction and the Scala 3 → 2.13 parse fallback are deduplicated
 - Removed all remaining `return` statements from production code (34) per the codebase-wide policy
 - Deduplicated command-layer logic into shared helpers: dotted-name splitting (`simpleNameOf`, `splitOwnerMember`), member decoration (`decorateMembers`), body-size gating (`bodyWithinLimit`), package resolve-or-not-found (`withResolvedPackage`), stdlib package detection/ranking (`isStdlibPackage`, `stdlibPkgRank`), timed-out suffix, and kind counting (`countByKind`); `grep` shares one owner-lookup and span-scan path, and `overview` computes its parent ranking once for both most-extended and hub types
+- Simplicity pass (−443 lines net, no behavior change beyond the items above). Benchmarked on the scala3 corpus (17.7k files): index size byte-identical, cold index −12%, warm index and all index-backed queries at parity. The bloom-loading commands (`refs`/`imports`) show another ~10% native-binary slowdown isolated to the untouched index-deserialization phase with exact JVM parity (cache-load 237 ms on both HEAD and this change) — the same GraalVM GC-pacing/codegen artifact documented above, this time from the binary shrinking 42→40 MB:
+  - graph module: deleted the unused library surface (`EdgeType`/`connections`, `CrossingCalculator`, `OccupancyGrid`, `GraphUtils.topologicalSort`/`hasCycle`, six unused `Graph` methods, `QuadTree.collisions`, assorted dead members) and collapsed single-implementation abstractions: the `Lens` machinery (replaced by a plain child-node list), `VertexRenderingStrategy` (with its `asInstanceOf` casts), and the `LayoutPrefs`/`RendererPrefs` trait tower (now one `LayoutPrefs` case class); `Direction` is a Scala 3 enum; the renderer's twelve per-character defs are three indexed glyph strings, and the swapped `lineHorizontalChar`/`lineVerticalChar` names are fixed
+  - `graph --parse` text collection no longer rebuilds the all-edge-labels point set once per scanned character (was O(edges × area) per box cell)
+  - deleted parallel types: `AstPatternMatch` (≡ `SymbolInfo`), dead `CategorizedRef`, `OverviewData.hubTypes` (same data as `mostExtended`), write-only `SymbolList.total`/`StringList.total`, write-only `TestCaseInfo.suiteName`/`suiteFile`; `HierarchyNode`'s four parallel `Option` fields are now one `Option[SymbolInfo]`; the `symbols --summary` "already printed" sentinel is an explicit `CmdResult.Silent`
+  - folded duplicated logic: `index()` cached/uncached parse branches are one path, `search`/`searchFiles` share one tier bucketer, `findImplementations`/`fixPosixRegex`/`cmdGrep` lost their copy-pasted branches, `grep --in` reads each file once per owner definition (was once per body block), categorized refs resolve confidence once per ref (was once per confidence level), and the overview/index-stats/entrypoints renderers share their repeated print blocks and JSON fragments (`jKindCounts`, `InheritedGroup` alias)
 
 ## [1.40.0] — 2026-06-01
 
