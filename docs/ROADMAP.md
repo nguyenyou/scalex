@@ -4,6 +4,18 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### Maintainability refactor (internal, no behavior change)
+
+- [x] Unify the duplicated member-extraction traversals (`extractScalaMembers` / `extractMembersWithSpans`) behind one origin-tagged core (`extractScalaMemberTree`)
+- [x] Factor the repeated body-slice blocks in `extractScalaBody` into a single `addBody` helper with a `TypeDefn` extractor
+- [x] Deduplicate the Scala 3 → Scala 2.13 parse fallback into `parseSource`; add `readSource`/`readSourceLines` helpers
+- [x] Rewrite `parseFlags` as a single position-aware pass — fixes positional args being dropped when they equal a flag value elsewhere in the arg list
+- [x] Return `timedOut` from `findReferences`/`findImports`/`categorizeReferences` as a value instead of a shared mutable field on `WorkspaceIndex`
+- [x] Close git subprocess readers (`Using.resource`); shared `runGitLines` helper; survive a missing git binary
+- [x] Report the cause when the binary index fails to load (`ClassName: message`) instead of a generic message
+- [x] Remove all 34 `return` statements from `src/` (boundary/break or restructuring); zero-`return` policy now holds codebase-wide
+- [x] New tests: cache corruption/truncation/version-mismatch recovery, refs timeout reporting, flag-parser regressions, member-origin extraction
+
 ### Mill build migration
 
 - [x] Add Mill build definition for Scalex CLI and tests

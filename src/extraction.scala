@@ -1,4 +1,5 @@
 import scala.meta.*
+import scala.meta.parsers.Parsed
 import scala.collection.mutable
 import java.nio.file.{Files, Path}
 import com.google.common.hash.{BloomFilter, Funnels}
@@ -6,6 +7,50 @@ import scala.jdk.CollectionConverters.*
 import com.github.javaparser.{JavaParser as JP, ParserConfiguration}
 import com.github.javaparser.ast.{CompilationUnit as JavaCU}
 import com.github.javaparser.ast.body.*
+
+// ── Source reading & parsing helpers ─────────────────────────────────────────
+
+/** Read a source file as UTF-8, or None if unreadable. */
+def readSource(path: Path): Option[String] =
+  try Some(Files.readString(path)) catch { case _: java.io.IOException => None }
+
+/** Read a source file as an array of lines, or None if unreadable. */
+def readSourceLines(path: Path): Option[Array[String]] =
+  try Some(Files.readAllLines(path).asScala.toArray) catch { case _: java.io.IOException => None }
+
+private def tryParse(input: Input.VirtualFile, dialect: Dialect): Option[Source] = {
+  try {
+    given Dialect = dialect
+    input.parse[Source] match {
+      case Parsed.Success(tree) => Some(tree)
+      case _: Parsed.Error => None
+    }
+  } catch { case _: Exception => None }
+}
+
+/** Parse Scala source, trying the Scala 3 dialect first, falling back to Scala 2.13. */
+def parseSource(source: String, virtualPath: String): Option[Source] = {
+  val input = Input.VirtualFile(virtualPath, source)
+  tryParse(input, dialects.Scala3).orElse(tryParse(input, dialects.Scala213))
+}
+
+def parseFile(path: Path): Option[Source] =
+  readSource(path).flatMap(source => parseSource(source, path.toString))
+
+/** Names bound by `Pat.Var` patterns (ignores tuple/extractor patterns). */
+private def patVarNames(pats: List[Pat]): List[String] =
+  pats.collect { case Pat.Var(name) => name.value }
+
+/** Matches any type-introducing definition that carries a template body. */
+private object TypeDefn {
+  def unapply(t: Tree): Option[(name: String, templ: Template)] = t match {
+    case d: Defn.Class  => Some((name = d.name.value, templ = d.templ))
+    case d: Defn.Trait  => Some((name = d.name.value, templ = d.templ))
+    case d: Defn.Object => Some((name = d.name.value, templ = d.templ))
+    case d: Defn.Enum   => Some((name = d.name.value, templ = d.templ))
+    case _ => None
+  }
+}
 
 // ── File type routing ────────────────────────────────────────────────────────
 
@@ -97,12 +142,9 @@ def extractImports(tree: Tree): (imports: List[String], aliases: Map[String, Str
 
 // ── Import line extraction ───────────────────────────────────────────────────
 
-def extractImportLines(file: Path): Option[String] =
-  val lines = try Files.readAllLines(file).asScala.toArray catch
-    case _: java.io.IOException => return None
-  parseFile(file) match
-    case None => None
-    case Some(tree) =>
+def extractImportLines(file: Path): Option[String] = {
+  (readSourceLines(file), parseFile(file)) match {
+    case (Some(lines), Some(tree)) =>
       val importRanges = mutable.ListBuffer.empty[(startLine: Int, endLine: Int)]
       // Only collect top-level imports — use .stats (not .children which wraps in PkgBody)
       def collectImports(stats: List[Stat]): Unit =
@@ -114,11 +156,15 @@ def extractImportLines(file: Path): Option[String] =
         }
       collectImports(tree.stats)
       if importRanges.isEmpty then None
-      else
+      else {
         val importText = importRanges.flatMap { (sl, el) =>
           (sl to el).filter(_ < lines.length).map(lines(_))
         }.mkString("\n")
         Some(importText)
+      }
+    case _ => None
+  }
+}
 
 // ── Shared raw symbol extraction ─────────────────────────────────────────────
 
@@ -177,11 +223,9 @@ def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: Strin
       buf += RawSymbol(d.name.value, SymbolKind.Def, d.pos.startLine + 1, Nil, Nil, sig, annots)
     case d: Defn.Val =>
       val annots = extractAnnotations(d.mods)
-      d.pats.foreach {
-        case Pat.Var(name) =>
-          val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-          buf += RawSymbol(name.value, SymbolKind.Val, d.pos.startLine + 1, Nil, Nil, s"val ${name.value}$tpe", annots)
-        case _ =>
+      patVarNames(d.pats).foreach { name =>
+        val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
+        buf += RawSymbol(name, SymbolKind.Val, d.pos.startLine + 1, Nil, Nil, s"val $name$tpe", annots)
       }
     case d: Defn.ExtensionGroup =>
       val recv = d.paramClauses.headOption.flatMap(_.values.headOption).map(p =>
@@ -205,231 +249,147 @@ def extractSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomF
   if isJavaFile(file) then extractJavaSymbols(file)
   else extractScalaSymbols(file)
 
-private def extractScalaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
-  val source = try Files.readString(file) catch
-    case _: java.io.IOException =>
-      return (Nil, None, Nil, Map.empty, true)
-
-  val bloom = buildBloomFilterFromSource(source)
-
-  val input = Input.VirtualFile(file.toString, source)
-  val tree = try
-    given scala.meta.Dialect = scala.meta.dialects.Scala3
-    input.parse[Source].get
-  catch
-    case _: Exception =>
-      try
-        given scala.meta.Dialect = scala.meta.dialects.Scala213
-        input.parse[Source].get
-      catch
-        case _: Exception =>
-          return (Nil, Some(bloom), Nil, Map.empty, true)
-
-  val (imports, aliases) = extractImports(tree)
-  val (rawSymbols, pkg) = extractRawSymbols(tree)
-  val symbols = rawSymbols.map(r => SymbolInfo(r.name, r.kind, file, r.line, pkg, r.parents, r.typeParamParents, r.signature, r.annotations))
-  (symbols, Some(bloom), imports, aliases, false)
-
-// ── Source parsing helper ────────────────────────────────────────────────────
-
-def parseFile(path: Path): Option[Source] =
-  val source = try Files.readString(path) catch
-    case _: java.io.IOException => return None
-  val input = Input.VirtualFile(path.toString, source)
-  try
-    given scala.meta.Dialect = scala.meta.dialects.Scala3
-    Some(input.parse[Source].get)
-  catch
-    case _: Exception =>
-      try
-        given scala.meta.Dialect = scala.meta.dialects.Scala213
-        Some(input.parse[Source].get)
-      catch
-        case _: Exception =>
-          None
+private def extractScalaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) = {
+  readSource(file) match {
+    case None => (Nil, None, Nil, Map.empty, true)
+    case Some(source) =>
+      val bloom = buildBloomFilterFromSource(source)
+      parseSource(source, file.toString) match {
+        case None => (Nil, Some(bloom), Nil, Map.empty, true)
+        case Some(tree) =>
+          val (imports, aliases) = extractImports(tree)
+          val (rawSymbols, pkg) = extractRawSymbols(tree)
+          val symbols = rawSymbols.map(r => SymbolInfo(r.name, r.kind, file, r.line, pkg, r.parents, r.typeParamParents, r.signature, r.annotations))
+          (symbols, Some(bloom), imports, aliases, false)
+      }
+  }
+}
 
 // ── Member extraction ───────────────────────────────────────────────────────
 
+/** Where a member came from. Lets callers include or exclude constructor
+  * params and abstract declarations without re-implementing the traversal. */
+enum MemberOrigin {
+  case Definition, AbstractDecl, CtorParam
+}
+
+case class ExtractedMember(member: MemberInfo, startLine: Int, endLine: Int, origin: MemberOrigin)
+
 def extractMembers(file: Path, symbolName: String, filterKind: Option[SymbolKind] = None): List[MemberInfo] =
   if isJavaFile(file) then extractJavaMembers(file, symbolName)
-  else extractScalaMembers(file, symbolName, filterKind)
+  else extractScalaMemberTree(file, symbolName, filterKind).map(_.member)
 
-private def extractScalaMembers(file: Path, symbolName: String, filterKind: Option[SymbolKind] = None): List[MemberInfo] =
-  parseFile(file) match
+/** Members with their body line spans, for span-scoped grep. Excludes constructor
+  * params and abstract val/type declarations (no body to grep). Java not supported. */
+def extractMembersWithSpans(file: Path, symbolName: String, filterKind: Option[SymbolKind] = None): List[(member: MemberInfo, startLine: Int, endLine: Int)] =
+  if isJavaFile(file) then Nil
+  else extractScalaMemberTree(file, symbolName, filterKind).collect {
+    case em if em.origin == MemberOrigin.Definition || em.member.kind == SymbolKind.Def =>
+      (member = em.member, startLine = em.startLine, endLine = em.endLine)
+  }
+
+/** Single traversal behind extractMembers and extractMembersWithSpans: finds the
+  * type named `symbolName` and extracts its constructor params and template members. */
+private def extractScalaMemberTree(file: Path, symbolName: String, filterKind: Option[SymbolKind]): List[ExtractedMember] =
+  parseFile(file) match {
     case None => Nil
     case Some(tree) =>
-      val buf = mutable.ListBuffer.empty[MemberInfo]
+      val buf = mutable.ListBuffer.empty[ExtractedMember]
+
+      def add(t: Tree, m: MemberInfo, origin: MemberOrigin = MemberOrigin.Definition): Unit =
+        buf += ExtractedMember(m, t.pos.startLine + 1, t.pos.endLine + 1, origin)
+
+      def declaredType(decltpe: Option[scala.meta.Type]): String =
+        decltpe.map(t => s": ${t.toString()}").getOrElse("")
 
       def extractFromTemplate(templ: Template): Unit =
         templ.body.stats.foreach {
           case d: Defn.Def =>
-            val params = formatParamClauses(d.paramClauses)
-            val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots)
+            val sig = s"def ${d.name.value}${formatParamClauses(d.paramClauses)}${declaredType(d.decltpe)}"
+            add(d, MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, sig, extractAnnotations(d.mods)))
           case d: Defn.Val =>
             val annots = extractAnnotations(d.mods)
-            d.pats.foreach {
-              case Pat.Var(name) =>
-                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-                buf += MemberInfo(name.value, SymbolKind.Val, d.pos.startLine + 1, s"val ${name.value}$tpe", annots)
-              case _ =>
+            patVarNames(d.pats).foreach { name =>
+              add(d, MemberInfo(name, SymbolKind.Val, d.pos.startLine + 1, s"val $name${declaredType(d.decltpe)}", annots))
             }
           case d: Defn.Var =>
             val annots = extractAnnotations(d.mods)
-            d.pats.foreach {
-              case Pat.Var(name) =>
-                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-                buf += MemberInfo(name.value, SymbolKind.Var, d.pos.startLine + 1, s"var ${name.value}$tpe", annots)
-              case _ =>
+            patVarNames(d.pats).foreach { name =>
+              add(d, MemberInfo(name, SymbolKind.Var, d.pos.startLine + 1, s"var $name${declaredType(d.decltpe)}", annots))
             }
           case d: Defn.Type =>
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value} = ${d.body.toString().take(60)}", annots)
+            add(d, MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value} = ${d.body.toString().take(60)}", extractAnnotations(d.mods)))
           case d: Decl.Def =>
-            val params = formatParamClauses(d.paramClauses)
-            val ret = s": ${d.decltpe.toString()}"
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots)
+            val sig = s"def ${d.name.value}${formatParamClauses(d.paramClauses)}: ${d.decltpe.toString()}"
+            add(d, MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, sig, extractAnnotations(d.mods)), MemberOrigin.AbstractDecl)
           case d: Decl.Val =>
             val annots = extractAnnotations(d.mods)
-            d.pats.foreach {
-              case p: Pat.Var =>
-                val tpe = s": ${d.decltpe.toString()}"
-                buf += MemberInfo(p.name.value, SymbolKind.Val, d.pos.startLine + 1, s"val ${p.name.value}$tpe", annots)
-              case _ =>
+            patVarNames(d.pats).foreach { name =>
+              add(d, MemberInfo(name, SymbolKind.Val, d.pos.startLine + 1, s"val $name: ${d.decltpe.toString()}", annots), MemberOrigin.AbstractDecl)
             }
           case d: Decl.Type =>
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value}", annots)
+            add(d, MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value}", extractAnnotations(d.mods)), MemberOrigin.AbstractDecl)
           case d: Defn.Class =>
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Class, d.pos.startLine + 1, s"class ${d.name.value}", annots)
+            add(d, MemberInfo(d.name.value, SymbolKind.Class, d.pos.startLine + 1, s"class ${d.name.value}", extractAnnotations(d.mods)))
           case d: Defn.Trait =>
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Trait, d.pos.startLine + 1, s"trait ${d.name.value}", annots)
+            add(d, MemberInfo(d.name.value, SymbolKind.Trait, d.pos.startLine + 1, s"trait ${d.name.value}", extractAnnotations(d.mods)))
           case d: Defn.Object =>
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Object, d.pos.startLine + 1, s"object ${d.name.value}", annots)
+            add(d, MemberInfo(d.name.value, SymbolKind.Object, d.pos.startLine + 1, s"object ${d.name.value}", extractAnnotations(d.mods)))
           case d: Defn.Enum =>
-            val annots = extractAnnotations(d.mods)
-            buf += MemberInfo(d.name.value, SymbolKind.Enum, d.pos.startLine + 1, s"enum ${d.name.value}", annots)
+            add(d, MemberInfo(d.name.value, SymbolKind.Enum, d.pos.startLine + 1, s"enum ${d.name.value}", extractAnnotations(d.mods)))
           case _ =>
         }
 
-      def kindMatches(k: SymbolKind): Boolean = filterKind.forall(_ == k)
-
-      def findAndExtract(t: Tree): Unit = t match
-        case d: Defn.Class if d.name.value == symbolName && kindMatches(SymbolKind.Class) =>
-          // Constructor params: case class params are public vals; regular class params only if marked val/var
-          val isCaseClass = d.mods.exists(_.isInstanceOf[Mod.Case])
-          d.ctor.paramClauses.foreach { clause =>
-            clause.values.foreach { p =>
-              val isVal = isCaseClass || p.mods.exists(m => m.isInstanceOf[Mod.ValParam] || m.isInstanceOf[Mod.VarParam])
-              if isVal then
-                val tpe = p.decltpe.map(t => s": ${t.toString}").getOrElse("")
-                val kind = if p.mods.exists(_.isInstanceOf[Mod.VarParam]) then SymbolKind.Var else SymbolKind.Val
-                buf += MemberInfo(p.name.value, kind, p.pos.startLine + 1, s"val ${p.name.value}$tpe")
+      // Case class params are public vals; regular class params only if marked val/var
+      def addCtorParams(d: Defn.Class): Unit = {
+        val isCaseClass = d.mods.exists(_.isInstanceOf[Mod.Case])
+        d.ctor.paramClauses.foreach { clause =>
+          clause.values.foreach { p =>
+            val isVal = isCaseClass || p.mods.exists(m => m.isInstanceOf[Mod.ValParam] || m.isInstanceOf[Mod.VarParam])
+            if isVal then {
+              val tpe = p.decltpe.map(t => s": ${t.toString}").getOrElse("")
+              val kind = if p.mods.exists(_.isInstanceOf[Mod.VarParam]) then SymbolKind.Var else SymbolKind.Val
+              add(p, MemberInfo(p.name.value, kind, p.pos.startLine + 1, s"val ${p.name.value}$tpe"), MemberOrigin.CtorParam)
             }
           }
+        }
+      }
+
+      def kindMatches(k: SymbolKind): Boolean = filterKind.forall(_ == k)
+
+      def findAndExtract(t: Tree): Unit = t match {
+        case d: Defn.Class if d.name.value == symbolName && kindMatches(SymbolKind.Class) =>
+          addCtorParams(d)
           extractFromTemplate(d.templ)
         case d: Defn.Trait if d.name.value == symbolName && kindMatches(SymbolKind.Trait) => extractFromTemplate(d.templ)
         case d: Defn.Object if d.name.value == symbolName && kindMatches(SymbolKind.Object) => extractFromTemplate(d.templ)
         case d: Defn.Enum if d.name.value == symbolName && kindMatches(SymbolKind.Enum) => extractFromTemplate(d.templ)
         case _ => t.children.foreach(findAndExtract)
+      }
 
       findAndExtract(tree)
       buf.toList
-
-/** Extract members with their body line spans in a single parse.
-  * Returns (member info, 1-indexed startLine, 1-indexed endLine) for each member. */
-def extractMembersWithSpans(file: Path, symbolName: String, filterKind: Option[SymbolKind] = None): List[(member: MemberInfo, startLine: Int, endLine: Int)] =
-  if isJavaFile(file) then return Nil // Java not supported for this path
-  parseFile(file) match
-    case None => Nil
-    case Some(tree) =>
-      val buf = mutable.ListBuffer.empty[(member: MemberInfo, startLine: Int, endLine: Int)]
-
-      def extractFromTemplate(templ: Template): Unit =
-        templ.body.stats.foreach {
-          case d: Defn.Def =>
-            val params = formatParamClauses(d.paramClauses)
-            val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-            val annots = extractAnnotations(d.mods)
-            buf += ((member = MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-          case d: Defn.Val =>
-            val annots = extractAnnotations(d.mods)
-            d.pats.foreach {
-              case Pat.Var(name) =>
-                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-                buf += ((member = MemberInfo(name.value, SymbolKind.Val, d.pos.startLine + 1, s"val ${name.value}$tpe", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-              case _ =>
-            }
-          case d: Defn.Var =>
-            val annots = extractAnnotations(d.mods)
-            d.pats.foreach {
-              case Pat.Var(name) =>
-                val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-                buf += ((member = MemberInfo(name.value, SymbolKind.Var, d.pos.startLine + 1, s"var ${name.value}$tpe", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-              case _ =>
-            }
-          case d: Defn.Type =>
-            val annots = extractAnnotations(d.mods)
-            buf += ((member = MemberInfo(d.name.value, SymbolKind.Type, d.pos.startLine + 1, s"type ${d.name.value} = ${d.body.toString().take(60)}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-          case d: Decl.Def =>
-            val params = formatParamClauses(d.paramClauses)
-            val ret = s": ${d.decltpe.toString()}"
-            val annots = extractAnnotations(d.mods)
-            buf += ((member = MemberInfo(d.name.value, SymbolKind.Def, d.pos.startLine + 1, s"def ${d.name.value}$params$ret", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-          case d: Defn.Class =>
-            val annots = extractAnnotations(d.mods)
-            buf += ((member = MemberInfo(d.name.value, SymbolKind.Class, d.pos.startLine + 1, s"class ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-          case d: Defn.Trait =>
-            val annots = extractAnnotations(d.mods)
-            buf += ((member = MemberInfo(d.name.value, SymbolKind.Trait, d.pos.startLine + 1, s"trait ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-          case d: Defn.Object =>
-            val annots = extractAnnotations(d.mods)
-            buf += ((member = MemberInfo(d.name.value, SymbolKind.Object, d.pos.startLine + 1, s"object ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-          case d: Defn.Enum =>
-            val annots = extractAnnotations(d.mods)
-            buf += ((member = MemberInfo(d.name.value, SymbolKind.Enum, d.pos.startLine + 1, s"enum ${d.name.value}", annots), startLine = d.pos.startLine + 1, endLine = d.pos.endLine + 1))
-          case _ =>
-        }
-
-      def kindMatches(k: SymbolKind): Boolean = filterKind.forall(_ == k)
-
-      def findAndExtract(t: Tree): Unit = t match
-        case d: Defn.Class if d.name.value == symbolName && kindMatches(SymbolKind.Class) => extractFromTemplate(d.templ)
-        case d: Defn.Trait if d.name.value == symbolName && kindMatches(SymbolKind.Trait) => extractFromTemplate(d.templ)
-        case d: Defn.Object if d.name.value == symbolName && kindMatches(SymbolKind.Object) => extractFromTemplate(d.templ)
-        case d: Defn.Enum if d.name.value == symbolName && kindMatches(SymbolKind.Enum) => extractFromTemplate(d.templ)
-        case _ => t.children.foreach(findAndExtract)
-
-      findAndExtract(tree)
-      buf.toList
+  }
 
 // ── Doc extraction (Scaladoc / Javadoc) ─────────────────────────────────────
 
-def extractDoc(file: Path, targetLine: Int): Option[String] =
-  if isJavaFile(file) then return None
-  val lines = try Files.readAllLines(file).asScala.toArray catch
-    case _: java.io.IOException => return None
-  // targetLine is 1-indexed, array is 0-indexed
-  var i = targetLine - 2 // line before the symbol
-  // skip blank lines between doc and symbol
-  while i >= 0 && lines(i).trim.isEmpty do i -= 1
-  if i < 0 then return None
-  // Check if this line ends a scaladoc
-  val endLine = i
-  if lines(endLine).trim == "*/" || lines(endLine).trim.endsWith("*/") then
-    // Multi-line or single-line: find the opening /**
-    while i >= 0 && !lines(i).trim.startsWith("/**") do i -= 1
-    if i >= 0 then Some((i to endLine).map(lines(_)).mkString("\n"))
-    else None
-  else if lines(endLine).trim.startsWith("/**") && lines(endLine).trim.endsWith("*/") then
-    // Single-line /** brief */
-    Some(lines(endLine))
-  else None
+def extractDoc(file: Path, targetLine: Int): Option[String] = {
+  val lines = if isJavaFile(file) then None else readSourceLines(file)
+  lines.flatMap { lines =>
+    // targetLine is 1-indexed, array is 0-indexed
+    var i = targetLine - 2 // line before the symbol
+    // skip blank lines between doc and symbol
+    while i >= 0 && lines(i).trim.isEmpty do i -= 1
+    if i < 0 || !lines(i).trim.endsWith("*/") then None
+    else {
+      // The line ends a scaladoc — walk up to the opening /** (which may be the same line)
+      val endLine = i
+      while i >= 0 && !lines(i).trim.startsWith("/**") do i -= 1
+      if i >= 0 then Some((i to endLine).map(lines(_)).mkString("\n"))
+      else None
+    }
+  }
+}
 
 // ── Test extraction ─────────────────────────────────────────────────────
 
@@ -467,8 +427,8 @@ private def classifyTestCall(t: Tree): TestCallMatch =
     case _ => TestCallMatch.NotATest
 
 def extractTests(file: Path): List[TestSuiteInfo] = {
-  if isJavaFile(file) then return Nil
-  parseFile(file) match
+  if isJavaFile(file) then Nil
+  else parseFile(file) match
     case None => Nil
     case Some(tree) =>
       val suites = mutable.ListBuffer.empty[TestSuiteInfo]
@@ -517,130 +477,47 @@ def extractBody(file: Path, symbolName: String, ownerName: Option[String]): List
   else extractScalaBody(file, symbolName, ownerName)
 
 private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[String]): List[BodyInfo] = {
-  val lines = try Files.readAllLines(file).asScala.toArray catch
-    case _: java.io.IOException => return Nil
-  parseFile(file) match
-    case None => Nil
-    case Some(tree) =>
+  (readSourceLines(file), parseFile(file)) match {
+    case (Some(lines), Some(tree)) =>
       val buf = mutable.ListBuffer.empty[BodyInfo]
 
+      // Slice the node's source span if it defines `symbolName` under an accepted owner
+      def addBody(t: Tree, owner: String, name: String, isAbstract: Boolean = false): Unit = {
+        if name == symbolName && (ownerName.isEmpty || ownerName.contains(owner)) then {
+          val sl = t.pos.startLine
+          val el = t.pos.endLine
+          val body = (sl to el).map(lines(_)).mkString("\n")
+          buf += BodyInfo(owner, name, body, sl + 1, el + 1, isAbstract)
+        }
+      }
+
       def extractFromTree(t: Tree, currentOwner: String): Unit = {
-        t match
+        t match {
           case d: Defn.Def =>
-            if d.name.value == symbolName then
-              if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                val sl = d.pos.startLine
-                val el = d.pos.endLine
-                val body = (sl to el).map(lines(_)).mkString("\n")
-                buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            // Recurse into def body to find nested local defs
+            addBody(d, currentOwner, d.name.value)
+            // Recurse into the def body to find nested local defs
             d.body.children.foreach(c => extractFromTree(c, currentOwner))
-          case d: Decl.Def =>
-            if d.name.value == symbolName then
-              if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                val sl = d.pos.startLine
-                val el = d.pos.endLine
-                val body = (sl to el).map(lines(_)).mkString("\n")
-                buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1, isAbstract = true)
-          case d: Decl.Val =>
-            d.pats.foreach {
-              case Pat.Var(name) if name.value == symbolName =>
-                if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                  val sl = d.pos.startLine
-                  val el = d.pos.endLine
-                  val body = (sl to el).map(lines(_)).mkString("\n")
-                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1, isAbstract = true)
-              case _ =>
-            }
-          case d: Decl.Var =>
-            d.pats.foreach {
-              case Pat.Var(name) if name.value == symbolName =>
-                if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                  val sl = d.pos.startLine
-                  val el = d.pos.endLine
-                  val body = (sl to el).map(lines(_)).mkString("\n")
-                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1, isAbstract = true)
-              case _ =>
-            }
-          case d: Decl.Type if d.name.value == symbolName =>
-            if ownerName.isEmpty || ownerName.contains(currentOwner) then
-              val sl = d.pos.startLine
-              val el = d.pos.endLine
-              val body = (sl to el).map(lines(_)).mkString("\n")
-              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1, isAbstract = true)
-          case d: Defn.Val =>
-            d.pats.foreach {
-              case Pat.Var(name) if name.value == symbolName =>
-                if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                  val sl = d.pos.startLine
-                  val el = d.pos.endLine
-                  val body = (sl to el).map(lines(_)).mkString("\n")
-                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1)
-              case _ =>
-            }
-          case d: Defn.Var =>
-            d.pats.foreach {
-              case Pat.Var(name) if name.value == symbolName =>
-                if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                  val sl = d.pos.startLine
-                  val el = d.pos.endLine
-                  val body = (sl to el).map(lines(_)).mkString("\n")
-                  buf += BodyInfo(currentOwner, name.value, body, sl + 1, el + 1)
-              case _ =>
-            }
-          case d: Defn.Type if d.name.value == symbolName =>
-            if ownerName.isEmpty || ownerName.contains(currentOwner) then
-              val sl = d.pos.startLine
-              val el = d.pos.endLine
-              val body = (sl to el).map(lines(_)).mkString("\n")
-              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-          case d: Defn.Class =>
-            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
-              val sl = d.pos.startLine
-              val el = d.pos.endLine
-              val body = (sl to el).map(lines(_)).mkString("\n")
-              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
-          case d: Defn.Trait =>
-            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
-              val sl = d.pos.startLine
-              val el = d.pos.endLine
-              val body = (sl to el).map(lines(_)).mkString("\n")
-              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
-          case d: Defn.Object =>
-            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
-              val sl = d.pos.startLine
-              val el = d.pos.endLine
-              val body = (sl to el).map(lines(_)).mkString("\n")
-              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
-          case d: Defn.Enum =>
-            if d.name.value == symbolName && (ownerName.isEmpty || ownerName.contains(currentOwner)) then
-              val sl = d.pos.startLine
-              val el = d.pos.endLine
-              val body = (sl to el).map(lines(_)).mkString("\n")
-              buf += BodyInfo(currentOwner, d.name.value, body, sl + 1, el + 1)
-            d.templ.body.stats.foreach(s => extractFromTree(s, d.name.value))
+          case d: Decl.Def => addBody(d, currentOwner, d.name.value, isAbstract = true)
+          case d: Decl.Val => patVarNames(d.pats).foreach(n => addBody(d, currentOwner, n, isAbstract = true))
+          case d: Decl.Var => patVarNames(d.pats).foreach(n => addBody(d, currentOwner, n, isAbstract = true))
+          case d: Decl.Type => addBody(d, currentOwner, d.name.value, isAbstract = true)
+          case d: Defn.Val => patVarNames(d.pats).foreach(n => addBody(d, currentOwner, n))
+          case d: Defn.Var => patVarNames(d.pats).foreach(n => addBody(d, currentOwner, n))
+          case d: Defn.Type => addBody(d, currentOwner, d.name.value)
+          case TypeDefn(name, templ) =>
+            addBody(t, currentOwner, name)
+            templ.body.stats.foreach(s => extractFromTree(s, name))
           case app: Term.Apply =>
-            classifyTestCall(app) match
-              case TestCallMatch.Literal(name, _) if name == symbolName =>
-                if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                  val sl = app.pos.startLine
-                  val el = app.pos.endLine
-                  val body = (sl to el).map(lines(_)).mkString("\n")
-                  buf += BodyInfo(currentOwner, name, body, sl + 1, el + 1)
+            classifyTestCall(app) match {
+              case TestCallMatch.Literal(name, _) => addBody(app, currentOwner, name)
               case _ =>
+            }
             app.children.foreach(c => extractFromTree(c, currentOwner))
           case infix: Term.ApplyInfix =>
-            classifyTestCall(infix) match
-              case TestCallMatch.Literal(name, _) if name == symbolName =>
-                if ownerName.isEmpty || ownerName.contains(currentOwner) then
-                  val sl = infix.pos.startLine
-                  val el = infix.pos.endLine
-                  val body = (sl to el).map(lines(_)).mkString("\n")
-                  buf += BodyInfo(currentOwner, name, body, sl + 1, el + 1)
+            classifyTestCall(infix) match {
+              case TestCallMatch.Literal(name, _) => addBody(infix, currentOwner, name)
               case _ =>
+            }
             infix.children.foreach(c => extractFromTree(c, currentOwner))
           case p: Pkg =>
             p.body.stats.foreach(s => extractFromTree(s, currentOwner))
@@ -648,17 +525,20 @@ private def extractScalaBody(file: Path, symbolName: String, ownerName: Option[S
             // Recurse into all other nodes (Term.Block, Term.If, etc.)
             // to find nested local defs, vals, and vars
             other.children.foreach(c => extractFromTree(c, currentOwner))
+        }
       }
 
       tree.children.foreach(c => extractFromTree(c, ""))
       buf.toList
+    case _ => Nil
+  }
 }
 
 // ── Scope extraction (context) ──────────────────────────────────────────────
 
 def extractScopes(file: Path, targetLine: Int): List[ScopeInfo] = {
-  if isJavaFile(file) then return Nil
-  parseFile(file) match
+  if isJavaFile(file) then Nil
+  else parseFile(file) match
     case None => Nil
     case Some(tree) =>
       val buf = mutable.ListBuffer.empty[ScopeInfo]
@@ -710,9 +590,7 @@ private def parseJavaSource(source: String, path: Path): Option[JavaCU] =
     case _: Exception | _: Error => None
 
 private def parseJavaFile(path: Path): Option[JavaCU] =
-  val source = try Files.readString(path) catch
-    case _: java.io.IOException => return None
-  parseJavaSource(source, path)
+  readSource(path).flatMap(source => parseJavaSource(source, path))
 
 private def javaTypeToString(tpe: com.github.javaparser.ast.`type`.Type): String =
   tpe.asString()
@@ -767,70 +645,75 @@ private def javaKindAndSig(td: TypeDeclaration[?]): (kind: SymbolKind, sig: Stri
 
 // ── Java symbol extraction (JavaParser-based) ──────────────────────────────
 
-private def extractJavaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) =
-  val source = try Files.readString(file) catch
-    case _: java.io.IOException =>
-      return (Nil, None, Nil, Map.empty, true)
-
-  val bloom = buildBloomFilterFromSource(source)
-
-  parseJavaSource(source, file) match
-    case None =>
-      return (Nil, Some(bloom), Nil, Map.empty, true)
-    case Some(cu) =>
-      val buf = mutable.ListBuffer.empty[SymbolInfo]
-      val importBuf = mutable.ListBuffer.empty[String]
-
-      val pkg = if cu.getPackageDeclaration.isPresent then cu.getPackageDeclaration.get().getNameAsString else ""
-
-      cu.getImports.forEach { imp =>
-        importBuf += s"import ${imp.getNameAsString}${if imp.isAsterisk then ".*" else ""}"
+private def extractJavaSymbols(file: Path): (symbols: List[SymbolInfo], bloom: Option[BloomFilter[CharSequence]], imports: List[String], aliases: Map[String, String], parseFailed: Boolean) = {
+  readSource(file) match {
+    case None => (Nil, None, Nil, Map.empty, true)
+    case Some(source) =>
+      val bloom = buildBloomFilterFromSource(source)
+      parseJavaSource(source, file) match {
+        case None => (Nil, Some(bloom), Nil, Map.empty, true)
+        case Some(cu) =>
+          val (symbols, imports) = javaSymbolsFromCu(cu, file)
+          (symbols, Some(bloom), imports, Map.empty, false)
       }
+  }
+}
 
-      def visitType(td: TypeDeclaration[?]): Unit =
-        val name = td.getNameAsString
-        val parents = javaParentsFromType(td)
-        val annots = javaAnnotations(td)
-        val (kind, sig) = javaKindAndSig(td)
-        val line = td.getBegin.map(_.line).orElse(0)
-        buf += SymbolInfo(name, kind, file, line, pkg, parents, Nil, sig, annots)
+private def javaSymbolsFromCu(cu: JavaCU, file: Path): (symbols: List[SymbolInfo], imports: List[String]) = {
+  val buf = mutable.ListBuffer.empty[SymbolInfo]
+  val importBuf = mutable.ListBuffer.empty[String]
 
-        // Extract methods
-        td.getMethods.forEach { m =>
-          val mName = m.getNameAsString
-          val params = mutable.ListBuffer.empty[String]
-          m.getParameters.forEach(p => params += s"${p.getNameAsString}: ${javaTypeToString(p.getType)}")
-          val ret = javaTypeToString(m.getType)
-          val mSig = s"def $mName(${params.mkString(", ")}): $ret"
-          val mAnnots = javaAnnotations(m)
-          val mLine = m.getBegin.map(_.line).orElse(0)
-          buf += SymbolInfo(mName, SymbolKind.Def, file, mLine, pkg, Nil, Nil, mSig, mAnnots)
-        }
+  val pkg = if cu.getPackageDeclaration.isPresent then cu.getPackageDeclaration.get().getNameAsString else ""
 
-        // Extract fields
-        td.getFields.forEach { f =>
-          f.getVariables.forEach { v =>
-            val vName = v.getNameAsString
-            val vType = javaTypeToString(f.getCommonType)
-            val isFinal = f.isFinal
-            val fKind = if isFinal then SymbolKind.Val else SymbolKind.Var
-            val prefix = if isFinal then "val" else "var"
-            val fSig = s"$prefix $vName: $vType"
-            val fAnnots = javaAnnotations(f)
-            val fLine = f.getBegin.map(_.line).orElse(0)
-            buf += SymbolInfo(vName, fKind, file, fLine, pkg, Nil, Nil, fSig, fAnnots)
-          }
-        }
+  cu.getImports.forEach { imp =>
+    importBuf += s"import ${imp.getNameAsString}${if imp.isAsterisk then ".*" else ""}"
+  }
 
-        // Recurse into nested types
-        td.getMembers.forEach {
-          case nested: TypeDeclaration[?] => visitType(nested)
-          case _ =>
-        }
+  def visitType(td: TypeDeclaration[?]): Unit = {
+    val name = td.getNameAsString
+    val parents = javaParentsFromType(td)
+    val annots = javaAnnotations(td)
+    val (kind, sig) = javaKindAndSig(td)
+    val line = td.getBegin.map(_.line).orElse(0)
+    buf += SymbolInfo(name, kind, file, line, pkg, parents, Nil, sig, annots)
 
-      cu.getTypes.forEach(td => visitType(td))
+    // Extract methods
+    td.getMethods.forEach { m =>
+      val mName = m.getNameAsString
+      val params = mutable.ListBuffer.empty[String]
+      m.getParameters.forEach(p => params += s"${p.getNameAsString}: ${javaTypeToString(p.getType)}")
+      val ret = javaTypeToString(m.getType)
+      val mSig = s"def $mName(${params.mkString(", ")}): $ret"
+      val mAnnots = javaAnnotations(m)
+      val mLine = m.getBegin.map(_.line).orElse(0)
+      buf += SymbolInfo(mName, SymbolKind.Def, file, mLine, pkg, Nil, Nil, mSig, mAnnots)
+    }
 
-      (buf.toList, Some(bloom), importBuf.toList, Map.empty, false)
+    // Extract fields
+    td.getFields.forEach { f =>
+      f.getVariables.forEach { v =>
+        val vName = v.getNameAsString
+        val vType = javaTypeToString(f.getCommonType)
+        val isFinal = f.isFinal
+        val fKind = if isFinal then SymbolKind.Val else SymbolKind.Var
+        val prefix = if isFinal then "val" else "var"
+        val fSig = s"$prefix $vName: $vType"
+        val fAnnots = javaAnnotations(f)
+        val fLine = f.getBegin.map(_.line).orElse(0)
+        buf += SymbolInfo(vName, fKind, file, fLine, pkg, Nil, Nil, fSig, fAnnots)
+      }
+    }
+
+    // Recurse into nested types
+    td.getMembers.forEach {
+      case nested: TypeDeclaration[?] => visitType(nested)
+      case _ =>
+    }
+  }
+
+  cu.getTypes.forEach(td => visitType(td))
+  (symbols = buf.toList, imports = importBuf.toList)
+}
 
 // ── Java member extraction ──────────────────────────────────────────────────
 
@@ -910,11 +793,9 @@ private def extractJavaMembers(file: Path, symbolName: String): List[MemberInfo]
 // ── Java body extraction ────────────────────────────────────────────────────
 
 private def extractJavaBody(file: Path, symbolName: String, ownerName: Option[String]): List[BodyInfo] =
-  val sourceLines = try Files.readAllLines(file).asScala.toArray catch
-    case _: java.io.IOException => return Nil
-  parseJavaFile(file) match
-    case None => Nil
-    case Some(cu) =>
+  (readSourceLines(file), parseJavaFile(file)) match
+    case (None, _) | (_, None) => Nil
+    case (Some(sourceLines), Some(cu)) =>
       val buf = mutable.ListBuffer.empty[BodyInfo]
 
       def extractFromType(td: TypeDeclaration[?], currentOwner: String): Unit =

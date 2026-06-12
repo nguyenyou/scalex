@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+- A positional argument that equals a flag's value elsewhere in the arg list (e.g. `scalex def --kind class class`) is no longer dropped — flag parsing is now a single position-aware pass
+- Corrupted or truncated index caches now report the failure cause on stderr (`index load failed (EOFException: …) — rebuilding`) instead of a generic message
+- Git subprocess readers are closed after use; a missing `git` binary now produces a clear error instead of a stack trace
+
+### Changed (internal)
+- `findReferences`, `findImports`, and `categorizeReferences` return `timedOut` as part of their result instead of mutating shared state on `WorkspaceIndex` — concurrent queries can no longer clobber each other's timeout flag
+- Member extraction (`members`, `grep --each-method`) now shares one traversal; body extraction and the Scala 3 → 2.13 parse fallback are deduplicated
+- Removed all remaining `return` statements from production code (34) per the codebase-wide policy
+
 ## [1.40.0] — 2026-06-01
 
 ### Changed

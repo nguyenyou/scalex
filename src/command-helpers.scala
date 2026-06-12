@@ -123,7 +123,14 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
   inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
   parentMemberKeys: Set[(name: String, kind: SymbolKind)]
 ) = {
-  if !ctx.inherited then return (inherited = Nil, parentMemberKeys = Set.empty)
+  if !ctx.inherited then (inherited = Nil, parentMemberKeys = Set.empty)
+  else collectInheritedMembersImpl(sym, ctx)
+}
+
+private def collectInheritedMembersImpl(sym: SymbolInfo, ctx: CommandContext): (
+  inherited: List[(parentName: String, parentFile: Option[Path], parentPackage: String, members: List[MemberInfo])],
+  parentMemberKeys: Set[(name: String, kind: SymbolKind)]
+) = {
   val visited = mutable.HashSet.empty[String]
   visited += sym.name.toLowerCase
   val ownMembers = extractMembers(sym.file, sym.name, Some(sym.kind)).map(m => (name = m.name, kind = m.kind)).toSet

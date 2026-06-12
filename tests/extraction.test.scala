@@ -818,3 +818,35 @@ class ExtractionSuite extends ScalexTestBase:
     val imports = result.get
     assert(imports.contains("import com.example.UserService"), s"Should contain import: $imports")
   }
+
+  // ── Member extraction origins (shared core for members + spans) ───────
+
+  test("extractMembers includes case class ctor params as vals") {
+    val file = workspace.resolve("src/main/scala/com/example/Model.scala")
+    val members = extractMembers(file, "User", Some(SymbolKind.Class))
+    assert(members.exists(m => m.name == "id" && m.kind == SymbolKind.Val), s"ctor param id should be a val member: ${members.map(_.name)}")
+    assert(members.exists(m => m.name == "name" && m.kind == SymbolKind.Val))
+  }
+
+  test("extractMembersWithSpans excludes ctor params but keeps abstract defs") {
+    val modelFile = workspace.resolve("src/main/scala/com/example/Model.scala")
+    val userSpans = extractMembersWithSpans(modelFile, "User", Some(SymbolKind.Class))
+    assert(!userSpans.exists(_.member.name == "id"), s"ctor params should not get grep spans: ${userSpans.map(_.member.name)}")
+
+    val docFile = workspace.resolve("src/main/scala/com/example/Documented.scala")
+    val traitSpans = extractMembersWithSpans(docFile, "PaymentService", Some(SymbolKind.Trait))
+    assert(traitSpans.exists(_.member.name == "processPayment"), s"abstract defs keep their span: ${traitSpans.map(_.member.name)}")
+  }
+
+  test("extractMembersWithSpans agrees with extractMembers on concrete members") {
+    val file = workspace.resolve("src/main/scala/com/example/Documented.scala")
+    val memberNames = extractMembers(file, "PaymentServiceLive", Some(SymbolKind.Class)).map(_.name).toSet
+    val spans = extractMembersWithSpans(file, "PaymentServiceLive", Some(SymbolKind.Class))
+    spans.foreach { s =>
+      assert(memberNames.contains(s.member.name), s"span member ${s.member.name} missing from extractMembers")
+      assert(s.startLine <= s.member.line && s.member.line <= s.endLine, s"member line should fall within span for ${s.member.name}")
+    }
+    assert(spans.exists(_.member.name == "maxRetries"), "concrete val keeps its span")
+    assert(spans.exists(_.member.name == "lastError"), "concrete var keeps its span")
+    assert(spans.exists(_.member.name == "TransactionId"), "concrete type alias keeps its span")
+  }

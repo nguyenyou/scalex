@@ -2,15 +2,16 @@ def cmdImports(args: List[String], ctx: CommandContext): CmdResult =
   args.headOption match
     case None => CmdResult.UsageError("Usage: scalex imports <symbol>")
     case Some(symbol) =>
-      val results = filterRefs(ctx.idx.findImports(symbol, strict = ctx.strict), ctx)
+      val (rawResults, timedOut) = ctx.idx.findImports(symbol, strict = ctx.strict)
+      val results = filterRefs(rawResults, ctx)
       if results.isEmpty then
         CmdResult.NotFound(
           s"""No imports of "$symbol" found""",
-          mkNotFoundWithSuggestions(symbol, ctx, "imports"))
+          mkNotFoundWithSuggestions(symbol, ctx, "imports").copy(timedOut = timedOut))
       else
-        val suffix = if ctx.idx.timedOut then " (timed out — partial results)" else ""
+        val suffix = if timedOut then " (timed out — partial results)" else ""
         CmdResult.RefList(
           header = s"""Imports of "$symbol" — ${results.size} found:$suffix""",
           refs = results,
-          timedOut = ctx.idx.timedOut,
+          timedOut = timedOut,
           useContext = false)

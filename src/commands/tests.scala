@@ -15,17 +15,18 @@ def cmdTests(args: List[String], ctx: CommandContext): CmdResult =
     val suitesWithContent = extractedSuites.filter(s => s.tests.nonEmpty || s.dynamicSites > 0)
     val totalTests = suitesWithContent.map(_.tests.size).sum
     val totalDynamic = suitesWithContent.map(_.dynamicSites).sum
-    return CmdResult.TestCount(suitesWithContent.size, totalTests, totalDynamic)
-  val allSuites = extractedSuites.filter(_.tests.nonEmpty)
-  val showBody = nameFilter.isDefined
-  val suiteResults = allSuites.map { suite =>
-    val tests = suite.tests.map { tc =>
-      val body = if showBody || ctx.verbose then
-        extractBody(suite.file, tc.name, Some(suite.name)).headOption
-      else None
-      TestCaseResult(tc.name, tc.line, body)
+    CmdResult.TestCount(suitesWithContent.size, totalTests, totalDynamic)
+  else
+    val allSuites = extractedSuites.filter(_.tests.nonEmpty)
+    val showBody = nameFilter.isDefined
+    val suiteResults = allSuites.map { suite =>
+      val tests = suite.tests.map { tc =>
+        val body = if showBody || ctx.verbose then
+          extractBody(suite.file, tc.name, Some(suite.name)).headOption
+        else None
+        TestCaseResult(tc.name, tc.line, body)
+      }
+      TestSuiteResult(suite.name, suite.file, suite.line, tests)
     }
-    TestSuiteResult(suite.name, suite.file, suite.line, tests)
-  }
-  val emptyMsg = if nameFilter.isDefined then s"""No tests matching "${nameFilter.get}"""" else "No test suites found"
-  CmdResult.TestSuites(suiteResults, showBody, emptyMsg)
+    val emptyMsg = if nameFilter.isDefined then s"""No tests matching "${nameFilter.get}"""" else "No test suites found"
+    CmdResult.TestSuites(suiteResults, showBody, emptyMsg)

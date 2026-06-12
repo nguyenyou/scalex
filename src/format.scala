@@ -63,20 +63,23 @@ def formatRefWithContext(r: Reference, workspace: Path, contextN: Int): String =
   val rel = workspace.relativize(r.file)
   val alias = r.aliasInfo.map(a => s" [$a]").getOrElse("")
   val header = s"  $rel:${r.line}$alias"
-  val lines = try java.nio.file.Files.readAllLines(r.file).asScala catch
-    case _: Exception => return s"$header\n    > ${r.contextLine}"
-  val total = lines.size
-  val startLine = math.max(1, r.line - contextN)
-  val endLine = math.min(total, r.line + contextN)
-  val buf = new StringBuilder(header)
-  var i = startLine
-  while i <= endLine do
-    val lineContent = lines(i - 1)
-    val marker = if i == r.line then ">" else " "
-    val lineNum = i.toString.reverse.padTo(4, ' ').reverse
-    buf.append(s"\n    $marker $lineNum | $lineContent")
-    i += 1
-  buf.toString
+  val readLines = try Some(java.nio.file.Files.readAllLines(r.file).asScala) catch
+    case _: Exception => None
+  readLines match
+    case None => s"$header\n    > ${r.contextLine}"
+    case Some(lines) =>
+      val total = lines.size
+      val startLine = math.max(1, r.line - contextN)
+      val endLine = math.min(total, r.line + contextN)
+      val buf = new StringBuilder(header)
+      var i = startLine
+      while i <= endLine do
+        val lineContent = lines(i - 1)
+        val marker = if i == r.line then ">" else " "
+        val lineNum = i.toString.reverse.padTo(4, ' ').reverse
+        buf.append(s"\n    $marker $lineNum | $lineContent")
+        i += 1
+      buf.toString
 
 // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1303,7 +1306,7 @@ private def renderNotFound(r: CmdResult.NotFound, ctx: CommandContext): Unit = {
         println(r.message)
         renderHint(r.hint)
       case "explain" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
-      case "imports" => println(s"""{"results":[],"timedOut":${ctx.idx.timedOut},"suggestions":$suggestionsJson}""")
+      case "imports" => println(s"""{"results":[],"timedOut":${r.hint.timedOut},"suggestions":$suggestionsJson}""")
       case "deps" => println(s"""{"imports":[],"bodyReferences":[],"suggestions":$suggestionsJson}""")
       case "package" | "api" => println(s"""{"error":"not found","suggestions":$suggestionsJson}""")
       case _ => println(s"""{"results":[],"suggestions":$suggestionsJson}""")

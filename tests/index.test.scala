@@ -114,7 +114,7 @@ class IndexSuite extends ScalexTestBase:
   test("findReferences finds usages across files") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
 
     assert(refs.size >= 3, s"Expected >= 3 refs, got ${refs.size}")
     // Should find in: UserService.scala (definition + usage), UserServiceSpec.scala
@@ -126,7 +126,7 @@ class IndexSuite extends ScalexTestBase:
   test("findReferences respects word boundaries") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("User")
+    val refs = idx.findReferences("User").results
 
     // "User" should match standalone "User" but NOT "UserService" or "UserServiceLive"
     refs.foreach { r =>
@@ -143,7 +143,7 @@ class IndexSuite extends ScalexTestBase:
     idx.index()
 
     // Search for something only in Helper.scala
-    val refs = idx.findReferences("formatUser")
+    val refs = idx.findReferences("formatUser").results
     assert(refs.size >= 1)
     assert(refs.forall(_.file.toString.contains("Helper.scala")))
   }
@@ -273,7 +273,7 @@ class IndexSuite extends ScalexTestBase:
   test("containsWord matches whole words only") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("live")
+    val refs = idx.findReferences("live").results
     refs.foreach { r =>
       assert(
         r.contextLine.matches(".*(?<![a-zA-Z0-9])live(?![a-zA-Z0-9]).*"),
@@ -310,7 +310,7 @@ class IndexSuite extends ScalexTestBase:
   test("findImports returns only import lines") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val results = idx.findImports("UserService")
+    val results = idx.findImports("UserService").results
     // All results should be import lines
     results.foreach { r =>
       assert(r.contextLine.startsWith("import "),
@@ -323,7 +323,7 @@ class IndexSuite extends ScalexTestBase:
   test("findImports finds wildcard imports that match target package") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val results = idx.findImports("UserService")
+    val results = idx.findImports("UserService").results
     // Should find explicit import in ExplicitClient AND wildcard import in WildcardClient
     val files = results.map(r => workspace.relativize(r.file).toString)
     assert(files.exists(_.contains("ExplicitClient.scala")),
@@ -335,7 +335,7 @@ class IndexSuite extends ScalexTestBase:
   test("findImports wildcard result contains the wildcard import line") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val results = idx.findImports("UserService")
+    val results = idx.findImports("UserService").results
     val wcResult = results.find(r => workspace.relativize(r.file).toString.contains("WildcardClient.scala"))
     assert(wcResult.isDefined, "Should find wildcard import result")
     assert(wcResult.get.contextLine.contains("import com.example._"),
@@ -348,7 +348,7 @@ class IndexSuite extends ScalexTestBase:
     val idx = WorkspaceIndex(workspace)
     idx.index()
     // UserServiceSpec is in com.example, same as UserService definition
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val specRef = refs.find(r => workspace.relativize(r.file).toString.contains("UserServiceSpec.scala"))
     assert(specRef.isDefined, "Should find ref in UserServiceSpec")
     val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
@@ -359,7 +359,7 @@ class IndexSuite extends ScalexTestBase:
   test("resolveConfidence returns High for explicit import") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val clientRef = refs.find(r => workspace.relativize(r.file).toString.contains("ExplicitClient.scala"))
     assert(clientRef.isDefined, "Should find ref in ExplicitClient")
     val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
@@ -370,7 +370,7 @@ class IndexSuite extends ScalexTestBase:
   test("resolveConfidence returns Medium for wildcard import") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val wcRef = refs.find(r => workspace.relativize(r.file).toString.contains("WildcardClient.scala"))
     assert(wcRef.isDefined, "Should find ref in WildcardClient")
     val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
@@ -381,7 +381,7 @@ class IndexSuite extends ScalexTestBase:
   test("resolveConfidence returns Low for no matching import") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val noImpRef = refs.find(r => workspace.relativize(r.file).toString.contains("NoImportClient.scala"))
     assert(noImpRef.isDefined, "Should find ref in NoImportClient")
     val targetPkgs = idx.symbolsByName.getOrElse("userservice", Nil).map(_.packageName).toSet
@@ -401,7 +401,7 @@ class IndexSuite extends ScalexTestBase:
   test("findReferences follows aliases") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val aliasRefs = refs.filter(r =>
       workspace.relativize(r.file).toString.contains("AliasClient.scala"))
     // Should find import line (contains "UserService") AND usage lines (contain "US")
@@ -412,7 +412,7 @@ class IndexSuite extends ScalexTestBase:
   test("findReferences follows aliases for Database") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("Database")
+    val refs = idx.findReferences("Database").results
     val aliasRefs = refs.filter(r =>
       workspace.relativize(r.file).toString.contains("AliasClient.scala"))
     assert(aliasRefs.exists(_.contextLine.contains("DB")),
@@ -422,7 +422,7 @@ class IndexSuite extends ScalexTestBase:
   test("resolveConfidence returns High for alias imports") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val aliasRef = refs.find { r =>
       val rel = workspace.relativize(r.file).toString
       rel.contains("AliasClient.scala") && r.contextLine.contains("US")
@@ -450,7 +450,7 @@ class IndexSuite extends ScalexTestBase:
   test("findReferences annotates aliasInfo for alias matches") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val aliasRef = refs.find { r =>
       workspace.relativize(r.file).toString.contains("AliasClient.scala") &&
       r.contextLine.contains("US") && !r.contextLine.contains("UserService")
@@ -634,7 +634,7 @@ class IndexSuite extends ScalexTestBase:
   test("categorizeReferences groups by category") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val grouped = idx.categorizeReferences("UserService")
+    val grouped = idx.categorizeReferences("UserService").grouped
 
     // Should have at least definition and some usages
     assert(grouped.nonEmpty, "Should have at least one category")
@@ -802,7 +802,63 @@ class IndexSuite extends ScalexTestBase:
     idx.index()
     // Add a file with underscore-prefixed symbols to test strict matching
     // This is an integration-level check that the strict flag passes through
-    val results = idx.findReferences("User", strict = true)
+    val results = idx.findReferences("User", strict = true).results
     // strict = true means _User would NOT match at _ boundary
     assert(results.nonEmpty, "Should still find normal references to User")
+  }
+
+  // ── Cache corruption resilience ───────────────────────────────────────
+
+  test("load returns None on a corrupted index file and reindexing recovers") {
+    val idx1 = WorkspaceIndex(workspace)
+    idx1.index() // ensure a cache file exists
+    val binPath = IndexPersistence.indexPath(workspace)
+    Files.write(binPath, Array.fill[Byte](64)(0x42))
+    assertEquals(IndexPersistence.load(workspace), None)
+    // Rebuild path: a fresh index must still work and restore a valid cache
+    val idx2 = WorkspaceIndex(workspace)
+    idx2.index()
+    assert(idx2.symbols.nonEmpty, "Reindex after corruption should produce symbols")
+    assert(IndexPersistence.load(workspace).isDefined, "Reindex should write a valid cache")
+  }
+
+  test("load returns None on a truncated index file") {
+    val idx1 = WorkspaceIndex(workspace)
+    idx1.index()
+    val binPath = IndexPersistence.indexPath(workspace)
+    val bytes = Files.readAllBytes(binPath)
+    Files.write(binPath, bytes.take(bytes.length / 2))
+    assertEquals(IndexPersistence.load(workspace), None)
+    // Restore a valid cache for subsequent tests
+    val idx2 = WorkspaceIndex(workspace)
+    idx2.index()
+  }
+
+  test("load returns None when the version byte does not match") {
+    val idx1 = WorkspaceIndex(workspace)
+    idx1.index()
+    val binPath = IndexPersistence.indexPath(workspace)
+    val bytes = Files.readAllBytes(binPath)
+    bytes(4) = (bytes(4) + 1).toByte // flip the version byte after the 4-byte magic
+    Files.write(binPath, bytes)
+    assertEquals(IndexPersistence.load(workspace), None)
+    val idx2 = WorkspaceIndex(workspace)
+    idx2.index()
+  }
+
+  // ── Timeout reporting ─────────────────────────────────────────────────
+
+  test("findReferences reports timedOut with an expired deadline") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (results, timedOut) = idx.findReferences("UserService", timeoutMs = 0)
+    assert(timedOut, "Zero timeout should report timedOut")
+  }
+
+  test("findReferences with the default timeout does not report timedOut") {
+    val idx = WorkspaceIndex(workspace)
+    idx.index()
+    val (results, timedOut) = idx.findReferences("UserService")
+    assert(!timedOut)
+    assert(results.nonEmpty)
   }

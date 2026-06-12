@@ -60,7 +60,7 @@ class CliSuite extends ScalexTestBase:
   test("formatRefWithContext shows context lines") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val refs = idx.findReferences("UserService")
+    val refs = idx.findReferences("UserService").results
     val ref = refs.find(r => workspace.relativize(r.file).toString.contains("UserService.scala")).get
     val output = formatRefWithContext(ref, workspace, 1)
     // Should have the header line and context lines
@@ -268,7 +268,7 @@ class CliSuite extends ScalexTestBase:
   test("--no-tests excludes test file results from refs") {
     val idx = WorkspaceIndex(workspace)
     idx.index()
-    val all = idx.findReferences("UserService")
+    val all = idx.findReferences("UserService").results
     val allFiles = all.map(r => workspace.relativize(r.file).toString).distinct
     assert(allFiles.exists(_.contains("UserServiceSpec")), "Should have test file in unfiltered")
     val filtered = all.filter(r => !isTestFile(r.file, workspace))
@@ -1853,6 +1853,47 @@ class CliSuite extends ScalexTestBase:
     assert(!flags.noTests)
     assert(!flags.verbose)
     assertEquals(flags.cleanArgs, List("UserService"))
+  }
+
+  test("parseFlags keeps a positional arg that equals a flag value") {
+    // Regression: the old indexOf-based cleanArgs dropped every occurrence of
+    // a token that appeared anywhere as a flag value
+    val flags = parseFlags(List("def", "--kind", "class", "class"))
+    assertEquals(flags.kindFilter, Some("class"))
+    assertEquals(flags.cleanArgs, List("def", "class"))
+  }
+
+  test("parseFlags --limit 0 means unlimited") {
+    assertEquals(parseFlags(List("--limit", "0")).limit, Int.MaxValue)
+  }
+
+  test("parseFlags collects repeated -e patterns in order") {
+    val flags = parseFlags(List("grep", "-e", "foo", "-e", "bar"))
+    assertEquals(flags.grepPatterns, List("foo", "bar"))
+    assertEquals(flags.cleanArgs, List("grep"))
+  }
+
+  test("parseFlags --workspace takes precedence over -w regardless of order") {
+    assertEquals(parseFlags(List("-w", "short", "--workspace", "long")).explicitWorkspace, Some("long"))
+    assertEquals(parseFlags(List("--workspace", "long", "-w", "short")).explicitWorkspace, Some("long"))
+  }
+
+  test("parseFlags --up and --down together keep both directions") {
+    val both = parseFlags(List("Foo", "--up", "--down"))
+    assert(both.goUp)
+    assert(both.goDown)
+    val onlyUp = parseFlags(List("Foo", "--up"))
+    assert(onlyUp.goUp)
+    assert(!onlyUp.goDown)
+  }
+
+  test("parseFlags --exact wins over --prefix") {
+    assertEquals(parseFlags(List("Foo", "--prefix", "--exact")).searchMode, Some("exact"))
+    assertEquals(parseFlags(List("Foo", "--prefix")).searchMode, Some("prefix"))
+  }
+
+  test("parseFlags ignores unknown long flags without treating them as positionals") {
+    assertEquals(parseFlags(List("Foo", "--does-not-exist")).cleanArgs, List("Foo"))
   }
 
   test("batch per-line flags override: --path applied to per-line context") {

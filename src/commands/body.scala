@@ -29,21 +29,22 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
         extractBody(f, symbol, effectiveOwner).map(b => (file = f, body = b))
       }
       // Fallback: if no results and symbol has a dot, split into Owner.member
-      if blocks.isEmpty && symbol.contains(".") && ctx.inOwner.isEmpty then
-        val lastDot = symbol.lastIndexOf('.')
-        if lastDot > 0 then
+      val (displayName, effectiveBlocks) =
+        if blocks.isEmpty && symbol.contains(".") && ctx.inOwner.isEmpty && symbol.lastIndexOf('.') > 0 then
+          val lastDot = symbol.lastIndexOf('.')
           val ownerName = symbol.substring(0, lastDot)
           val memberName = symbol.substring(lastDot + 1)
-          val ownerFiles = filterSymbols(ctx.idx.findDefinition(ownerName), ctx)
+          val dottedOwnerFiles = filterSymbols(ctx.idx.findDefinition(ownerName), ctx)
             .filter(s => typeKinds.contains(s.kind))
             .map(_.file).distinct
-          val dottedBlocks = ownerFiles.flatMap { f =>
+          val dottedBlocks = dottedOwnerFiles.flatMap { f =>
             extractBody(f, memberName, Some(ownerName)).map(b => (file = f, body = b))
           }
-          if dottedBlocks.nonEmpty then
-            return CmdResult.SourceBlocks(memberName, dottedBlocks, ctx.contextLines, ctx.showImports)
+          if dottedBlocks.nonEmpty then (displayName = memberName, effectiveBlocks = dottedBlocks)
+          else (displayName = symbol, effectiveBlocks = blocks)
+        else (displayName = symbol, effectiveBlocks = blocks)
 
-      if blocks.isEmpty then
+      if effectiveBlocks.isEmpty then
         val msg = ctx.inOwner match
           case Some(owner) => s"""No body found for "$symbol" in $owner"""
           case None => s"""No body found for "$symbol""""
@@ -56,4 +57,4 @@ def cmdBody(args: List[String], ctx: CommandContext): CmdResult =
           case None => hint
         CmdResult.NotFound(msg, scopedHint)
       else
-        CmdResult.SourceBlocks(symbol, blocks, ctx.contextLines, ctx.showImports)
+        CmdResult.SourceBlocks(displayName, effectiveBlocks, ctx.contextLines, ctx.showImports)

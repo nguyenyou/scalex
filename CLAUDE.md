@@ -92,7 +92,7 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 ### Code style
 
 - **Named tuples**: Never use unnamed tuples. Whenever a tuple is needed — return types, local variables, collection elements — always use named tuples. E.g. `(results: List[Reference], timedOut: Boolean)` not `(List[Reference], Boolean)`.
-- **No `return` statements**: Never use `return` anywhere — not in methods, not in lambdas, not in `for`/`foreach`. Use `scala.util.boundary` + `boundary.break` for early exit, or restructure with `match`/`if-else`. The `return` keyword is deprecated in Scala 3 inside lambdas and is a footgun everywhere else. Existing `return` statements in the codebase are legacy — do not add new ones, and remove them when touching nearby code.
+- **No `return` statements**: Never use `return` anywhere — not in methods, not in lambdas, not in `for`/`foreach`. Use `scala.util.boundary` + `boundary.break` for early exit, or restructure with `match`/`if-else`. The `return` keyword is deprecated in Scala 3 inside lambdas and is a footgun everywhere else. The codebase is `return`-free — keep it that way.
 
 ### Key design choices
 
