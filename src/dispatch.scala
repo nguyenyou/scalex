@@ -1,4 +1,4 @@
-import java.io.{ByteArrayOutputStream, PrintStream}
+import clibase.OutputBudget
 
 // ── Command dispatch ────────────────────────────────────────────────────────
 
@@ -23,46 +23,9 @@ def runCommand(cmd: String, args: List[String], ctx: CommandContext): Unit =
 
 /** Render a CmdResult, applying --max-output truncation if set. */
 def renderWithBudget(result: CmdResult, ctx: CommandContext): Unit =
-  if ctx.maxOutput > 0 then {
-    val budget = ctx.maxOutput
-    val baos = ByteArrayOutputStream()
-    val budgetStream = BudgetPrintStream(baos, budget)
-    // Capture the caller's output stream before redirecting — in CLI it's System.out,
-    // in tests it's the captureOut stream (via Console.withOut)
-    val callerOut = Console.out
-    val savedOut = System.out
-    System.setOut(budgetStream)
-    try Console.withOut(budgetStream) { render(result, ctx) }
-    finally System.setOut(savedOut)
-    val output = baos.toString("UTF-8")
-    if budgetStream.exceeded then {
-      // Truncate at a line boundary at or before the budget
-      val cut = output.lastIndexOf('\n', budget)
-      val truncated = if cut > 0 then output.substring(0, cut) else output.substring(0, math.min(output.length, budget))
-      callerOut.print(truncated)
-      if !truncated.endsWith("\n") then callerOut.println()
-      callerOut.println(s"(output truncated at $budget chars — use --limit, --offset, --path, or --in-package to narrow)")
-    } else {
-      callerOut.print(output)
+  if ctx.maxOutput > 0 then
+    OutputBudget.run(ctx.maxOutput,
+      s"(output truncated at ${ctx.maxOutput} chars — use --limit, --offset, --path, or --in-package to narrow)") {
+      render(result, ctx)
     }
-  } else {
-    render(result, ctx)
-  }
-
-// Buffers up to 4KB past the budget so post-hoc line-boundary truncation works.
-// Once past hardCap, stops writing entirely.
-private class BudgetPrintStream(baos: ByteArrayOutputStream, budget: Int) extends PrintStream(baos, true, "UTF-8"):
-  // Buffer up to one extra line (4KB) past the budget to find a clean line break
-  private val hardCap = budget + 4096
-  @volatile var exceeded: Boolean = false
-
-  override def write(b: Int): Unit =
-    if baos.size() < hardCap then super.write(b)
-    if baos.size() >= budget then exceeded = true
-
-  override def write(buf: Array[Byte], off: Int, len: Int): Unit =
-    val remaining = hardCap - baos.size()
-    if remaining > 0 then
-      if len <= remaining then super.write(buf, off, len)
-      else super.write(buf, off, remaining)
-    if baos.size() >= budget then exceeded = true
+  else render(result, ctx)

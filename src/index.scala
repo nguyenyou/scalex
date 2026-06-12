@@ -5,6 +5,7 @@ import java.io.{BufferedReader, BufferedInputStream, BufferedOutputStream, DataI
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.jdk.CollectionConverters.*
 import com.google.common.hash.{BloomFilter, Funnels}
+import clibase.Timings
 
 // ── Git ─────────────────────────────────────────────────────────────────────
 

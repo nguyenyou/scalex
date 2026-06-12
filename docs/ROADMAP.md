@@ -4,6 +4,14 @@
 
 - [ ] Publish plugin to Claude Code marketplace
 
+### clibase: reusable CLI base module + graph module extraction
+
+- [x] New `clibase` Mill module — app-agnostic CLI plumbing: declarative flag registry (declare a flag once: names, value shape, default, help), single-pass lenient parser (unknown `--long` flags ignored), typed `Flags` bag, generated options help, `Timings`, `OutputBudget` (line-boundary truncation), `BatchLoop` (stdin REPL)
+- [x] Migrate scalex onto clibase: delete `ParsedFlags`, the hand-written parser match, and the hand-written options help; each flag declared once in `src/flags.scala`; `CommandContext` built in a single place (`flagsToContext`)
+- [x] Extract the self-contained `asciiGraph` package (`src/graph/`) into its own `graph` Mill module
+- [x] Behavior change: when both `-w` and `--workspace` are passed, the last occurrence wins (was: `--workspace` always won)
+- [x] Behavior fix: `--expand` without a numeric value no longer consumes a following flag
+
 ### Maintainability refactor (internal, no behavior change)
 
 - [x] Unify the duplicated member-extraction traversals (`extractScalaMembers` / `extractMembersWithSpans`) behind one origin-tagged core (`extractScalaMemberTree`)

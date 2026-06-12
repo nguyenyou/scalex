@@ -4,9 +4,13 @@ import mill.*
 import mill.javalib.NativeImageModule
 import mill.scalalib.*
 
-trait ScalexModule extends ScalaModule {
+trait BaseScalaModule extends ScalaModule {
   def scalaVersion: T[String] = "3.8.3"
 
+  def scalacOptions: T[Seq[String]] = Seq("-deprecation")
+}
+
+trait ScalexModule extends BaseScalaModule {
   def mvnDeps: T[Seq[Dep]] = Seq(
     mvn"org.scalameta::scalameta:4.17.0",
     mvn"com.google.guava:guava:33.6.0-jre",
@@ -14,8 +18,6 @@ trait ScalexModule extends ScalaModule {
   )
 
   def mainClass: T[Option[String]] = Some("main")
-
-  def scalacOptions: T[Seq[String]] = Seq("-deprecation")
 
   def scalexJavaOpts: T[Seq[String]] = Task.Input {
     Task.env.get("SCALEX_JAVA_OPTS").toSeq
@@ -30,6 +32,14 @@ object `package` extends ScalexModule, NativeImageModule {
   private def workspaceRoot: os.Path = moduleDir
 
   override def jvmVersion: T[String] = "graalvm-community:21.0.2"
+
+  override def moduleDeps: Seq[JavaModule] = Seq(clibase, graph)
+
+  // App-agnostic CLI plumbing: flag registry, output budget, timings, batch loop
+  object clibase extends BaseScalaModule
+
+  // Self-contained asciiGraph package: ASCII/Unicode graph rendering and diagram parsing
+  object graph extends BaseScalaModule
 
   override def allSourceFiles: T[Seq[PathRef]] = Task {
     super.allSourceFiles().filterNot(_.path == moduleDir / "src" / "bench.scala")
@@ -69,6 +79,8 @@ object `package` extends ScalexModule, NativeImageModule {
 
   object bench extends ScalexModule {
     override def moduleDir: os.Path = workspaceRoot
+
+    override def moduleDeps: Seq[JavaModule] = Seq(clibase, graph)
 
     override def sources: T[Seq[PathRef]] = Task.Sources("src")
 

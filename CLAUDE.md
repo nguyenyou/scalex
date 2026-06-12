@@ -12,7 +12,7 @@ NEVER mention any company names, internal project names, proprietary codebases, 
 
 ## Search scope
 
-Source code lives in `src/` (production) and `tests/` (test suite). When searching for Scala code, scope searches to these directories. Avoid searching repo-wide — `benchmark/` contains ~17.7k Scala files from the scala3 compiler clone that will pollute results.
+Source code lives in `src/` (scalex production code), `clibase/src/` (CLI base module), `graph/src/` (asciiGraph module), and `tests/` (test suite). When searching for Scala code, scope searches to these directories. Avoid searching repo-wide — `benchmark/` contains ~17.7k Scala files from the scala3 compiler clone that will pollute results.
 
 ## Workflow
 
@@ -34,7 +34,7 @@ Source code lives in `src/` (production) and `tests/` (test suite). When searchi
 
 # Build GraalVM native image (requires GraalVM)
 ./build-native.sh
-# Output: ./scalex (26MB standalone binary)
+# Output: ./scalex (~41MB standalone binary)
 
 # Validate Claude Code plugin structure
 claude plugin validate plugins/scalex/
@@ -42,17 +42,26 @@ claude plugin validate plugins/scalex/
 
 ## Architecture
 
-Source code is in `src/`, tests in `tests/` (Scala 3.8.3, JDK 21+). When searching the codebase, scope to these directories to avoid hitting benchmark data or build artifacts.
+Source code is in `src/` (scalex), `clibase/src/` and `graph/src/` (library modules), tests in `tests/` (Scala 3.8.3, JDK 21+). When searching the codebase, scope to these directories to avoid hitting benchmark data or build artifacts.
 
 ```
-build.mill                      # Mill build: CLI, tests, benchmark module, native image
-src/                           # Production source code
+build.mill                      # Mill build: clibase + graph modules, CLI, tests, benchmark, native image
+clibase/src/                   # App-agnostic CLI base module (package clibase, zero scalex deps)
+├── flags.scala                # Flag/FlagRegistry/Flags: declarative flags, single-pass lenient parser, generated options help
+├── timings.scala              # Timings: per-phase timing breakdown (--timings)
+├── output-budget.scala        # OutputBudget: stdout capture + line-boundary truncation (--max-output)
+└── batch.scala                # BatchLoop: stdin REPL over caller-owned warm state
+
+graph/src/                     # asciiGraph module: ASCII/Unicode graph rendering + diagram parsing (package asciiGraph)
+
+src/                           # Scalex production code
 ├── model.scala                # Data types, enums, version constant
+├── flags.scala                # Every CLI flag declared once (parser + help derive from it); flagsToContext builds CommandContext
 ├── extraction.scala           # AST parsing & single-file extraction functions
 ├── index.scala                # Git integration, persistence, WorkspaceIndex, filtering
 ├── analysis.scala             # Cross-index analysis (hierarchy, overrides, deps, diff, ast-pattern)
 ├── format.scala               # Text formatters for symbols and references
-├── cli.scala                  # Arg parsing, workspace resolution, @main entry point
+├── cli.scala                  # Workspace resolution, help text, @main entry point
 ├── command-helpers.scala      # Shared filters: filterSymbols, filterRefs, mkNotFoundWithSuggestions
 ├── dispatch.scala             # Command map + runCommand
 └── commands/                  # One file per command (ls to discover all 25 commands)
@@ -144,8 +153,9 @@ Note: `marketplace.json` is at the repo root (`.claude-plugin/marketplace.json`)
 
 ## Feature checklist
 
-When adding or changing commands/flags in `src/cli.scala`:
-- Update help text in the `main` function
+When adding or changing commands/flags:
+- Flags: declare once in `src/flags.scala` (spellings, value shape, default, help text) and add to the `scalexFlags` registry — the parser and the help `Options:` section derive from it automatically. Wire the value into `CommandContext` via `flagsToContext` in the same file. Registry order = help display order.
+- Commands: add the handler under `src/commands/`, register it in `src/dispatch.scala`, and add a line to the hand-written `Commands:` help block in `src/cli.scala`
 - Update `plugins/scalex/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter) and `plugins/scalex/skills/scalex/references/commands.md` (command signature, description, examples, options table). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
 - Update `docs/ROADMAP.md`
 - Update `CHANGELOG.md`

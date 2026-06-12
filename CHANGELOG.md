@@ -2,12 +2,20 @@
 
 ## [Unreleased]
 
+### Changed
+- When both `-w` and `--workspace` are passed, the last occurrence now wins (previously `--workspace` always took precedence regardless of position)
+
 ### Fixed
+- `--expand` without a numeric value no longer consumes a following flag (e.g. `explain Foo --expand --no-doc` now applies `--no-doc`; bare `--expand` still means depth 1)
 - A positional argument that equals a flag's value elsewhere in the arg list (e.g. `scalex def --kind class class`) is no longer dropped — flag parsing is now a single position-aware pass
 - Corrupted or truncated index caches now report the failure cause on stderr (`index load failed (EOFException: …) — rebuilding`) instead of a generic message
 - Git subprocess readers are closed after use; a missing `git` binary now produces a clear error instead of a stack trace
 
 ### Changed (internal)
+- New `clibase` Mill module — app-agnostic CLI plumbing usable as a base for other CLIs: declarative flag registry (each flag declared once: spellings, value shape, default, help text), single-pass lenient parser (unknown `--long` flags ignored), typed `Flags` bag, generated `Options:` help, `Timings`, `OutputBudget` (line-boundary truncation), `BatchLoop` (stdin REPL)
+- The self-contained `asciiGraph` package moved from `src/graph/` to its own `graph` Mill module
+- Deleted `ParsedFlags` (45 parallel fields), the hand-written parser match, and the hand-written options help — flag spellings, defaults, and help text now live in one declaration per flag in `src/flags.scala`, and `CommandContext` is built in a single place (`flagsToContext`)
+- Removed the dead `parseWorkspaceAndArg` helper
 - `findReferences`, `findImports`, and `categorizeReferences` return `timedOut` as part of their result instead of mutating shared state on `WorkspaceIndex` — concurrent queries can no longer clobber each other's timeout flag
 - Member extraction (`members`, `grep --each-method`) now shares one traversal; body extraction and the Scala 3 → 2.13 parse fallback are deduplicated
 - Removed all remaining `return` statements from production code (34) per the codebase-wide policy
