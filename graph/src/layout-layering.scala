@@ -5,12 +5,9 @@ import scala.collection.mutable.ListBuffer
 
 // ── Layering ────────────────────────────────────────────────────────────────
 
-case class Layering(layers: List[Layer], edges: List[LayeringEdge]):
-  def edgesInto(layer: Layer): List[LayeringEdge] =
-    edges.filter(e => layer.contains(e.finishVertex))
+case class Layering(layers: List[Layer], edges: List[LayeringEdge])
 
 case class Layer(vertices: List[LayeringVertex]):
-  def contains(v: LayeringVertex) = vertices.contains(v)
   def positionOf(v: LayeringVertex) = vertices.indexOf(v)
 
 sealed abstract class LayeringVertex
@@ -30,7 +27,7 @@ object LayeringEdge:
 // ── LayeringCalculator ──────────────────────────────────────────────────────
 
 class LayeringCalculator[V]:
-  def assignLayers(cycleRemovalResult: CycleRemovalResult[V]): (Layering, Map[V, RealVertex]) =
+  def assignLayers(cycleRemovalResult: CycleRemovalResult[V]): Layering =
     val graph = cycleRemovalResult.dag
     val distancesToSink = LongestDistancesToSinkCalculator.longestDistancesToSink(cycleRemovalResult.dag)
     val maxLayerNum = if distancesToSink.isEmpty then -1 else distancesToSink.values.max
@@ -41,7 +38,7 @@ class LayeringCalculator[V]:
     for v <- graph.vertices do
       layeringBuilder.addVertex(layerNum(v), realVertices(v))
     addEdges(cycleRemovalResult, layerNum, layeringBuilder, realVertices)
-    (layeringBuilder.build, realVertices)
+    layeringBuilder.build
 
   private class LayeringBuilder(numberOfLayers: Int):
     val layers: Buffer[Buffer[LayeringVertex]] = ListBuffer.fill(numberOfLayers)(ListBuffer[LayeringVertex]())
@@ -125,26 +122,3 @@ object LongestDistancesToSinkCalculator:
           newBoundary += v1
       boundary = newBoundary
     distances
-
-// ── CrossingCalculator ──────────────────────────────────────────────────────
-
-class CrossingCalculator(layer1: Layer, layer2: Layer, edges: List[LayeringEdge]):
-  def crossingNumber(u: LayeringVertex, v: LayeringVertex): Int =
-    if u == v then 0
-    else
-      var count = 0
-      for
-        LayeringEdge(w, u2) <- edges
-        if u2 == u
-        LayeringEdge(z, v2) <- edges
-        if v2 == v
-        if layer1.positionOf(z) < layer1.positionOf(w)
-      do count += 1
-      count
-
-  def numberOfCrossings: Int =
-    (for
-      u <- layer2.vertices
-      v <- layer2.vertices
-      if layer2.positionOf(u) < layer2.positionOf(v)
-    yield crossingNumber(u, v)).sum

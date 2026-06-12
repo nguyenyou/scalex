@@ -22,24 +22,12 @@ case class Graph[V](vertices: Set[V], edges: List[(V, V)]):
   require(outMap.keys.forall(vertices.contains))
   require(inMap.keys.forall(vertices.contains))
 
-  def isEmpty = vertices.isEmpty
-  def inEdges(v: V): List[(V, V)] = edges.filter(_._2 == v)
-  def outEdges(v: V): List[(V, V)] = edges.filter(_._1 == v)
   def inVertices(v: V): List[V] = inMap.getOrElse(v, Nil)
   def outVertices(v: V): List[V] = outMap.getOrElse(v, Nil)
   def outDegree(v: V): Int = outVertices(v).size
   def inDegree(v: V): Int = inVertices(v).size
   def sources: List[V] = vertices.toList.filter(inDegree(_) == 0)
   def sinks: List[V] = vertices.toList.filter(outDegree(_) == 0)
-
-  def removeEdge(edge: (V, V)): Graph[V] =
-    copy(edges = removeFirst(edges, edge))
-
-  def removeVertex(v: V): Graph[V] =
-    Graph(vertices.filterNot(_ == v), edges.filterNot { case (v1, v2) => v1 == v || v2 == v })
-
-  def map[U](f: V => U): Graph[U] =
-    Graph(vertices.map(f), edges.map { case (v1, v2) => (f(v1), f(v2)) })
 
   override lazy val hashCode = vertices.## + edges.##
 
@@ -62,34 +50,10 @@ case class Graph[V](vertices: Set[V], edges: List[(V, V)]):
 
   override def toString =
     try
-      val layoutPrefs = LayoutPrefsImpl(unicode = true, explicitAsciiBends = false)
+      val layoutPrefs = LayoutPrefs(unicode = true, explicitAsciiBends = false)
       "\n" + GraphLayout.renderGraph(this, layoutPrefs = layoutPrefs) + "\n" + asVertexList
     catch
       case _: Throwable => asVertexList
-
-// ── GraphUtils ──────────────────────────────────────────────────────────────
-
-object GraphUtils:
-  def topologicalSort[V](g: Graph[V]): Option[List[V]] =
-    var sort: List[V] = Nil
-    var sources: List[V] = g.sources
-    var deletedEdges: Set[(V, V)] = Set()
-    while sources.nonEmpty do
-      val n = sources.head
-      sources = sources.tail
-      sort ::= n
-      for
-        m <- g.outVertices(n)
-        if !deletedEdges.contains((m, n))
-      do
-        deletedEdges += ((n, m))
-        if g.inEdges(m).filterNot(deletedEdges).isEmpty &&
-           !sources.contains(m)
-        then sources ::= m
-    if deletedEdges == g.edges.toSet then Some(sort.reverse)
-    else None
-
-  def hasCycle(g: Graph[?]): Boolean = topologicalSort(g).isEmpty
 
 // ── DiagramToGraphConvertor ─────────────────────────────────────────────────
 

@@ -17,32 +17,32 @@ class GraphSuite extends munit.FunSuite:
 
   test("render with ASCII mode"):
     val graph = asciiGraph.Graph(Set("X", "Y"), List(("X", "Y")))
-    val prefs = asciiGraph.LayoutPrefsImpl(unicode = false)
+    val prefs = asciiGraph.LayoutPrefs(unicode = false)
     val result = asciiGraph.GraphLayout.renderGraph(graph, layoutPrefs = prefs)
     assert(result.contains("+"))
     assert(!result.contains("┌"))
 
   test("render with unicode mode"):
     val graph = asciiGraph.Graph(Set("X", "Y"), List(("X", "Y")))
-    val prefs = asciiGraph.LayoutPrefsImpl(unicode = true)
+    val prefs = asciiGraph.LayoutPrefs(unicode = true)
     val result = asciiGraph.GraphLayout.renderGraph(graph, layoutPrefs = prefs)
     assert(result.contains("┌") || result.contains("╭"))
 
   test("render with rounded corners"):
     val graph = asciiGraph.Graph(Set("X", "Y"), List(("X", "Y")))
-    val prefs = asciiGraph.LayoutPrefsImpl(unicode = true, rounded = true)
+    val prefs = asciiGraph.LayoutPrefs(unicode = true, rounded = true)
     val result = asciiGraph.GraphLayout.renderGraph(graph, layoutPrefs = prefs)
     assert(result.contains("╭"))
 
   test("render with double borders"):
     val graph = asciiGraph.Graph(Set("X", "Y"), List(("X", "Y")))
-    val prefs = asciiGraph.LayoutPrefsImpl(unicode = true, doubleVertices = true)
+    val prefs = asciiGraph.LayoutPrefs(unicode = true, doubleVertices = true)
     val result = asciiGraph.GraphLayout.renderGraph(graph, layoutPrefs = prefs)
     assert(result.contains("╔"))
 
   test("render horizontal layout"):
     val graph = asciiGraph.Graph(Set("A", "B"), List(("A", "B")))
-    val prefs = asciiGraph.LayoutPrefsImpl(vertical = false)
+    val prefs = asciiGraph.LayoutPrefs(vertical = false)
     val result = asciiGraph.GraphLayout.renderGraph(graph, layoutPrefs = prefs)
     assert(result.contains("A"))
     assert(result.contains(">"))
@@ -98,6 +98,18 @@ class GraphSuite extends munit.FunSuite:
     val diagram = asciiGraph.Diagram(input)
     assert(diagram.allBoxes.head.text.trim.contains("Hello"))
 
+  test("parse box containing two sibling boxes"):
+    val input =
+      """┌─────────────────┐
+        |│ ┌───┐  ┌───┐    │
+        |│ │ A │  │ B │    │
+        |│ └───┘  └───┘    │
+        |└─────────────────┘""".stripMargin
+    val diagram = asciiGraph.Diagram(input)
+    assertEquals(diagram.allBoxes.size, 3)
+    assertEquals(diagram.childBoxes.size, 1, "only the outer box is a direct child of the diagram")
+    assertEquals(diagram.childBoxes.head.childBoxes.map(_.text.trim).toSet, Set("A", "B"))
+
   // ── Round-trip tests ──────────────────────────────────────────────────────
 
   test("render then parse round-trip"):
@@ -149,18 +161,6 @@ class GraphSuite extends munit.FunSuite:
     val g = asciiGraph.Graph(Set(1, 2, 3), List((1, 2), (2, 3)))
     assertEquals(g.sources, List(1))
     assertEquals(g.sinks, List(3))
-
-  test("Graph cycle detection"):
-    val acyclic = asciiGraph.Graph(Set(1, 2), List((1, 2)))
-    assert(!asciiGraph.GraphUtils.hasCycle(acyclic))
-    val cyclic = asciiGraph.Graph(Set(1, 2), List((1, 2), (2, 1)))
-    assert(asciiGraph.GraphUtils.hasCycle(cyclic))
-
-  test("topological sort"):
-    val g = asciiGraph.Graph(Set(1, 2, 3), List((1, 2), (2, 3)))
-    val sorted = asciiGraph.GraphUtils.topologicalSort(g)
-    assert(sorted.isDefined)
-    assertEquals(sorted.get, List(1, 2, 3))
 
   test("render graph with cycle"):
     val graph = asciiGraph.Graph(Set("A", "B"), List(("A", "B"), ("B", "A")))

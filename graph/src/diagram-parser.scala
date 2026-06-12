@@ -222,7 +222,7 @@ class DiagramParser(s: String):
 
   // ── DiagramImplementation ───────────────────────────────────────────────
 
-  protected class DiagramImpl(numberOfRows: Int, numberOfColumns: Int) extends ContainerImpl with Diagram:
+  protected class DiagramImpl extends ContainerImpl with Diagram:
     var allBoxes: List[BoxImpl] = Nil
     var allEdges: List[EdgeImpl] = Nil
     def boxAt(point: Point): Option[BoxImpl] = allBoxes.find(_.boundaryPoints.contains(point))
@@ -300,24 +300,23 @@ class DiagramParser(s: String):
   private val rows = rawRows.map(_.padTo(numberOfColumns, ' ')).toArray
   protected val numberOfRows = rows.length
   protected val diagramRegion = Region(Point(0, 0), Point(numberOfRows - 1, numberOfColumns - 1))
-  protected val diagram = new DiagramImpl(numberOfRows, numberOfColumns)
+  protected val diagram = new DiagramImpl
 
   diagram.allBoxes = findAllBoxes
 
-  private val boxContains: Map[BoxImpl, BoxImpl] =
+  // Each box's parent is its smallest containing box (or the diagram if none)
+  private val boxContainers: Map[BoxImpl, List[BoxImpl]] =
     (for
       outerBox <- diagram.allBoxes
       innerBox <- diagram.allBoxes
       if outerBox != innerBox
       if outerBox.region.contains(innerBox.region)
-    yield outerBox -> innerBox).toMap
+    yield (outer = outerBox, inner = innerBox)).groupMap(_.inner)(_.outer)
 
-  for (box, containingBoxMap) <- boxContains.groupBy(_._2) do
-    val containingBoxes = box :: containingBoxMap.keys.toList
-    val orderedBoxes = containingBoxes.sortBy(_.region.area)
-    for (childBox, parentBox) <- orderedBoxes.zip(orderedBoxes.drop(1)) do
-      childBox.parent = Some(parentBox)
-      parentBox.childBoxes ::= childBox
+  for (box, containingBoxes) <- boxContainers do
+    val parentBox = containingBoxes.minBy(_.region.area)
+    box.parent = Some(parentBox)
+    parentBox.childBoxes ::= box
 
   for
     box <- diagram.allBoxes
@@ -362,6 +361,9 @@ class DiagramParser(s: String):
     else if !isBoxDrawingCharacter(charAt(startPoint)) then followAsciiEdge(initialPoints, direction)
     else None
 
+  private lazy val allLabelPoints: Set[Point] =
+    diagram.allEdges.flatMap(_.label_.toList.flatMap(_.points)).toSet
+
   private def collectText(container: ContainerImpl): String =
     val childBoxPoints = container.childBoxes.flatMap(_.region.points).toSet
     val sb = new StringBuilder
@@ -372,7 +374,7 @@ class DiagramParser(s: String):
         point = Point(row, column)
         if !childBoxPoints.contains(point)
         if !allEdgePoints.contains(point)
-        if !(diagram.allEdges.flatMap(_.label_.toList.flatMap(_.points)).toSet.contains(point))
+        if !allLabelPoints.contains(point)
       do sb.append(charAt(point))
       sb.append("\n")
     if sb.nonEmpty then sb.deleteCharAt(sb.length - 1)
