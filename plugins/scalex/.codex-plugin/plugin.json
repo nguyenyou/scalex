@@ -1,0 +1,23 @@
+{
+  "name": "scalex",
+  "version": "1.40.0",
+  "description": "Scala/Java code intelligence — find definitions, implementations, references, and explore code without a compiler or build server.",
+  "author": {
+    "name": "Tu Nguyen"
+  },
+  "homepage": "https://github.com/nguyenyou/scalex",
+  "repository": "https://github.com/nguyenyou/scalex",
+  "license": "MIT",
+  "keywords": ["scala", "java", "code-intelligence", "navigation"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Scalex",
+    "shortDescription": "Explore Scala and Java code without a build server",
+    "longDescription": "Navigate definitions, implementations, references, imports, and type hierarchies in Scala and Java projects. The bundled skill downloads and verifies the native CLI on first use.",
+    "developerName": "Tu Nguyen",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "websiteURL": "https://github.com/nguyenyou/scalex",
+    "defaultPrompt": ["Use scalex to explore how this project works."]
+  }
+}

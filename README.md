@@ -135,7 +135,7 @@ Here's the architecture (generated with `scalex graph --render`):
 
 ## Quick Start
 
-### Claude Code (recommended)
+### Claude Code
 
 Installs the binary + skill (teaches Claude when and how to use scalex) in one step:
 
@@ -147,6 +147,23 @@ Installs the binary + skill (teaches Claude when and how to use scalex) in one s
 Then try:
 
 > *"use scalex to explore how authentication works in this codebase"*
+
+### Codex CLI and desktop
+
+Run these commands in your terminal:
+
+```bash
+codex plugin marketplace add nguyenyou/scalex
+codex plugin add scalex@scalex-marketplace
+```
+
+Start a new Codex CLI session or desktop task, then ask:
+
+> *"Use scalex to explore how this project works."*
+
+The plugin includes the same skill and bootstrap as the Claude Code plugin. The bootstrap downloads and verifies the native binary on first use; Codex may request permission for the download or cache write. Supported platforms: macOS arm64/x64 and Linux x64. The IDE extension is not part of this plugin support.
+
+Requires a Codex CLI with `codex plugin` commands. Installation is from this repository's marketplace; Scalex is not yet listed in OpenAI's public plugin directory.
 
 ### Other coding agents
 

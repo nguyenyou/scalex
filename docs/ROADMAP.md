@@ -2,6 +2,8 @@
 
 ## Pending
 
+- [x] Codex CLI and desktop plugin packaging, marketplace installation, and shared skill validation (local install verified with Codex CLI 0.153.4)
+- [ ] Publish Codex marketplace changes and verify installation from GitHub; optionally submit to OpenAI's public plugin directory
 - [ ] Publish plugin to Claude Code marketplace
 
 ### Simplicity review: remove dead code and single-use abstractions (no behavior change except noted)

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Codex CLI and desktop plugin packaging and repository marketplace, sharing the existing skill and binary bootstrap with Claude Code.
+
 ### Fixed
 - `graph --parse` no longer drops sibling nested boxes: a box containing two or more boxes side by side wrongly promoted all but one of them to top level (and leaked their border characters into the parent's text). Box containment is now resolved by linking each box to its smallest container
 - `grep --in <owner>`: an unreadable file no longer discards matches already found in other files defining the same owner; the file is skipped instead
