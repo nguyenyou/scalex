@@ -33,8 +33,8 @@ scala-cli test src/ tests/
 ./build-native.sh
 # Output: ./scalex (26MB standalone binary)
 
-# Validate Codex plugin structure
-Codex plugin validate plugins/scalex/
+# Validate shared skill frontmatter
+./scripts/check-skill-frontmatter.sh
 ```
 
 ## Architecture
@@ -112,7 +112,8 @@ git ls-files --stage → Scalameta parse → in-memory index → query
 ```
 plugins/
 └── scalex/                        # scalex plugin
-    ├── .Codex-plugin/plugin.json
+    ├── .claude-plugin/plugin.json # Claude Code manifest
+    ├── .codex-plugin/plugin.json  # Codex CLI/desktop manifest
     └── skills/scalex/
         ├── SKILL.md
         ├── references/
@@ -134,10 +135,10 @@ The bootstrap script `scalex-cli` contains `EXPECTED_VERSION` that must be bumpe
 ### Step 3: Plugin version bump
 5. Bump `EXPECTED_VERSION` in `plugins/scalex/skills/scalex/scripts/scalex-cli`
 6. Update `CHECKSUM_scalex_*` values in `scalex-cli` — get hashes from individual `.sha256` release assets (iterate: `gh release view vX.Y.Z --json assets --jq '.assets[] | select(.name | endswith(".sha256")) | .name'` then download each with `gh release download vX.Y.Z -p <name> -O -`)
-7. Bump `version` in `.Codex-plugin/marketplace.json` (plugin version is only managed here, not in `plugins/scalex/.Codex-plugin/plugin.json`)
+7. Bump `version` in `.claude-plugin/marketplace.json` and `plugins/scalex/.codex-plugin/plugin.json` alongside the bootstrap version
 8. Commit, create PR, merge to main (main is protected — cannot push directly)
 
-Note: `marketplace.json` is at the repo root (`.Codex-plugin/marketplace.json`), NOT inside `plugins/`.
+Marketplace catalogs: Claude Code uses `.claude-plugin/marketplace.json`; Codex uses `.agents/plugins/marketplace.json`. Both point to `plugins/scalex/` and share its skill and bootstrap. Codex's version is in its plugin manifest, not its marketplace catalog.
 
 ## Feature checklist
 

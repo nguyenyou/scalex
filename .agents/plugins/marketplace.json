@@ -1,0 +1,20 @@
+{
+  "name": "scalex-marketplace",
+  "interface": {
+    "displayName": "Scalex"
+  },
+  "plugins": [
+    {
+      "name": "scalex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/scalex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
