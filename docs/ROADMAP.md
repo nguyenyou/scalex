@@ -2,6 +2,10 @@
 
 ## Pending
 
+### README refresh
+
+- [x] Simplify the introduction, installation, and examples; document Codex and Claude Code plugin upgrades and correct outdated capability claims
+
 ### Release 1.41.0
 
 - [x] Prepare the dated changelog and application version for the release PR
