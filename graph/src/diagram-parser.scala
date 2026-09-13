@@ -12,51 +12,57 @@ class DiagramParserException(message: String) extends RuntimeException(message)
 
 // ── DiagramParser ───────────────────────────────────────────────────────────
 
-class DiagramParser(s: String):
+class DiagramParser(s: String) {
   // ── UnicodeEdgeParser ───────────────────────────────────────────────────
 
   @tailrec
-  protected final def followUnicodeEdge(points: List[Point], direction: Direction): Option[EdgeImpl] =
+  protected final def followUnicodeEdge(points: List[Point], direction: Direction): Option[EdgeImpl] = {
     val currentPoint = points.head
-    if !inDiagram(currentPoint) then None
-    else if isBoxEdge(currentPoint) then Some(new EdgeImpl(points.reverse))
-    else
+    if (!inDiagram(currentPoint)) None
+    else if (isBoxEdge(currentPoint)) Some(EdgeImpl(points.reverse))
+    else {
       val c = charAt(currentPoint)
-      if isStraightAheadUnicode(c, direction) || isCrossingUnicode(c) || isAheadArrowUnicode(c, direction) then
+      if (isStraightAheadUnicode(c, direction) || isCrossingUnicode(c) || isAheadArrowUnicode(c, direction))
         followUnicodeEdge(currentPoint.go(direction) :: points, direction)
-      else if isLeftTurnUnicode(c, direction) || isLeftArrow(c, direction) then
+      else if (isLeftTurnUnicode(c, direction) || isLeftArrow(c, direction))
         followUnicodeEdge(currentPoint.go(direction.turnLeft) :: points, direction.turnLeft)
-      else if isRightTurnUnicode(c, direction) || isRightArrow(c, direction) then
+      else if (isRightTurnUnicode(c, direction) || isRightArrow(c, direction))
         followUnicodeEdge(currentPoint.go(direction.turnRight) :: points, direction.turnRight)
       else None
+    }
+  }
 
   protected def isEdgeStart(c: Char, direction: Direction): Boolean =
-    cond((c, direction)):
-      case ('\u2564' | '\u252c', Down) => true   // '╤' | '┬'
-      case ('\u256a' | '\u253c', Up | Down) => true   // '╪' | '┼'
-      case ('\u2567' | '\u2534', Up) => true   // '╧' | '┴'
-      case ('\u255f' | '\u251c', Right) => true   // '╟' | '├'
-      case ('\u256b' | '\u253c', Right | Left) => true   // '╫' | '┼'
-      case ('\u2562' | '\u2524', Left) => true   // '╢' | '┤'
+    cond((c, direction)) {
+      case ('\u2564' | '\u252c', Down)         => true // '╤' | '┬'
+      case ('\u256a' | '\u253c', Up | Down)    => true // '╪' | '┼'
+      case ('\u2567' | '\u2534', Up)           => true // '╧' | '┴'
+      case ('\u255f' | '\u251c', Right)        => true // '╟' | '├'
+      case ('\u256b' | '\u253c', Right | Left) => true // '╫' | '┼'
+      case ('\u2562' | '\u2524', Left)         => true // '╢' | '┤'
+    }
 
   private def isStraightAheadUnicode(c: Char, direction: Direction): Boolean =
-    cond((c, direction)):
-      case ('\u2500', Right | Left) => true   // '─'
-      case ('\u2502', Up | Down) => true   // '│'
+    cond((c, direction)) {
+      case ('\u2500', Right | Left) => true // '─'
+      case ('\u2502', Up | Down)    => true // '│'
+    }
 
   private def isAheadArrowUnicode(c: Char, direction: Direction): Boolean =
-    cond((c, direction)):
-      case ('^', Up) => true
+    cond((c, direction)) {
+      case ('^', Up)         => true
       case ('v' | 'V', Down) => true
-      case ('<', Left) => true
-      case ('>', Right) => true
+      case ('<', Left)       => true
+      case ('>', Right)      => true
+    }
 
   private def isRightTurnUnicode(c: Char, direction: Direction): Boolean =
-    cond((c, direction)):
-      case ('\u256e' | '\u2510', Right) => true   // '╮' | '┐'
-      case ('\u256f' | '\u2518', Down) => true   // '╯' | '┘'
-      case ('\u256d' | '\u250c', Up) => true   // '╭' | '┌'
-      case ('\u2570' | '\u2514', Left) => true   // '╰' | '└'
+    cond((c, direction)) {
+      case ('\u256e' | '\u2510', Right) => true // '╮' | '┐'
+      case ('\u256f' | '\u2518', Down)  => true // '╯' | '┘'
+      case ('\u256d' | '\u250c', Up)    => true // '╭' | '┌'
+      case ('\u2570' | '\u2514', Left)  => true // '╰' | '└'
+    }
 
   private def isLeftTurnUnicode(c: Char, direction: Direction): Boolean =
     isRightTurnUnicode(c, direction.turnRight)
@@ -66,13 +72,13 @@ class DiagramParser(s: String):
   // ── AsciiEdgeParser ─────────────────────────────────────────────────────
 
   @tailrec
-  protected final def followAsciiEdge(points: List[Point], direction: Direction): Option[EdgeImpl] =
+  protected final def followAsciiEdge(points: List[Point], direction: Direction): Option[EdgeImpl] = {
     val currentPoint = points.head
-    if !inDiagram(currentPoint) then None
-    else if isBoxEdge(currentPoint) then
-      if points.size <= 2 then None
-      else Some(new EdgeImpl(points.reverse))
-    else
+    if (!inDiagram(currentPoint)) None
+    else if (isBoxEdge(currentPoint))
+      if (points.size <= 2) None
+      else Some(EdgeImpl(points.reverse))
+    else {
       val c = charAt(currentPoint)
       val ahead = currentPoint.go(direction)
       val left = currentPoint.go(direction.turnLeft)
@@ -81,30 +87,32 @@ class DiagramParser(s: String):
       val rightIsContinuation = isContinuation(right, direction.turnRight)
       val leftIsContinuation = isContinuation(left, direction.turnLeft)
 
-      if isCrossingAscii(c) || isAheadArrow(c, direction) then
+      if (isCrossingAscii(c) || isAheadArrow(c, direction))
         followAsciiEdge(currentPoint.go(direction) :: points, direction)
-      else if isLeftTurnAscii(c, direction) && points.size > 2 then
+      else if (isLeftTurnAscii(c, direction) && points.size > 2)
         followAsciiEdge(left :: points, direction.turnLeft)
-      else if isRightTurnAscii(c, direction) && points.size > 2 then
+      else if (isRightTurnAscii(c, direction) && points.size > 2)
         followAsciiEdge(right :: points, direction.turnRight)
-      else if isStraightAheadAscii(c, direction) then
-        if aheadIsContinuation then followAsciiEdge(ahead :: points, direction)
-        else if leftIsContinuation && !rightIsContinuation && !isTurn(left) then
+      else if (isStraightAheadAscii(c, direction))
+        if (aheadIsContinuation) followAsciiEdge(ahead :: points, direction)
+        else if (leftIsContinuation && !rightIsContinuation && !isTurn(left))
           followAsciiEdge(left :: points, direction.turnLeft)
-        else if !leftIsContinuation && rightIsContinuation && !isTurn(right) then
+        else if (!leftIsContinuation && rightIsContinuation && !isTurn(right))
           followAsciiEdge(right :: points, direction.turnRight)
         else followAsciiEdge(ahead :: points, direction)
-      else if isOrthogonalAscii(c, direction) then
-        if leftIsContinuation && !rightIsContinuation then
+      else if (isOrthogonalAscii(c, direction))
+        if (leftIsContinuation && !rightIsContinuation)
           followAsciiEdge(left :: points, direction.turnLeft)
-        else if !leftIsContinuation && rightIsContinuation then
+        else if (!leftIsContinuation && rightIsContinuation)
           followAsciiEdge(right :: points, direction.turnRight)
         else followAsciiEdge(ahead :: points, direction)
-      else if isLeftArrow(c, direction) then
+      else if (isLeftArrow(c, direction))
         followAsciiEdge(left :: points, direction.turnLeft)
-      else if isRightArrow(c, direction) then
+      else if (isRightArrow(c, direction))
         followAsciiEdge(right :: points, direction.turnRight)
       else None
+    }
+  }
 
   private def isContinuation(point: Point, direction: Direction): Boolean =
     isBoxEdge(point) || charAtOpt(point).exists { c =>
@@ -114,9 +122,10 @@ class DiagramParser(s: String):
     }
 
   private def isStraightAheadAscii(c: Char, direction: Direction): Boolean =
-    cond((c, direction)):
+    cond((c, direction)) {
       case ('-', Right | Left) => true
-      case ('|', Up | Down) => true
+      case ('|', Up | Down)    => true
+    }
 
   private def isOrthogonalAscii(c: Char, direction: Direction): Boolean =
     isStraightAheadAscii(c, direction.turnRight)
@@ -127,9 +136,10 @@ class DiagramParser(s: String):
   private def isTurnChar(c: Char): Boolean = c == '\\' || c == '/'
 
   private def isRightTurnAscii(c: Char, direction: Direction): Boolean =
-    cond((c, direction)):
+    cond((c, direction)) {
       case ('\\', Left | Right) => true
-      case ('/', Up | Down) => true
+      case ('/', Up | Down)     => true
+    }
 
   private def isLeftTurnAscii(c: Char, direction: Direction): Boolean =
     isRightTurnAscii(c, direction.turnRight)
@@ -137,13 +147,13 @@ class DiagramParser(s: String):
   // ── BoxParser ───────────────────────────────────────────────────────────
 
   protected def findAllBoxes: List[BoxImpl] =
-    for
+    for {
       topLeft <- possibleTopLefts
       bottomRight <- completeBox(topLeft)
-    yield new BoxImpl(topLeft, bottomRight)
+    } yield BoxImpl(topLeft, bottomRight)
 
   private def possibleTopLefts: List[Point] =
-    for
+    for {
       row <- 0.until(numberOfRows - 1).toList
       column <- 0.until(numberOfColumns - 1)
       point = Point(row, column)
@@ -151,25 +161,25 @@ class DiagramParser(s: String):
       if isTopLeftCorner(cornerChar)
       if isHorizontalBoxEdge(charAt(point.go(Right))) || isBoxDrawingCharacter(cornerChar)
       if isVerticalBoxEdge(charAt(point.go(Down))) || isBoxDrawingCharacter(cornerChar)
-    yield point
+    } yield point
 
   @tailrec
   private def scanBoxEdge(p: Point, dir: Direction, isCorner: Char => Boolean, isEdge: Char => Boolean): Option[Point] =
-    if inDiagram(p) then
+    if (inDiagram(p)) {
       val c = charAt(p)
-      if isCorner(c) then Some(p)
-      else if isEdge(c) then scanBoxEdge(p.go(dir), dir, isCorner, isEdge)
+      if (isCorner(c)) Some(p)
+      else if (isEdge(c)) scanBoxEdge(p.go(dir), dir, isCorner, isEdge)
       else None
-    else None
+    } else None
 
   private def completeBox(topLeft: Point): Option[Point] =
-    for
+    for {
       topRight <- scanBoxEdge(topLeft.right, Right, isTopRightCorner, isHorizontalBoxEdge)
       bottomRight <- scanBoxEdge(topRight.down, Down, isBottomRightCorner, isVerticalBoxEdge)
       bottomLeft <- scanBoxEdge(topLeft.down, Down, isBottomLeftCorner, isVerticalBoxEdge)
       bottomRight2 <- scanBoxEdge(bottomLeft.right, Right, isBottomRightCorner, isHorizontalBoxEdge)
       if bottomRight == bottomRight2
-    yield bottomRight
+    } yield bottomRight
 
   private def isTopRightCorner(c: Char): Boolean =
     cond(c) { case '\u2557' | '\u256e' | '\u2510' | '+' => true } // '╗' | '╮' | '┐' | '+'
@@ -189,193 +199,217 @@ class DiagramParser(s: String):
 
   // ── LabelParser ─────────────────────────────────────────────────────────
 
-  protected def getLabel(edge: EdgeImpl): Option[Label] =
+  protected def getLabel(edge: EdgeImpl): Option[Label] = {
     val labels =
-      for
+      for {
         point <- edge.points
         startPoint <- point.neighbours
         c <- charAtOpt(startPoint)
         if c == '[' || c == ']'
         label <- completeLabel(startPoint, edge.parent)
-      yield label
-    if labels.distinct.size > 1 then
+      } yield label
+    if (labels.distinct.size > 1)
       throw DiagramParserException(
         "Multiple labels for edge " + edge + ", " + labels.distinct.map(_.text).mkString(",")
       )
     else labels.headOption
+  }
 
-  private def completeLabel(startPoint: Point, parent: ContainerImpl): Option[Label] =
+  private def completeLabel(startPoint: Point, parent: ContainerImpl): Option[Label] = {
     val childBoxPoints = parent.childBoxes.flatMap(_.region.points).toSet
     val occupiedPoints = childBoxPoints ++ allEdgePoints
-    val (finalChar, direction) = charAt(startPoint) match
+    val (finalChar, direction) = charAt(startPoint) match {
       case '[' => (']', Right)
       case ']' => ('[', Left)
+    }
     def search(point: Point): Option[Label] =
       charAtOpt(point).flatMap {
         case `finalChar` =>
           val List(p1, p2) = List(startPoint, point).sortBy(_.column)
           Some(Label(p1, p2))
         case _ if occupiedPoints.contains(point) => None
-        case _ => search(point.go(direction))
+        case _                                   => search(point.go(direction))
       }
     search(startPoint.go(direction))
+  }
 
   // ── DiagramImplementation ───────────────────────────────────────────────
 
-  protected class DiagramImpl extends ContainerImpl with Diagram:
+  protected class DiagramImpl extends ContainerImpl with Diagram {
     var allBoxes: List[BoxImpl] = Nil
     var allEdges: List[EdgeImpl] = Nil
     def boxAt(point: Point): Option[BoxImpl] = allBoxes.find(_.boundaryPoints.contains(point))
     def region: Region = diagramRegion
     def contentsRegion = region
+  }
 
-  protected case class Label(start: Point, end: Point):
+  protected case class Label(start: Point, end: Point) {
     require(start.row == end.row)
     val row = start.row
     def points: List[Point] =
-      for column <- start.column.to(end.column).toList yield Point(row, column)
-    val text: String =
-      val sb = new StringBuilder
-      for column <- (start.column + 1).to(end.column - 1) do sb.append(charAt(Point(row, column)))
+      for (column <- start.column.to(end.column).toList) yield Point(row, column)
+    val text: String = {
+      val sb = StringBuilder()
+      for (column <- (start.column + 1).to(end.column - 1)) sb.append(charAt(Point(row, column)))
       sb.toString
+    }
+  }
 
-  protected abstract class ContainerImpl extends RegionToString:
+  protected abstract class ContainerImpl extends RegionToString {
     self: DiagramContainer =>
     var text: String = ""
     var childBoxes: List[BoxImpl] = Nil
     def contentsRegion: Region
+  }
 
-  protected class BoxImpl(val topLeft: Point, val bottomRight: Point) extends ContainerImpl with DiagramBox:
+  protected class BoxImpl(val topLeft: Point, val bottomRight: Point) extends ContainerImpl with DiagramBox {
     var edges: List[EdgeImpl] = Nil
     var parent: Option[DiagramContainer & ContainerImpl] = None
     def region: Region = Region(topLeft, bottomRight)
     def contentsRegion: Region = Region(topLeft.right.down, bottomRight.up.left)
     val leftBoundary: List[Point] =
-      for row <- topLeft.row.to(bottomRight.row).toList yield Point(row, topLeft.column)
+      for (row <- topLeft.row.to(bottomRight.row).toList) yield Point(row, topLeft.column)
     val rightBoundary: List[Point] =
-      for row <- topLeft.row.to(bottomRight.row).toList yield Point(row, bottomRight.column)
+      for (row <- topLeft.row.to(bottomRight.row).toList) yield Point(row, bottomRight.column)
     val topBoundary: List[Point] =
-      for column <- topLeft.column.to(bottomRight.column).toList yield Point(topLeft.row, column)
+      for (column <- topLeft.column.to(bottomRight.column).toList) yield Point(topLeft.row, column)
     val bottomBoundary: List[Point] =
-      for column <- topLeft.column.to(bottomRight.column).toList yield Point(bottomRight.row, column)
+      for (column <- topLeft.column.to(bottomRight.column).toList) yield Point(bottomRight.row, column)
     val boundaryPoints: Set[Point] =
       leftBoundary.toSet ++ rightBoundary.toSet ++ topBoundary.toSet ++ bottomBoundary.toSet
+  }
 
-  protected class EdgeImpl(val points: List[Point]) extends DiagramEdge:
+  protected class EdgeImpl(val points: List[Point]) extends DiagramEdge {
     val box1: BoxImpl = diagram.boxAt(points.head).get
     val box2: BoxImpl = diagram.boxAt(points.last).get
     var label_ : Option[Label] = None
     lazy val label = label_.map(_.text)
     lazy val parent: DiagramContainer & ContainerImpl =
-      if box1.parent == Some(box2) then box2
+      if (box1.parent == Some(box2)) box2
       else box2.parent.get
     lazy val hasArrow1 = isArrow(charAt(points.drop(1).head))
     lazy val hasArrow2 = isArrow(charAt(points.dropRight(1).last))
     lazy val edgeAndLabelPoints: List[Point] = points ++ label_.map(_.points).getOrElse(Nil)
     override def toString = diagramRegionToString(regionOf(edgeAndLabelPoints), edgeAndLabelPoints.contains)
     def regionOf(points: List[Point]): Region =
-      Region(Point(points.map(_.row).min, points.map(_.column).min), Point(points.map(_.row).max, points.map(_.column).max))
+      Region(
+        Point(points.map(_.row).min, points.map(_.column).min),
+        Point(points.map(_.row).max, points.map(_.column).max)
+      )
+  }
 
-  protected trait RegionToString:
+  protected trait RegionToString {
     def region: Region
     override def toString = diagramRegionToString(region)
+  }
 
-  private def diagramRegionToString(region: Region, includePoint: Point => Boolean = _ => true) =
-    val sb = new StringBuilder("\n")
-    for row <- region.topLeft.row.to(region.bottomRight.row) do
-      for
+  private def diagramRegionToString(region: Region, includePoint: Point => Boolean = _ => true) = {
+    val sb = StringBuilder("\n")
+    for (row <- region.topLeft.row.to(region.bottomRight.row)) {
+      for {
         column <- region.topLeft.column.to(region.bottomRight.column)
         point = Point(row, column)
-        c = if includePoint(point) then charAt(point) else ' '
-      do sb.append(c)
+        c = if (includePoint(point)) charAt(point) else ' '
+      }
+        sb.append(c)
       sb.append("\n")
+    }
     sb.toString
+  }
 
   private def isArrow(c: Char) = cond(c) { case '^' | '<' | '>' | 'V' | 'v' => true }
 
   // ── Parser initialization ───────────────────────────────────────────────
 
-  private val rawRows: List[String] = if s.isEmpty then Nil else s.split("(\r)?\n").toList
-  protected val numberOfColumns = if rawRows.isEmpty then 0 else rawRows.map(_.length).max
+  private val rawRows: List[String] = if (s.isEmpty) Nil else s.split("(\r)?\n").toList
+  protected val numberOfColumns = if (rawRows.isEmpty) 0 else rawRows.map(_.length).max
   private val rows = rawRows.map(_.padTo(numberOfColumns, ' ')).toArray
   protected val numberOfRows = rows.length
   protected val diagramRegion = Region(Point(0, 0), Point(numberOfRows - 1, numberOfColumns - 1))
-  protected val diagram = new DiagramImpl
+  protected val diagram = DiagramImpl()
 
   diagram.allBoxes = findAllBoxes
 
   // Each box's parent is its smallest containing box (or the diagram if none)
   private val boxContainers: Map[BoxImpl, List[BoxImpl]] =
-    (for
+    (for {
       outerBox <- diagram.allBoxes
       innerBox <- diagram.allBoxes
       if outerBox != innerBox
       if outerBox.region.contains(innerBox.region)
-    yield (outer = outerBox, inner = innerBox)).groupMap(_.inner)(_.outer)
+    } yield (outer = outerBox, inner = innerBox)).groupMap(_.inner)(_.outer)
 
-  for (box, containingBoxes) <- boxContainers do
+  for ((box, containingBoxes) <- boxContainers) {
     val parentBox = containingBoxes.minBy(_.region.area)
     box.parent = Some(parentBox)
     parentBox.childBoxes ::= box
+  }
 
-  for
+  for {
     box <- diagram.allBoxes
     if box.parent.isEmpty
-  do
+  } {
     diagram.childBoxes ::= box
     box.parent = Some(diagram)
+  }
 
   private val edges = diagram.allBoxes.flatMap { box =>
     box.rightBoundary.flatMap(followEdge(Right, _)) ++
-    box.leftBoundary.flatMap(followEdge(Left, _)) ++
-    box.topBoundary.flatMap(followEdge(Up, _)) ++
-    box.bottomBoundary.flatMap(followEdge(Down, _))
+      box.leftBoundary.flatMap(followEdge(Left, _)) ++
+      box.topBoundary.flatMap(followEdge(Up, _)) ++
+      box.bottomBoundary.flatMap(followEdge(Down, _))
   }
 
   diagram.allEdges = edges.groupBy(_.points.toSet).values.toList.map(_.head)
 
-  for edge <- diagram.allEdges do
+  for (edge <- diagram.allEdges) {
     edge.box1.edges ::= edge
-    if edge.box1 != edge.box2 then edge.box2.edges ::= edge
+    if (edge.box1 != edge.box2) edge.box2.edges ::= edge
+  }
 
   protected lazy val allEdgePoints: Set[Point] = diagram.allEdges.flatMap(_.points).toSet
 
-  for edge <- diagram.allEdges do edge.label_ = getLabel(edge)
+  for (edge <- diagram.allEdges) edge.label_ = getLabel(edge)
 
-  for box <- diagram.allBoxes do box.text = collectText(box)
+  for (box <- diagram.allBoxes) box.text = collectText(box)
   diagram.text = collectText(diagram)
 
   protected def inDiagram(p: Point): Boolean = diagramRegion.contains(p)
   protected def charAt(point: Point): Char = rows(point.row)(point.column)
   protected def charAtOpt(point: Point): Option[Char] =
-    if inDiagram(point) then Some(charAt(point)) else None
+    if (inDiagram(point)) Some(charAt(point)) else None
 
   def getDiagram: Diagram = diagram
 
   protected def isBoxEdge(point: Point) =
     inDiagram(point) && diagram.allBoxes.exists(_.boundaryPoints.contains(point))
 
-  private def followEdge(direction: Direction, startPoint: Point): Option[EdgeImpl] =
+  private def followEdge(direction: Direction, startPoint: Point): Option[EdgeImpl] = {
     val initialPoints = startPoint.go(direction) :: startPoint :: Nil
-    if isEdgeStart(charAt(startPoint), direction) then followUnicodeEdge(initialPoints, direction)
-    else if !isBoxDrawingCharacter(charAt(startPoint)) then followAsciiEdge(initialPoints, direction)
+    if (isEdgeStart(charAt(startPoint), direction)) followUnicodeEdge(initialPoints, direction)
+    else if (!isBoxDrawingCharacter(charAt(startPoint))) followAsciiEdge(initialPoints, direction)
     else None
+  }
 
   private lazy val allLabelPoints: Set[Point] =
     diagram.allEdges.flatMap(_.label_.toList.flatMap(_.points)).toSet
 
-  private def collectText(container: ContainerImpl): String =
+  private def collectText(container: ContainerImpl): String = {
     val childBoxPoints = container.childBoxes.flatMap(_.region.points).toSet
-    val sb = new StringBuilder
+    val sb = StringBuilder()
     val region = container.contentsRegion
-    for row <- region.topLeft.row.to(region.bottomRight.row) do
-      for
+    for (row <- region.topLeft.row.to(region.bottomRight.row)) {
+      for {
         column <- region.topLeft.column.to(region.bottomRight.column)
         point = Point(row, column)
         if !childBoxPoints.contains(point)
         if !allEdgePoints.contains(point)
         if !allLabelPoints.contains(point)
-      do sb.append(charAt(point))
+      }
+        sb.append(charAt(point))
       sb.append("\n")
-    if sb.nonEmpty then sb.deleteCharAt(sb.length - 1)
+    }
+    if (sb.nonEmpty) sb.deleteCharAt(sb.length - 1)
     sb.toString
+  }
+}

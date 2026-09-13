@@ -5,11 +5,12 @@ import Utils.*
 
 // ── Graph ───────────────────────────────────────────────────────────────────
 
-object Graph:
+object Graph {
   def fromDiagram(s: String): Graph[String] = fromDiagram(Diagram(s))
   def fromDiagram(diagram: Diagram): Graph[String] = DiagramToGraphConvertor.toGraph(diagram)
+}
 
-case class Graph[V](vertices: Set[V], edges: List[(V, V)]):
+case class Graph[V](vertices: Set[V], edges: List[(V, V)]) {
 
   val outMap: Map[V, List[V]] = edges
     .groupBy(_._1)
@@ -34,39 +35,44 @@ case class Graph[V](vertices: Set[V], edges: List[(V, V)]):
   override def equals(obj: Any): Boolean =
     cond(obj) { case other: Graph[V @unchecked] =>
       multisetCompare(vertices.toList, other.vertices.toList) &&
-        multisetCompare(edges, other.edges)
+      multisetCompare(edges, other.edges)
     }
 
   private def singletonVertices =
     vertices.filter(v => inDegree(v) == 0 && outDegree(v) == 0)
 
-  private def asVertexList: String =
+  private def asVertexList: String = {
     def render(v: V) = v.toString.replaceAll("\n", "\\\\n")
     singletonVertices.toList.map(render).sorted.mkString("\n") + "\n" +
       edges.toList
         .sortBy(e => (render(e._1), render(e._2)))
         .map(e => render(e._1) + "," + render(e._2))
         .mkString("\n")
+  }
 
   override def toString =
-    try
+    try {
       val layoutPrefs = LayoutPrefs(unicode = true, explicitAsciiBends = false)
       "\n" + GraphLayout.renderGraph(this, layoutPrefs = layoutPrefs) + "\n" + asVertexList
-    catch
+    } catch {
       case _: Throwable => asVertexList
+    }
+}
 
 // ── DiagramToGraphConvertor ─────────────────────────────────────────────────
 
-object DiagramToGraphConvertor:
-  def toGraph(diagram: Diagram): Graph[String] =
+object DiagramToGraphConvertor {
+  def toGraph(diagram: Diagram): Graph[String] = {
     val boxToVertexMap: Map[DiagramBox, String] = makeMap(diagram.childBoxes, _.text)
     val vertices = boxToVertexMap.values.toSet
     val edges =
-      for
+      for {
         edge <- diagram.allEdges
         vertex1 <- boxToVertexMap.get(edge.box1)
         vertex2 <- boxToVertexMap.get(edge.box2)
-      yield
-        if edge.hasArrow2 then vertex1 -> vertex2
+      } yield
+        if (edge.hasArrow2) vertex1 -> vertex2
         else vertex2 -> vertex1
     Graph(vertices, edges)
+  }
+}

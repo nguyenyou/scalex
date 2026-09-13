@@ -1,108 +1,97 @@
+package scalex.commands
+
+import scalex.*
+
+import asciiGraph.{Diagram, Graph, GraphLayout, LayoutPrefs}
+import scala.io.Source
+import scala.util.control.NonFatal
+
 // ── Graph command handler ───────────────────────────────────────────────────
 
-def cmdGraph(args: List[String], ctx: CommandContext): CmdResult =
-  args match
+def cmdGraph(args: List[String], ctx: CommandContext): CmdResult = {
+  args match {
     case "--render" :: rest =>
       val parsed = parseGraphFlags(rest)
-      val flags = if ctx.jsonOutput then parsed.flags.copy(json = true) else parsed.flags
       val edgeListStr = parsed.remaining.mkString(" ")
-      if edgeListStr.isEmpty then
+      if (edgeListStr.isEmpty) {
         CmdResult.UsageError("Usage: scalex graph --render \"V1->V2, V2->V3\"")
-      else
-        renderGraphCmd(edgeListStr, flags)
-    case "--parse" :: rest =>
-      val parsed = parseGraphFlags(rest)
-      val flags = if ctx.jsonOutput then parsed.flags.copy(json = true) else parsed.flags
-      val input = scala.io.Source.stdin.getLines().mkString("\n")
-      if input.trim.isEmpty then CmdResult.UsageError("No input provided on stdin for --parse")
-      else parseGraphCmd(input, flags)
+      } else { renderGraphCmd(edgeListStr, parsed.flags) }
+    case "--parse" :: _ =>
+      val input = Source.stdin.getLines().mkString("\n")
+      if (input.trim.isEmpty) { CmdResult.UsageError("No input provided on stdin for --parse") }
+      else { parseGraphCmd(input) }
     case _ =>
       CmdResult.UsageError(
         """Usage: scalex graph --render "V1->V2, V2->V3" [--unicode|--no-unicode] [--vertical|--horizontal] [--rounded] [--double]
-          |       scalex graph --parse [--json] < diagram.txt""".stripMargin)
+          |       scalex graph --parse [--json] < diagram.txt""".stripMargin
+      )
+  }
+}
 
 private case class GraphCmdFlags(
-  unicode: Boolean = true,
-  vertical: Boolean = true,
-  rounded: Boolean = false,
-  double: Boolean = false,
-  json: Boolean = false,
+    unicode: Boolean = true,
+    vertical: Boolean = true,
+    rounded: Boolean = false,
+    double: Boolean = false
 )
+private case class ParsedGraphEdges(vertices: Set[String], edges: List[(from: String, to: String)])
 
-private case class ParsedGraphEdges(vertices: Set[String], edges: List[(String, String)])
-
-private def parseGraphFlags(args: List[String]): (flags: GraphCmdFlags, remaining: List[String]) =
+private[scalex] def parseGraphFlags(args: List[String]): (flags: GraphCmdFlags, remaining: List[String]) = {
   var flags = GraphCmdFlags()
   val remaining = List.newBuilder[String]
   args.foreach {
-    case "--unicode" => flags = flags.copy(unicode = true)
+    case "--unicode"    => flags = flags.copy(unicode = true)
     case "--no-unicode" => flags = flags.copy(unicode = false)
-    case "--vertical" => flags = flags.copy(vertical = true)
+    case "--vertical"   => flags = flags.copy(vertical = true)
     case "--horizontal" => flags = flags.copy(vertical = false)
-    case "--rounded" => flags = flags.copy(rounded = true)
-    case "--double" => flags = flags.copy(double = true)
-    case "--json" => flags = flags.copy(json = true)
-    case other => remaining += other
+    case "--rounded"    => flags = flags.copy(rounded = true)
+    case "--double"     => flags = flags.copy(double = true)
+    case "--json"       => () // Output selection belongs to CommandContext.
+    case other          => remaining += other
   }
   (flags = flags, remaining = remaining.result())
+}
 
-private def renderGraphCmd(edgeListStr: String, flags: GraphCmdFlags): CmdResult =
-  try
+private[scalex] def renderGraphCmd(edgeListStr: String, flags: GraphCmdFlags): CmdResult = {
+  try {
     val parsed = parseGraphEdgeList(edgeListStr)
-    val graph = asciiGraph.Graph(parsed.vertices, parsed.edges)
-    val prefs = asciiGraph.LayoutPrefs(
+    val graph = Graph(parsed.vertices, parsed.edges.map(_.toTuple))
+    val prefs = LayoutPrefs(
       unicode = flags.unicode,
       vertical = flags.vertical,
       rounded = flags.rounded,
-      doubleVertices = flags.double,
+      doubleVertices = flags.double
     )
-    val rendered = asciiGraph.GraphLayout.renderGraph(graph, layoutPrefs = prefs)
-    if flags.json then CmdResult.GraphOutput(s"""{"rendered":"${jsonEscape(rendered)}"}""")
-    else CmdResult.GraphOutput(rendered)
-  catch
-    case e: Exception =>
-      CmdResult.UsageError(s"Error rendering graph: ${e.getMessage}")
+    CmdResult.GraphOutput(GraphLayout.renderGraph(graph, layoutPrefs = prefs))
+  } catch {
+    case NonFatal(e) => CmdResult.UsageError(s"Error rendering graph: ${e.getMessage}")
+  }
+}
 
-private def parseGraphCmd(input: String, flags: GraphCmdFlags): CmdResult =
-  try
-    val diagram = asciiGraph.Diagram(input)
-    if flags.json then
-      val boxesJson = diagram.allBoxes.map(b => s"""{"text":"${jsonEscape(b.text.trim)}"}""").mkString("[", ",", "]")
-      val edgesJson = diagram.allEdges.map { e =>
-        val from = jsonEscape(e.box1.text.trim)
-        val to = jsonEscape(e.box2.text.trim)
-        val directed = e.hasArrow1 || e.hasArrow2
-        val labelStr = e.label.map(l => s""","label":"${jsonEscape(l)}"""").getOrElse("")
-        s"""{"from":"$from","to":"$to","directed":$directed$labelStr}"""
-      }.mkString("[", ",", "]")
-      CmdResult.GraphOutput(s"""{"boxes":$boxesJson,"edges":$edgesJson}""")
-    else
-      val sb = new StringBuilder
-      sb.append("Boxes: ")
-      sb.append(diagram.allBoxes.map(_.text.trim).mkString(", "))
-      sb.append("\nEdges:")
-      for edge <- diagram.allEdges do
-        val arrow =
-          if edge.hasArrow1 && edge.hasArrow2 then " <-> "
-          else if edge.hasArrow2 then " -> "
-          else if edge.hasArrow1 then " <- "
-          else " -- "
-        val labelStr = edge.label.map(l => s" [$l]").getOrElse("")
-        sb.append(s"\n  ${edge.box1.text.trim}$arrow${edge.box2.text.trim}$labelStr")
-      CmdResult.GraphOutput(sb.toString)
-  catch
-    case e: Exception =>
-      CmdResult.UsageError(s"Error parsing diagram: ${e.getMessage}")
+private[scalex] def parseGraphCmd(input: String): CmdResult = {
+  try {
+    val diagram = Diagram(input)
+    CmdResult.ParsedDiagram(
+      diagram.allBoxes.map(_.text.trim).toList,
+      diagram.allEdges
+        .map(e => DiagramLink(e.box1.text.trim, e.box2.text.trim, e.hasArrow1, e.hasArrow2, e.label))
+        .toList
+    )
+  } catch {
+    case NonFatal(e) => CmdResult.UsageError(s"Error parsing diagram: ${e.getMessage}")
+  }
+}
 
-private def parseGraphEdgeList(s: String): ParsedGraphEdges =
-  var vertices = Set[String]()
-  var edges = List[(String, String)]()
-  for part <- s.split(",").map(_.trim).filter(_.nonEmpty) do
-    if part.contains("->") then
+private[scalex] def parseGraphEdgeList(s: String): ParsedGraphEdges = {
+  var vertices = Set.empty[String]
+  val edges = List.newBuilder[(from: String, to: String)]
+  for (part <- s.split(",").map(_.trim).filter(_.nonEmpty)) {
+    if (part.contains("->")) {
       val Array(from, to) = part.split("->", 2).map(_.trim)
       vertices += from
       vertices += to
-      edges = edges :+ (from, to)
-    else
-      vertices += part.trim
-  ParsedGraphEdges(vertices, edges)
+      edges += ((from = from, to = to))
+    } else { vertices += part }
+  }
+  ParsedGraphEdges(vertices, edges.result())
+}

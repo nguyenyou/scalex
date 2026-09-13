@@ -1,11 +1,19 @@
-def cmdEntrypoints(args: List[String], ctx: CommandContext): CmdResult =
-  import EntrypointCategory.*
-  val seen = scala.collection.mutable.HashSet.empty[(name: String, file: String, line: Int)]
-  val results = scala.collection.mutable.ListBuffer.empty[EntrypointInfo]
+package scalex.commands
+
+import scala.collection.mutable
+
+import scalex.EntrypointCategory.*
+
+import scalex.*
+import scalex.extraction.*
+
+def cmdEntrypoints(args: List[String], ctx: CommandContext): CmdResult = {
+  val seen = mutable.HashSet.empty[(name: String, file: String, line: Int)]
+  val results = mutable.ListBuffer.empty[EntrypointInfo]
 
   def addIfNew(sym: SymbolInfo, cat: EntrypointCategory, memberLine: Option[Int] = None): Unit = {
     val key = (name = sym.name, file = sym.file.toString, line = sym.line)
-    if !seen.contains(key) then {
+    if (!seen.contains(key)) {
       seen += key
       results += EntrypointInfo(sym, cat, memberLine)
     }
@@ -27,10 +35,24 @@ def cmdEntrypoints(args: List[String], ctx: CommandContext): CmdResult =
   }
 
   // 4. Test suites
-  val testParents = Set("FunSuite", "AnyFunSuite", "FlatSpec", "AnyFlatSpec", "WordSpec", "AnyWordSpec",
-    "FreeSpec", "AnyFreeSpec", "PropSpec", "FeatureSpec", "Suite", "Specification", "FunSpec")
+  val testParents = Set(
+    "FunSuite",
+    "AnyFunSuite",
+    "FlatSpec",
+    "AnyFlatSpec",
+    "WordSpec",
+    "AnyWordSpec",
+    "FreeSpec",
+    "AnyFreeSpec",
+    "PropSpec",
+    "FeatureSpec",
+    "Suite",
+    "Specification",
+    "FunSpec"
+  )
   testParents.foreach { parent =>
     filterSymbols(ctx.idx.findImplementations(parent), ctx).foreach(s => addIfNew(s, TestSuite))
   }
 
   CmdResult.Entrypoints(results.toList, results.size)
+}

@@ -1,0 +1,34 @@
+package scalex.commands
+
+import scalex.*
+import scalex.extraction.*
+
+private[scalex] val kindRankMap: Map[SymbolKind, Int] = Map(
+  SymbolKind.Trait -> 0,
+  SymbolKind.Class -> 1,
+  SymbolKind.Enum -> 2,
+  SymbolKind.Object -> 3
+).withDefaultValue(4)
+
+def cmdPackage(args: List[String], ctx: CommandContext): CmdResult =
+  requireArg(args, "Usage: scalex package <pkg>") { pkg =>
+    withResolvedPackage(pkg, ctx, "package") { resolvedPkg =>
+      var symbols = filterSymbols(ctx.idx.symbols.filter(_.packageName == resolvedPkg), ctx)
+      if (ctx.overview.explainMode) {
+        val allTypes = symbols
+          .filter(s => typeKinds.contains(s.kind))
+          .sortBy(s => (kindRank = kindRankMap(s.kind), name = s.name))
+        val types = allTypes.take(ctx.output.limit)
+        val entries = types.map { s =>
+          val members = extractMembers(s.file, s.name, Some(s.kind)).sortBy(memberKindRank).take(3)
+          val implCount = filterSymbols(ctx.idx.findImplementations(s.name), ctx).size
+          PackageExplainedEntry(s, members, implCount)
+        }
+        CmdResult.PackageExplained(resolvedPkg, entries, symbols.size, allTypes.size)
+      } else {
+        if (ctx.search.definitionsOnly)
+          symbols = symbols.filter(s => typeKinds.contains(s.kind))
+        CmdResult.PackageSymbols(resolvedPkg, symbols)
+      }
+    }
+  }

@@ -1,15 +1,18 @@
-import munit.FunSuite
-import java.nio.file.{Files, Path}
-import scala.jdk.CollectionConverters.*
+package scalex
 
-class AnalysisSuite extends ScalexTestBase:
+import java.io.ByteArrayOutputStream
+
+import scalex.index.*
+import scalex.extraction.*
+
+class AnalysisSuite extends ScalexTestBase {
 
   // ── hierarchy command — buildHierarchy ────────────────────────────────
 
   test("buildHierarchy returns root node with correct name") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserServiceLive", goUp = true, goDown = true, workspace)
+    val idx = WorkspaceIndex.load(workspace)
+    val result =
+      buildHierarchy(idx, maxDepth = 5, symbolName = "UserServiceLive", goUp = true, goDown = true, workspace)
     assert(result.isDefined, "Should find hierarchy for UserServiceLive")
     val tree = result.get
     assertEquals(tree.root.name, "UserServiceLive")
@@ -19,9 +22,8 @@ class AnalysisSuite extends ScalexTestBase:
   }
 
   test("buildHierarchy returns root for UserService trait") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserService", goUp = true, goDown = true, workspace)
+    val idx = WorkspaceIndex.load(workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName = "UserService", goUp = true, goDown = true, workspace)
     assert(result.isDefined, "Should find hierarchy for UserService")
     val tree = result.get
     // UserService resolves to the trait (first hit)
@@ -29,33 +31,29 @@ class AnalysisSuite extends ScalexTestBase:
   }
 
   test("buildHierarchy --down finds children (regression #80)") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserService", goUp = false, goDown = true, workspace)
+    val idx = WorkspaceIndex.load(workspace)
+    val result = buildHierarchy(idx, maxDepth = 5, symbolName = "UserService", goUp = false, goDown = true, workspace)
     assert(result.isDefined, "Should find hierarchy for UserService")
     val tree = result.get
     val childNames = tree.children.map(_.root.name).toSet
-    assert(childNames.contains("UserServiceLive"),
-      s"Should find UserServiceLive as child: $childNames")
-    assert(childNames.contains("OldService"),
-      s"Should find OldService as child: $childNames")
+    assert(childNames.contains("UserServiceLive"), s"Should find UserServiceLive as child: $childNames")
+    assert(childNames.contains("OldService"), s"Should find OldService as child: $childNames")
   }
 
   test("buildHierarchy --up finds parents (regression #80)") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserServiceLive", goUp = true, goDown = false, workspace)
+    val idx = WorkspaceIndex.load(workspace)
+    val result =
+      buildHierarchy(idx, maxDepth = 5, symbolName = "UserServiceLive", goUp = true, goDown = false, workspace)
     assert(result.isDefined, "Should find hierarchy for UserServiceLive")
     val tree = result.get
     val parentNames = tree.parents.map(_.root.name).toSet
-    assert(parentNames.contains("UserService"),
-      s"Should find UserService as parent: $parentNames")
+    assert(parentNames.contains("UserService"), s"Should find UserService as parent: $parentNames")
   }
 
   test("buildHierarchy goUp=false produces empty parents") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="UserServiceLive", goUp = false, goDown = false, workspace)
+    val idx = WorkspaceIndex.load(workspace)
+    val result =
+      buildHierarchy(idx, maxDepth = 5, symbolName = "UserServiceLive", goUp = false, goDown = false, workspace)
     assert(result.isDefined, "Should find hierarchy")
     val tree = result.get
     assert(tree.parents.isEmpty, "Should have no parents with goUp=false")
@@ -63,16 +61,16 @@ class AnalysisSuite extends ScalexTestBase:
   }
 
   test("buildHierarchy returns None for unknown symbol") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="NonExistentType", goUp = true, goDown = true, workspace)
+    val idx = WorkspaceIndex.load(workspace)
+    val result =
+      buildHierarchy(idx, maxDepth = 5, symbolName = "NonExistentType", goUp = true, goDown = true, workspace)
     assert(result.isEmpty, "Should return None for unknown symbol")
   }
 
   test("buildHierarchy root node isExternal is false for indexed symbols") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val result = buildHierarchy(idx, maxDepth = 5, symbolName ="PaymentServiceLive", goUp = true, goDown = false, workspace)
+    val idx = WorkspaceIndex.load(workspace)
+    val result =
+      buildHierarchy(idx, maxDepth = 5, symbolName = "PaymentServiceLive", goUp = true, goDown = false, workspace)
     assert(result.isDefined)
     val tree = result.get
     assert(!tree.root.isExternal, "Root should not be external")
@@ -82,24 +80,23 @@ class AnalysisSuite extends ScalexTestBase:
   // ── overrides command — findOverrides ────────────────────────────────
 
   test("findOverrides finds method overrides with --of trait") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val results = findOverrides(idx, "findUser", Some("UserService"), 50)
     assert(results.nonEmpty, "Should find overrides of findUser in UserService impls")
-    assert(results.exists(_.enclosingClass == "UserServiceLive"),
-      s"Should find override in UserServiceLive: ${results.map(_.enclosingClass)}")
+    assert(
+      results.exists(_.enclosingClass == "UserServiceLive"),
+      s"Should find override in UserServiceLive: ${results.map(_.enclosingClass)}"
+    )
   }
 
   test("findOverrides returns empty for nonexistent method") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val results = findOverrides(idx, "nonExistentMethod", Some("UserService"), 50)
     assert(results.isEmpty, "Should return empty for nonexistent method")
   }
 
   test("findOverrides returns correct enclosing class info") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val results = findOverrides(idx, "findUser", Some("UserService"), 50)
     results.foreach { r =>
       assert(r.enclosingClass.nonEmpty, s"Enclosing class should not be empty")
@@ -111,19 +108,16 @@ class AnalysisSuite extends ScalexTestBase:
   // ── explain command — constituent calls ───────────────────────────────
 
   test("explain ranks class/trait above val/object (regression #80)") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     // UserService has trait + object + val references — explain should pick the trait
     val output = captureOut {
       runCommand("explain", List("UserService"), CommandContext(idx = idx, workspace = workspace))
     }
-    assert(output.contains("trait UserService"),
-      s"explain should pick trait UserService, not val/object: $output")
+    assert(output.contains("trait UserService"), s"explain should pick trait UserService, not val/object: $output")
   }
 
   test("explain: constituent calls work together for PaymentService") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     // findDefinition
     val defs = idx.findDefinition("PaymentService")
     assert(defs.nonEmpty, "Should find PaymentService definition")
@@ -139,29 +133,30 @@ class AnalysisSuite extends ScalexTestBase:
     // findImplementations
     val impls = idx.findImplementations("PaymentService")
     assert(impls.nonEmpty, "Should find implementations of PaymentService")
-    assert(impls.exists(_.name == "PaymentServiceLive"),
-      s"Should find PaymentServiceLive: ${impls.map(_.name)}")
+    assert(impls.exists(_.name == "PaymentServiceLive"), s"Should find PaymentServiceLive: ${impls.map(_.name)}")
   }
 
   // ── deps command — extractDeps ────────────────────────────────────────
 
   test("extractDeps finds import deps for a symbol") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val (importDeps, _) = extractDeps(idx, "ExplicitClient", workspace)
     // ExplicitClient imports com.example.UserService
-    assert(importDeps.exists(_.name == "UserService"),
-      s"Should find UserService in import deps: ${importDeps.map(_.name)}")
+    assert(
+      importDeps.exists(_.name == "UserService"),
+      s"Should find UserService in import deps: ${importDeps.map(_.name)}"
+    )
   }
 
   test("extractDeps finds body refs (type names used in the body)") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val (importDeps, bodyDeps) = extractDeps(idx, "ExplicitClient", workspace)
     // The body of ExplicitClient uses UserService as a type
     val allNames = (importDeps ++ bodyDeps).map(_.name).toSet
-    assert(allNames.contains("UserService"),
-      s"Should find UserService in deps: imports=${importDeps.map(_.name)}, body=${bodyDeps.map(_.name)}")
+    assert(
+      allNames.contains("UserService"),
+      s"Should find UserService in deps: imports=${importDeps.map(_.name)}, body=${bodyDeps.map(_.name)}"
+    )
   }
 
   // ── context command — extractScopes ────────────────────────────────────
@@ -246,12 +241,9 @@ class AnalysisSuite extends ScalexTestBase:
         |""".stripMargin
     val symbols = extractSymbolsFromSource(source, "test.scala")
     val kinds = symbols.map(s => (s.name, s.kind))
-    assert(kinds.exists((n, k) => n == "defaultOrdering" && k == SymbolKind.Given),
-      s"Should find given: $kinds")
-    assert(kinds.exists((_, k) => k == SymbolKind.Extension),
-      s"Should find extension: $kinds")
-    assert(kinds.exists((n, k) => n == "utils" && k == SymbolKind.Object),
-      s"Should find package object: $kinds")
+    assert(kinds.exists((n, k) => n == "defaultOrdering" && k == SymbolKind.Given), s"Should find given: $kinds")
+    assert(kinds.exists((_, k) => k == SymbolKind.Extension), s"Should find extension: $kinds")
+    assert(kinds.exists((n, k) => n == "utils" && k == SymbolKind.Object), s"Should find package object: $kinds")
   }
 
   test("extractSymbolsFromSource skips local vals inside def bodies") {
@@ -277,22 +269,33 @@ class AnalysisSuite extends ScalexTestBase:
   // ── ast-pattern — astPatternSearch ────────────────────────────────────
 
   test("astPatternSearch with --extends filter finds PaymentServiceLive") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val results = astPatternSearch(idx, workspace,
-      hasMethod = None, extendsTrait = Some("PaymentService"),
-      bodyContains = None, noTests = false, pathFilter = None, limit = 50)
+    val idx = WorkspaceIndex.load(workspace)
+    val results = astPatternSearch(
+      idx,
+      workspace,
+      hasMethod = None,
+      extendsTrait = Some("PaymentService"),
+      bodyContains = None,
+      noTests = false,
+      pathFilter = None,
+      limit = 50
+    )
     assert(results.nonEmpty, "Should find types extending PaymentService")
-    assert(results.exists(_.name == "PaymentServiceLive"),
-      s"Should find PaymentServiceLive: ${results.map(_.name)}")
+    assert(results.exists(_.name == "PaymentServiceLive"), s"Should find PaymentServiceLive: ${results.map(_.name)}")
   }
 
   test("astPatternSearch with --has-method filter finds types containing findUser") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val results = astPatternSearch(idx, workspace,
-      hasMethod = Some("findUser"), extendsTrait = None,
-      bodyContains = None, noTests = false, pathFilter = None, limit = 50)
+    val idx = WorkspaceIndex.load(workspace)
+    val results = astPatternSearch(
+      idx,
+      workspace,
+      hasMethod = Some("findUser"),
+      extendsTrait = None,
+      bodyContains = None,
+      noTests = false,
+      pathFilter = None,
+      limit = 50
+    )
     assert(results.nonEmpty, "Should find types with findUser method")
     val names = results.map(_.name).toSet
     assert(names.contains("UserServiceLive"), s"Should find UserServiceLive: $names")
@@ -302,9 +305,8 @@ class AnalysisSuite extends ScalexTestBase:
   // ── Test awareness: coverage ─────────────────────────────────────────────
 
   test("coverage finds refs only in test files") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val out = new java.io.ByteArrayOutputStream()
+    val idx = WorkspaceIndex.load(workspace)
+    val out = ByteArrayOutputStream()
     Console.withOut(out) {
       runCommand("coverage", List("UserService"), CommandContext(idx = idx, workspace = workspace))
     }
@@ -314,21 +316,24 @@ class AnalysisSuite extends ScalexTestBase:
   }
 
   test("coverage excludes non-test file refs") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val refs = idx.findReferences("UserService").results
     val allFiles = refs.map(r => workspace.relativize(r.file).toString).distinct
-    val testFiles = refs.filter(r => isTestFile(r.file, workspace)).map(r => workspace.relativize(r.file).toString).distinct
+    val testFiles =
+      refs.filter(r => isTestFile(r.file, workspace)).map(r => workspace.relativize(r.file).toString).distinct
     // There should be refs in non-test files too
     assert(allFiles.size > testFiles.size, s"Should have non-test refs too: all=$allFiles test=$testFiles")
   }
 
   test("coverage --json output") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val out = new java.io.ByteArrayOutputStream()
+    val idx = WorkspaceIndex.load(workspace)
+    val out = ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("coverage", List("UserService"), CommandContext(idx = idx, workspace = workspace, jsonOutput = true))
+      runCommand(
+        "coverage",
+        List("UserService"),
+        CommandContext(idx = idx, workspace = workspace, output = OutputOptions(jsonOutput = true))
+      )
     }
     val output = out.toString.trim
     assert(output.startsWith("{"), s"JSON should start with brace: $output")
@@ -336,3 +341,4 @@ class AnalysisSuite extends ScalexTestBase:
     assert(output.contains("\"testFileCount\""), s"Should contain testFileCount: $output")
     assert(output.contains("\"referenceCount\""), s"Should contain referenceCount: $output")
   }
+}

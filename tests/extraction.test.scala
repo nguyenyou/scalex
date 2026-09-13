@@ -1,8 +1,14 @@
-import munit.FunSuite
+package scalex
+
+import java.io.ByteArrayOutputStream
+
+import scalex.index.*
+import scalex.extraction.*
+
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 
-class ExtractionSuite extends ScalexTestBase:
+class ExtractionSuite extends ScalexTestBase {
 
   // ── Symbol extraction ─────────────────────────────────────────────────
 
@@ -73,13 +79,15 @@ class ExtractionSuite extends ScalexTestBase:
 
   test("extractSymbols returns parseFailed=false for valid files with no symbols") {
     val file = workspace.resolve("anon_givens.scala")
-    Files.writeString(file,
+    Files.writeString(
+      file,
       """package scala
         |
         |import org.example.library.Foo
         |
         |given CanEqual[Foo, Foo] = CanEqual.derived
-        |""".stripMargin)
+        |""".stripMargin
+    )
     val (syms, _, _, _, failed) = extractSymbols(file)
     assertEquals(syms, Nil)
     assert(!failed, "parseFailed should be false for valid files with only anonymous givens")
@@ -88,27 +96,33 @@ class ExtractionSuite extends ScalexTestBase:
 
   test("extractSymbols extracts Pkg.Object (package objects)") {
     val file = workspace.resolve("pkg_object.scala")
-    Files.writeString(file,
+    Files.writeString(
+      file,
       """package com.example.engine
         |
         |package object protocols {
         |  val defaultTimeout = 30
         |}
-        |""".stripMargin)
+        |""".stripMargin
+    )
     val (syms, _, _, _, failed) = extractSymbols(file)
     assert(!failed, "parseFailed should be false for package objects")
-    assert(syms.exists(s => s.name == "protocols" && s.kind == SymbolKind.Object),
-      s"Should find package object 'protocols': ${syms.map(s => (s.name, s.kind))}")
+    assert(
+      syms.exists(s => s.name == "protocols" && s.kind == SymbolKind.Object),
+      s"Should find package object 'protocols': ${syms.map(s => (s.name, s.kind))}"
+    )
     Files.delete(file)
   }
 
   test("extractSymbols returns parseFailed=false for export-only files") {
     val file = workspace.resolve("exports_only.scala")
-    Files.writeString(file,
+    Files.writeString(
+      file,
       """package com.example.api
         |
         |export com.example.base.MyComponent
-        |""".stripMargin)
+        |""".stripMargin
+    )
     val (syms, _, _, _, failed) = extractSymbols(file)
     assert(!failed, "parseFailed should be false for export-only files")
     Files.delete(file)
@@ -187,7 +201,8 @@ class ExtractionSuite extends ScalexTestBase:
   test("extractSymbols does NOT index local vals inside def bodies") {
     val file = workspace.resolve("src/main/scala/local_vals.scala")
     Files.createDirectories(file.getParent)
-    Files.writeString(file,
+    Files.writeString(
+      file,
       """package com.example
         |
         |object MyService {
@@ -198,7 +213,8 @@ class ExtractionSuite extends ScalexTestBase:
         |  }
         |  val publicVal: Int = 42
         |}
-        |""".stripMargin)
+        |""".stripMargin
+    )
 
     val (syms, _, _, _, _) = extractSymbols(file)
     val names = syms.map(_.name).toSet
@@ -237,7 +253,8 @@ class ExtractionSuite extends ScalexTestBase:
   test("extractSymbols parses Scala 2 procedure syntax") {
     val file = workspace.resolve("src/main/scala/Scala2Style.scala")
     Files.createDirectories(file.getParent)
-    Files.writeString(file,
+    Files.writeString(
+      file,
       """package com.legacy
         |
         |class OldService {
@@ -252,7 +269,8 @@ class ExtractionSuite extends ScalexTestBase:
         |object OldService {
         |  def apply(): OldService = new OldService
         |}
-        |""".stripMargin)
+        |""".stripMargin
+    )
 
     val (syms, _, _, _, _) = extractSymbols(file)
     val names = syms.map(_.name)
@@ -267,7 +285,8 @@ class ExtractionSuite extends ScalexTestBase:
   test("extractSymbols parses Scala 2 implicit class") {
     val file = workspace.resolve("src/main/scala/Scala2Implicits.scala")
     Files.createDirectories(file.getParent)
-    Files.writeString(file,
+    Files.writeString(
+      file,
       """package com.legacy
         |
         |object Implicits {
@@ -276,7 +295,8 @@ class ExtractionSuite extends ScalexTestBase:
         |  }
         |  implicit def intToString(i: Int): String = i.toString
         |}
-        |""".stripMargin)
+        |""".stripMargin
+    )
 
     val (syms, _, _, _, _) = extractSymbols(file)
     val names = syms.map(_.name)
@@ -291,20 +311,21 @@ class ExtractionSuite extends ScalexTestBase:
     // The existing test files are Scala 3 style. Add a Scala 2 file.
     val scala2File = workspace.resolve("src/main/scala/Legacy.scala")
     Files.createDirectories(scala2File.getParent)
-    Files.writeString(scala2File,
+    Files.writeString(
+      scala2File,
       """package com.legacy
         |
         |trait LegacyService {
         |  def process(data: String): Unit
         |}
-        |""".stripMargin)
+        |""".stripMargin
+    )
 
     // Index the whole workspace — should handle both Scala 2 and 3 files
     run("git", "add", ".")
     run("git", "commit", "-m", "add legacy")
 
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
 
     // Scala 3 symbols should still work
     assert(idx.findDefinition("UserService").nonEmpty, "Scala 3 symbols should work")
@@ -343,8 +364,7 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("findAnnotated finds annotated symbols") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val results = idx.findAnnotated("deprecated")
     assert(results.nonEmpty, "Should find @deprecated symbols")
     assert(results.exists(_.name == "OldThing"), s"Should find OldThing: ${results.map(_.name)}")
@@ -352,27 +372,24 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("findAnnotated is case-insensitive") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val upper = idx.findAnnotated("DEPRECATED")
     val lower = idx.findAnnotated("deprecated")
     assertEquals(upper.size, lower.size)
   }
 
   test("findAnnotated returns empty for unknown annotation") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val results = idx.findAnnotated("nonexistent")
     assert(results.isEmpty)
   }
 
   test("binary v5 roundtrip preserves annotations") {
     val cacheDir = workspace.resolve(".scalex")
-    if Files.exists(cacheDir) then
+    if (Files.exists(cacheDir))
       Files.list(cacheDir).iterator().asScala.foreach(Files.delete)
 
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
 
     val loaded = IndexPersistence.load(workspace)
     assert(loaded.isDefined, "Should load from cache")
@@ -380,15 +397,16 @@ class ExtractionSuite extends ScalexTestBase:
     val cachedFiles = loaded.get
     val annotFile = cachedFiles.values.find(_.relativePath.contains("Annotated.scala")).get
     val oldThing = annotFile.symbols.find(_.name == "OldThing").get
-    assert(oldThing.annotations.contains("deprecated"),
-      s"Annotations should survive roundtrip: ${oldThing.annotations}")
+    assert(
+      oldThing.annotations.contains("deprecated"),
+      s"Annotations should survive roundtrip: ${oldThing.annotations}"
+    )
   }
 
   // ── members ──────────────────────────────────────────────────────────
 
   test("members of trait with abstract defs") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val members = extractMembers(
       workspace.resolve("src/main/scala/com/example/Documented.scala"),
       "PaymentService"
@@ -400,8 +418,7 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("members of class with concrete defs, vals, vars, types") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val members = extractMembers(
       workspace.resolve("src/main/scala/com/example/Documented.scala"),
       "PaymentServiceLive"
@@ -415,8 +432,7 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("members of object") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     val members = extractMembers(
       workspace.resolve("src/main/scala/com/example/UserService.scala"),
       "UserService"
@@ -427,8 +443,7 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("members Scala 2 fallback") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
+    val idx = WorkspaceIndex.load(workspace)
     // UserServiceLive uses Scala 3 syntax — extract members from trait UserService (Scala 2 compatible braces)
     val members = extractMembers(
       workspace.resolve("src/main/scala/com/example/UserService.scala"),
@@ -441,11 +456,19 @@ class ExtractionSuite extends ScalexTestBase:
   // ── members --inherited ──────────────────────────────────────────────
 
   test("members --inherited includes parent members") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val out = new java.io.ByteArrayOutputStream()
+    val idx = WorkspaceIndex.load(workspace)
+    val out = ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("PaymentServiceLive"), CommandContext(idx = idx, workspace = workspace, limit = 50, inherited = true))
+      runCommand(
+        "members",
+        List("PaymentServiceLive"),
+        CommandContext(
+          idx = idx,
+          workspace = workspace,
+          output = OutputOptions(limit = 50),
+          members = MembersOptions(inherited = true)
+        )
+      )
     }
     val output = out.toString
     // PaymentServiceLive should show its own members + inherited from PaymentService
@@ -458,11 +481,19 @@ class ExtractionSuite extends ScalexTestBase:
   }
 
   test("members --inherited dedup: child overrides win") {
-    val idx = WorkspaceIndex(workspace)
-    idx.index()
-    val out = new java.io.ByteArrayOutputStream()
+    val idx = WorkspaceIndex.load(workspace)
+    val out = ByteArrayOutputStream()
     Console.withOut(out) {
-      runCommand("members", List("UserServiceLive"), CommandContext(idx = idx, workspace = workspace, limit = 50, jsonOutput = true, inherited = true))
+      runCommand(
+        "members",
+        List("UserServiceLive"),
+        CommandContext(
+          idx = idx,
+          workspace = workspace,
+          output = OutputOptions(limit = 50, jsonOutput = true),
+          members = MembersOptions(inherited = true)
+        )
+      )
     }
     val output = out.toString
     // JSON output — parse to verify dedup
@@ -522,14 +553,20 @@ class ExtractionSuite extends ScalexTestBase:
     assert(results.nonEmpty, "Should find UserService body")
     val traitBody = results.find(_.sourceText.contains("trait UserService"))
     assert(traitBody.isDefined, s"Should find trait body: ${results.map(_.sourceText.take(30))}")
-    assert(traitBody.get.sourceText.contains("findUser"), s"Trait body should contain findUser: ${traitBody.get.sourceText}")
+    assert(
+      traitBody.get.sourceText.contains("findUser"),
+      s"Trait body should contain findUser: ${traitBody.get.sourceText}"
+    )
   }
 
   test("extractBody with --in owner restriction") {
     val file = workspace.resolve("src/main/scala/com/example/UserService.scala")
     val inLive = extractBody(file, "findUser", Some("UserServiceLive"))
     assert(inLive.nonEmpty, "Should find findUser in UserServiceLive")
-    assert(inLive.forall(_.ownerName == "UserServiceLive"), s"Should only be in UserServiceLive: ${inLive.map(_.ownerName)}")
+    assert(
+      inLive.forall(_.ownerName == "UserServiceLive"),
+      s"Should only be in UserServiceLive: ${inLive.map(_.ownerName)}"
+    )
     // findUser in trait UserService is a Decl.Def (abstract) — should be found with isAbstract=true
     val inTrait = extractBody(file, "findUser", Some("UserService"))
     assert(inTrait.nonEmpty, "Abstract Decl.Def in trait should be found by extractBody")
@@ -801,8 +838,8 @@ class ExtractionSuite extends ScalexTestBase:
       |}
       |""".stripMargin
     val file = workspace.resolve("src/main/scala/com/test/LocalImportTest.scala")
-    java.nio.file.Files.createDirectories(file.getParent)
-    java.nio.file.Files.writeString(file, content)
+    Files.createDirectories(file.getParent)
+    Files.writeString(file, content)
 
     val result = extractImportLines(file)
     assert(result.isDefined, "Should find top-level imports")
@@ -824,18 +861,27 @@ class ExtractionSuite extends ScalexTestBase:
   test("extractMembers includes case class ctor params as vals") {
     val file = workspace.resolve("src/main/scala/com/example/Model.scala")
     val members = extractMembers(file, "User", Some(SymbolKind.Class))
-    assert(members.exists(m => m.name == "id" && m.kind == SymbolKind.Val), s"ctor param id should be a val member: ${members.map(_.name)}")
+    assert(
+      members.exists(m => m.name == "id" && m.kind == SymbolKind.Val),
+      s"ctor param id should be a val member: ${members.map(_.name)}"
+    )
     assert(members.exists(m => m.name == "name" && m.kind == SymbolKind.Val))
   }
 
   test("extractMembersWithSpans excludes ctor params but keeps abstract defs") {
     val modelFile = workspace.resolve("src/main/scala/com/example/Model.scala")
     val userSpans = extractMembersWithSpans(modelFile, "User", Some(SymbolKind.Class))
-    assert(!userSpans.exists(_.member.name == "id"), s"ctor params should not get grep spans: ${userSpans.map(_.member.name)}")
+    assert(
+      !userSpans.exists(_.member.name == "id"),
+      s"ctor params should not get grep spans: ${userSpans.map(_.member.name)}"
+    )
 
     val docFile = workspace.resolve("src/main/scala/com/example/Documented.scala")
     val traitSpans = extractMembersWithSpans(docFile, "PaymentService", Some(SymbolKind.Trait))
-    assert(traitSpans.exists(_.member.name == "processPayment"), s"abstract defs keep their span: ${traitSpans.map(_.member.name)}")
+    assert(
+      traitSpans.exists(_.member.name == "processPayment"),
+      s"abstract defs keep their span: ${traitSpans.map(_.member.name)}"
+    )
   }
 
   test("extractMembersWithSpans agrees with extractMembers on concrete members") {
@@ -844,9 +890,13 @@ class ExtractionSuite extends ScalexTestBase:
     val spans = extractMembersWithSpans(file, "PaymentServiceLive", Some(SymbolKind.Class))
     spans.foreach { s =>
       assert(memberNames.contains(s.member.name), s"span member ${s.member.name} missing from extractMembers")
-      assert(s.startLine <= s.member.line && s.member.line <= s.endLine, s"member line should fall within span for ${s.member.name}")
+      assert(
+        s.startLine <= s.member.line && s.member.line <= s.endLine,
+        s"member line should fall within span for ${s.member.name}"
+      )
     }
     assert(spans.exists(_.member.name == "maxRetries"), "concrete val keeps its span")
     assert(spans.exists(_.member.name == "lastError"), "concrete var keeps its span")
     assert(spans.exists(_.member.name == "TransactionId"), "concrete type alias keeps its span")
   }
+}

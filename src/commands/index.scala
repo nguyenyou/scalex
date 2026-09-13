@@ -1,4 +1,8 @@
-def cmdIndex(args: List[String], ctx: CommandContext): CmdResult =
+package scalex.commands
+
+import scalex.*
+
+def cmdIndex(args: List[String], ctx: CommandContext): CmdResult = {
   val byKind = countByKind(ctx.idx.symbols)
   CmdResult.IndexStats(
     fileCount = ctx.idx.fileCount,
@@ -12,3 +16,4 @@ def cmdIndex(args: List[String], ctx: CommandContext): CmdResult =
     parseFailures = ctx.idx.parseFailures,
     parseFailedFiles = ctx.idx.parseFailedFiles
   )
+}

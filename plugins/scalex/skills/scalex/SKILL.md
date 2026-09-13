@@ -379,7 +379,7 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"What does this package export?"** → `scalex api com.example` — shows symbols imported by other packages, sorted by importer count
 
-**"Too many results / noisy output"** → combine `--no-tests`, `--path compiler/src/`, `--kind class`, `--in-package PKG`, or `search --prefix`/`--exact`. Use `--max-output N` to hard-cap output at N characters on any command
+**"Too many results / noisy output"** → combine `--no-tests`, `--path compiler/src/`, `--kind class`, `--in-package PKG`, or `search --prefix`/`--exact`. Use `--max-output N` to limit result output on any command. Oversized JSON becomes a complete `{"truncated":true,...}` object; truncation metadata is exempt from the budget.
 
 **"I need to look up 3+ symbols"** → use `batch` to load the index once: `echo -e "def Foo\nimpl Foo\nrefs Foo" | scalex batch -w /project`
 
@@ -425,7 +425,9 @@ Most commands are self-explanatory from their name — `scalex def X`, `scalex m
 
 **"Where are the entry points?"** → `scalex entrypoints` — finds `@main`, `def main(...)`, `extends App`, and test suites in one call
 
-**"Output is too large for context window"** → `scalex refs X --max-output 2000` — truncates at 2000 chars with a hint to narrow; works on any command
+**"Output is too large for context window"** → `scalex refs X --max-output 2000` — limits result text to 2000 characters, plus a hint to narrow. With `--json`, oversized output is replaced by valid truncation metadata. Works on any command.
+
+Usage errors exit 2; operational failures (including invalid Git refs) exit 1. With `--json`, failures produce a JSON error object on stdout; text errors go to stderr. Batch mode continues processing lines and returns the highest failure status.
 
 **"I need structured output"** → append `--json` to any command
 
