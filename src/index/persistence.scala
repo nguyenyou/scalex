@@ -14,7 +14,8 @@ import com.google.common.hash.{BloomFilter, Funnels}
 
 object IndexPersistence {
   private val MAGIC = 0x53584458
-  private val VERSION: Byte = 8
+  // Invalidate cached Java parse failures from native images missing validator metadata.
+  private val VERSION: Byte = 9
 
   def indexPath(workspace: Path): Path = workspace.resolve(".scalex").resolve("index.bin")
 
