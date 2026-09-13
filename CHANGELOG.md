@@ -7,6 +7,7 @@
 - Codex CLI and desktop plugin packaging and repository marketplace, sharing the existing skill and binary bootstrap with Claude Code.
 
 ### Fixed
+- Test repositories configure their own Git identity and disable commit signing, so the suite runs on clean CI machines without developer Git settings.
 - Output budgets preserve complete JSON documents, apply to symbol summaries, and count Unicode characters correctly. Oversized JSON returns truncation metadata instead of a broken prefix.
 - CLI usage errors exit 2 and Git failures exit 1, with structured JSON errors when requested. Invalid Git refs no longer look like successful empty diffs.
 - Workspace indexes are fully initialized snapshots, preventing stale lookup tables after refresh.

@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 
 import munit.FunSuite
 import java.nio.file.{Files, Path}
+import java.nio.charset.StandardCharsets.UTF_8
 import scala.jdk.CollectionConverters.*
 
 abstract class ScalexTestBase extends FunSuite {
@@ -522,6 +523,9 @@ abstract class ScalexTestBase extends FunSuite {
 
     // Initialize git repo
     run("git", "init")
+    run("git", "config", "--local", "user.name", "Scalex tests")
+    run("git", "config", "--local", "user.email", "scalex-tests@example.com")
+    run("git", "config", "--local", "commit.gpgsign", "false")
     run("git", "add", ".")
     run("git", "commit", "-m", "init")
   }
@@ -540,9 +544,9 @@ abstract class ScalexTestBase extends FunSuite {
     pb.directory(workspace.toFile)
     pb.redirectErrorStream(true)
     val proc = pb.start()
-    proc.getInputStream.readAllBytes() // drain
+    val output = String(proc.getInputStream.readAllBytes(), UTF_8)
     val exit = proc.waitFor()
-    assert(exit == 0, s"Command failed: ${cmd.mkString(" ")}")
+    assert(exit == 0, s"Command failed: ${cmd.mkString(" ")}\n$output")
   }
 
   protected def captureOut(body: => Unit): String = {
