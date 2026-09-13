@@ -1,6 +1,6 @@
 {
   "name": "scalex",
-  "version": "1.40.0",
+  "version": "1.41.0",
   "description": "Scala/Java code intelligence — find definitions, implementations, references, and explore code without a compiler or build server.",
   "author": {
     "name": "Tu Nguyen"
