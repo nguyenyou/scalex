@@ -4,7 +4,9 @@ import scalex.*
 
 def cmdRefs(args: List[String], ctx: CommandContext): CmdResult =
   requireArg(args, "Usage: scalex refs <symbol>") { symbol =>
-    val targetPkgs = ctx.idx.symbolsByName.getOrElse(symbol.toLowerCase, Nil).map(_.packageName).toSet
+    val targetPkgs = if (ctx.output.jsonOutput || ctx.output.countOnly || ctx.references.topN.isDefined) {
+      Set.empty[String]
+    } else { ctx.idx.symbolsNamed(symbol).map(_.packageName).toSet }
     def filterByCategory(
         grouped: Map[RefCategory, List[Reference]]
     ): (filtered: Map[RefCategory, List[Reference]], stderrHint: Option[String]) =

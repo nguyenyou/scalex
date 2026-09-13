@@ -5,11 +5,11 @@
 ### Native parsing parity and measured query performance
 
 - [x] Reproduce and fix native-only Java parse failures, with a native regression check (492 JVM tests; full-workspace native/JVM parity)
-- [ ] Reuse deserialized file paths and avoid full name-map construction for isolated lookups
-- [ ] Reuse reference confidence, sort keys, and classification patterns without changing results
-- [ ] Measure complete requests and command/render phases without double-counting nested timings
-- [ ] Document opt-in native heap tuning; keep portable defaults unchanged
-- [ ] Validate native/JVM parity, tests, and separate before/after performance measurements
+- [x] Reuse deserialized file paths and avoid full name-map construction for simple isolated lookups; preserve reusable indexes for qualified/composite/batch queries
+- [x] Reuse reference confidence, sort keys, and classification patterns without changing results
+- [x] Measure complete requests and command/render phases without double-counting nested timings
+- [x] Document opt-in native heap tuning; keep portable defaults unchanged
+- [x] Validate native/JVM parity, 496 tests, and separate before/after performance measurements: definition latency −47%, references −46%, unchanged cache size, cold indexing within the 5% budget
 
 ### Architecture and reliability cleanup
 

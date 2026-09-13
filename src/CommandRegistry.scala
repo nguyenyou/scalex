@@ -10,15 +10,23 @@ case class CommandSpec(
     needsBlooms: Boolean = false,
     workspaceOnly: Boolean = false,
     defaultNoTests: Boolean = false,
-    needsIndex: Boolean = true
+    needsIndex: Boolean = true,
+    reuseNameIndex: Boolean = true
 )
 
 val commandSpecs: List[CommandSpec] = List(
   CommandSpec("search", "<query>", "Search symbols by name", Some(cmdSearch)),
-  CommandSpec("def", "<symbol>", "Where is this symbol defined?", Some(cmdDef)),
+  CommandSpec("def", "<symbol>", "Where is this symbol defined?", Some(cmdDef), reuseNameIndex = false),
   CommandSpec("impl", "<trait>", "Who extends this trait/class?", Some(cmdImpl)),
-  CommandSpec("refs", "<symbol>", "Who uses this symbol?", Some(cmdRefs), needsBlooms = true),
-  CommandSpec("imports", "<symbol>", "Who imports this symbol?", Some(cmdImports), needsBlooms = true),
+  CommandSpec("refs", "<symbol>", "Who uses this symbol?", Some(cmdRefs), needsBlooms = true, reuseNameIndex = false),
+  CommandSpec(
+    "imports",
+    "<symbol>",
+    "Who imports this symbol?",
+    Some(cmdImports),
+    needsBlooms = true,
+    reuseNameIndex = false
+  ),
   CommandSpec("members", "<symbol>", "What's inside this class/trait?", Some(cmdMembers)),
   CommandSpec("doc", "<symbol>", "Show scaladoc for a symbol", Some(cmdDoc)),
   CommandSpec("overview", "", "Codebase summary", Some(cmdOverview), workspaceOnly = true, defaultNoTests = true),

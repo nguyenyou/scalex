@@ -4,6 +4,23 @@ import scalex.*
 
 import CmdResult.*
 import java.nio.file.Path
+import scala.collection.mutable
+
+private def referenceDetails(
+    symbol: String,
+    targetPkgs: Set[String],
+    ctx: CommandContext
+): Reference => (relativePath: String, confidence: Confidence) = {
+  val byFile = mutable.HashMap.empty[Path, (relativePath: String, confidence: Confidence)]
+  ref =>
+    byFile.getOrElseUpdate(
+      ref.file,
+      (
+        relativePath = ctx.workspace.relativize(ref.file).toString,
+        confidence = ctx.idx.resolveConfidence(ref, symbol, targetPkgs)
+      )
+    )
+}
 
 private[scalex] def renderRefList(r: CmdResult.RefList, ctx: CommandContext): Unit = {
   r.stderrHint.foreach(System.err.println)
@@ -37,9 +54,13 @@ private[scalex] def renderCategorizedRefs(r: CmdResult.CategorizedRefs, ctx: Com
     val total = r.grouped.values.map(_.size).sum
     val suffix = timedOutSuffix(r.timedOut)
     println(s"""References to "${r.symbol}" — $total found:$suffix""")
-    // Resolve each ref's confidence once, then group per confidence level
+    // Confidence is file-scoped; sort keys are calculated once per reference.
+    val details = referenceDetails(r.symbol, r.targetPkgs, ctx)
     val annotated = r.grouped.toList.flatMap { (cat, refs) =>
-      refs.map(ref => (cat = cat, ref = ref, conf = ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
+      refs.map { ref =>
+        val (path, conf) = details(ref)
+        (cat = cat, ref = ref, conf = conf, sortKey = (path = path, line = ref.line))
+      }
     }
     Confidence.values.foreach { conf =>
       val confRefs = annotated.filter(_.conf == conf)
@@ -48,7 +69,7 @@ private[scalex] def renderCategorizedRefs(r: CmdResult.CategorizedRefs, ctx: Com
         val byCat = confRefs.groupBy(_.cat)
         refCategoryOrder.foreach { cat =>
           byCat.get(cat).filter(_.nonEmpty).foreach { entries =>
-            val sorted = entries.sortBy(e => (path = ctx.workspace.relativize(e.ref.file).toString, line = e.ref.line))
+            val sorted = entries.sortBy(_.sortKey)
             println(s"\n    ${cat.toString}:")
             renderShown(sorted, ctx.output.limit, "      ")(e => println(s"    ${referenceTextFormatter(ctx)(e.ref)}"))
           }
@@ -66,12 +87,14 @@ private[scalex] def renderFlatRefs(r: CmdResult.FlatRefs, ctx: CommandContext): 
   } else {
     val suffix = timedOutSuffix(r.timedOut)
     println(s"""References to "${r.symbol}" — ${r.refs.size} found:$suffix""")
-    val annotated = r.refs.map(ref => (ref = ref, conf = ctx.idx.resolveConfidence(ref, r.symbol, r.targetPkgs)))
-    val sorted = annotated.sortBy(e =>
-      (confidence = e.conf.ordinal, path = ctx.workspace.relativize(e.ref.file).toString, line = e.ref.line)
-    )
+    val details = referenceDetails(r.symbol, r.targetPkgs, ctx)
+    val annotated = r.refs.map { ref =>
+      val (path, conf) = details(ref)
+      (ref = ref, conf = conf, sortKey = (confidence = conf.ordinal, path = path, line = ref.line))
+    }
+    val sorted = annotated.sortBy(_.sortKey)
     var lastConf: Option[Confidence] = None
-    sorted.take(ctx.output.limit).foreach { (ref, conf) =>
+    sorted.take(ctx.output.limit).foreach { (ref, conf, _) =>
       if (!lastConf.contains(conf)) {
         println(s"\n  [${conf.label}]")
         lastConf = Some(conf)

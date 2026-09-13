@@ -118,6 +118,12 @@ Usage failures exit 2; operational failures exit 1. JSON failures are JSON objec
 
 Production dependencies are Scalameta, Guava, and JavaParser. Tests additionally use MUnit and ujson. Keep exact versions in `build.mill` rather than duplicating them in this guide.
 
+### Native performance measurements
+
+Use `hyperfine` for end-to-end native latency, including process startup. `--timings` reports exclusive phase durations (nested work is subtracted per thread), including `command` and `render`, plus the elapsed `request-total`. The request total includes flag parsing and otherwise uninstrumented work, but excludes runtime startup before the application entry point. Concurrent phases may overlap; do not add their durations to infer wall time. Each batch query gets its own request total after the initial shared index load. Measure cold indexes by removing only a backed-up `index.bin`, and restore the original cache afterward. Keep private workspace reports out of tracked files.
+
+For repeated queries, use `batch` to share index loading and lookup tables. For large full rebuilds, test `./scalex -Xms1g -Xmx4g index /path/to/workspace` as an opt-in heap configuration. It can reduce native Serial GC pauses at the cost of higher resident memory. Compare both latency and peak RSS against defaults on the target machine; do not apply these settings globally to short queries or memory-constrained environments. The portable default heap and worker count remain unchanged.
+
 ## Plugin structure
 
 ```

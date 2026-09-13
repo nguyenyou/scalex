@@ -347,5 +347,5 @@ Normally not needed — every command auto-reindexes changed files. Use after ma
 | `--json` | Output results as JSON — structured output for programmatic parsing |
 | `--max-output N` | Limit result output to N characters (0 = unlimited); oversized JSON becomes valid truncation metadata; metadata is exempt from the budget |
 | `--in-package PKG` | Filter results to files whose package matches PKG prefix |
-| `--timings` | Print per-phase timing breakdown to stderr |
+| `--timings` | Print exclusive phase timings, command/render work, and elapsed request total to stderr (runtime startup excluded) |
 | `--version` | Print version and exit |

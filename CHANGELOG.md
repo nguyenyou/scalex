@@ -16,6 +16,8 @@
 - `grep --in <owner>`: an unreadable file no longer discards matches already found in other files defining the same owner; the file is skipped instead
 
 ### Changed
+- Simple isolated definition/import/reference lookups avoid building an entire name map; qualified resolution, composite commands, and batch mode retain reusable indexes. Cache loading resolves each file path once; reference rendering reuses file confidence and sort keys, and classification compiles patterns once per query. Index contents and result ordering are unchanged.
+- `--timings` reports exclusive nested phases, command execution, rendering, and elapsed request totals, including failed requests. Native heap tuning remains opt-in and is documented with its memory tradeoff.
 - Upgrade Scala to 3.9.0, Mill to 1.1.9, Scalameta to 4.17.4, Guava to 33.7.1-jre, MUnit to 1.3.6, and Scalafmt to 3.11.5. JavaParser 3.28.2 and test-only ujson 4.4.3 are current. GraalVM moves to 24.0.2 on all platforms, the newest release that supports macOS Intel. CI actions use updated, verified commit pins.
 - Application code now uses explicit `scalex` packages for indexing, extraction, output, and commands. Command metadata has one registry, options are grouped by purpose, and contributor instructions share one development guide.
 - `ast-pattern --json` now emits the same symbol object as `search`/`def` (gains `parents`, `typeParamParents`, and `annotations` fields) — one JSON shape for all symbol-returning commands
