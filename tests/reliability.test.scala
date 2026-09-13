@@ -3,9 +3,24 @@ package scalex
 import scalex.index.*
 
 import java.nio.file.Files
+import java.nio.charset.StandardCharsets.UTF_8
 import clibase.OutputBudget
 
 class ReliabilitySuite extends ScalexTestBase {
+  test("test repositories configure a local identity and disable commit signing") {
+    val expectedSettings = Map(
+      "user.name" -> "Scalex tests",
+      "user.email" -> "scalex-tests@example.com",
+      "commit.gpgsign" -> "false"
+    )
+    expectedSettings.foreach { (key, expected) =>
+      val process = ProcessBuilder("git", "config", "--local", "--get", key).directory(workspace.toFile).start()
+      val value = String(process.getInputStream.readAllBytes(), UTF_8).trim
+      assertEquals(process.waitFor(), 0, s"Missing local Git setting: $key")
+      assertEquals(value, expected)
+    }
+  }
+
   test("JSON budgets emit a valid truncation response") {
     val idx = WorkspaceIndex.load(workspace)
     val out = captureOut {

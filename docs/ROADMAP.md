@@ -11,9 +11,10 @@
 - [x] Separate query filters, output options, and command options; centralize command metadata
 - [x] Organize Git, persistence, scanning, extraction, models, and rendering by responsibility with explicit ownership
 - [x] Strengthen regression and process-level tests; use a standard test-only JSON parser
+- [x] Make temporary test repositories independent of global Git identity and signing settings
 - [x] Run tests, fatal-warning compilation, and shared skill validation in PR CI
 - [x] Consolidate contributor/build documentation and normalize Scala brace/import conventions
-- [x] Validate all 490 tests, fatal-warning compilation, formatting, and native CLI smoke checks
+- [x] Validate all 491 tests, fatal-warning compilation, formatting, and native CLI smoke checks
 - [ ] Benchmark the latest build separately: cold index, warm index, query latency, and cache size
 
 - [x] Codex CLI and desktop plugin packaging, marketplace installation, and shared skill validation (local install verified with Codex CLI 0.153.4)
