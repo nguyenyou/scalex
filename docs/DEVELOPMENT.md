@@ -169,6 +169,7 @@ When adding or changing commands/flags:
 
 - **Guava group ID**: `com.google.guava:guava`, NOT `com.google.common:guava`
 - **GraalVM native image**: Guava needs `--initialize-at-run-time=com.google.common.hash.Striped64,com.google.common.hash.LongAdder,com.google.common.hash.BloomFilter,com.google.common.hash.BloomFilterStrategies` (see `build-native.sh`)
+- **JavaParser native validation**: `resources/META-INF/native-image/scalex/reflect-config.json` retains the five AST fields read reflectively by the non-empty-list validator. The metadata test checks coverage against the installed JavaParser version; `bash scripts/check-native.sh <binary>` exercises those constructs in the compiled executable. PR CI and every release platform run this check.
 - **No `.par` in Scala 3**: Use `list.asJava.parallelStream()` instead of `list.par`
 - **No non-local `return` in Scala 3**: `return` inside lambdas/closures is deprecated. Use `scala.util.boundary` + `boundary.break` instead. This includes `return` inside `.foreach`, `.map`, `try`/`catch` blocks inside lambdas, etc.
 - **Scalameta `Pkg.children` wraps stats in `PkgBody`**: Use `pkg.stats` to access direct children (Import, Defn.Class, etc.), not `pkg.children` which nests them inside a `PkgBody` wrapper node.

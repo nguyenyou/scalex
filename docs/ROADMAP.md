@@ -2,6 +2,15 @@
 
 ## Pending
 
+### Native parsing parity and measured query performance
+
+- [x] Reproduce and fix native-only Java parse failures, with a native regression check (492 JVM tests; full-workspace native/JVM parity)
+- [ ] Reuse deserialized file paths and avoid full name-map construction for isolated lookups
+- [ ] Reuse reference confidence, sort keys, and classification patterns without changing results
+- [ ] Measure complete requests and command/render phases without double-counting nested timings
+- [ ] Document opt-in native heap tuning; keep portable defaults unchanged
+- [ ] Validate native/JVM parity, tests, and separate before/after performance measurements
+
 ### Architecture and reliability cleanup
 
 - [x] Upgrade Scala, Mill, libraries, and formatting tools to the latest stable releases and validate compatibility
@@ -15,7 +24,7 @@
 - [x] Run tests, fatal-warning compilation, and shared skill validation in PR CI
 - [x] Consolidate contributor/build documentation and normalize Scala brace/import conventions
 - [x] Validate all 491 tests, fatal-warning compilation, formatting, and native CLI smoke checks
-- [ ] Benchmark the latest build separately: cold index, warm index, query latency, and cache size
+- [x] Benchmark the latest build separately: cold index, warm index, query latency, cache size, CPU/allocation profiles, and native GC
 
 - [x] Codex CLI and desktop plugin packaging, marketplace installation, and shared skill validation (local install verified with Codex CLI 0.153.4)
 - [ ] Publish Codex marketplace changes and verify installation from GitHub; optionally submit to OpenAI's public plugin directory

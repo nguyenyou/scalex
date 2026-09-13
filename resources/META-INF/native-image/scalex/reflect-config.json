@@ -1,0 +1,22 @@
+[
+  {
+    "name": "com.github.javaparser.ast.body.FieldDeclaration",
+    "fields": [{ "name": "variables" }]
+  },
+  {
+    "name": "com.github.javaparser.ast.expr.ArrayCreationExpr",
+    "fields": [{ "name": "levels" }]
+  },
+  {
+    "name": "com.github.javaparser.ast.expr.VariableDeclarationExpr",
+    "fields": [{ "name": "variables" }]
+  },
+  {
+    "name": "com.github.javaparser.ast.type.IntersectionType",
+    "fields": [{ "name": "elements" }]
+  },
+  {
+    "name": "com.github.javaparser.ast.type.UnionType",
+    "fields": [{ "name": "elements" }]
+  }
+]

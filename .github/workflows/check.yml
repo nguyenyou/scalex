@@ -28,3 +28,7 @@ jobs:
         run: ./mill --no-daemon mill.scalalib.scalafmt/checkFormatAll '__.sources'
       - name: Validate shared skill
         run: ./scripts/check-skill-frontmatter.sh
+      - name: Check native Java parsing
+        run: |
+          ./mill --no-daemon nativeCopy --dest ./scalex-check
+          bash scripts/check-native.sh ./scalex-check

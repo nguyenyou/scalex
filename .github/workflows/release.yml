@@ -42,6 +42,7 @@ jobs:
 
       - name: Test binary
         run: |
+          bash scripts/check-native.sh ./${{ matrix.artifact }}
           ./${{ matrix.artifact }} help
           ./${{ matrix.artifact }} index .
           ./${{ matrix.artifact }} search . Scalex
