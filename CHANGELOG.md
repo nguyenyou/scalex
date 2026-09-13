@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.41.0] — 2026-09-13
+
 ### Documentation
 - Rebuild the shared agent skill around query selection and evidence interpretation, with detailed syntax in one command reference. Clarify cache freshness after unstaged edits, textual reference and test-mention limits, batch tokenization, and when ordinary text search is appropriate.
 
