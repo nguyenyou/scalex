@@ -131,7 +131,16 @@ case class OverrideInfo(
 
 case class ScopeInfo(name: String, kind: String, line: Int)
 
-case class DiffSymbol(name: String, kind: SymbolKind, file: String, line: Int, packageName: String, signature: String)
+case class DiffSymbol(
+    name: String,
+    kind: SymbolKind,
+    file: String,
+    line: Int,
+    packageName: String,
+    signature: String,
+    contentHash: String = "",
+    owner: List[String] = Nil
+)
 
 case class TestCaseInfo(name: String, line: Int)
 case class TestSuiteInfo(name: String, file: Path, line: Int, tests: List[TestCaseInfo], dynamicSites: Int = 0)

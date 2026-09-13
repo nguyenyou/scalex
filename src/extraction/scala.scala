@@ -144,9 +144,17 @@ case class RawSymbol(
     annotations: List[String] = Nil
 )
 
-def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: String) = {
+def extractRawSymbols(
+    tree: Tree,
+    onSymbol: (RawSymbol, Tree) => Unit = (_, _) => ()
+): (symbols: List[RawSymbol], packageName: String) = {
   val pkg = tree.children.collectFirst { case p: Pkg => p.ref.toString() }.getOrElse("")
   val buf = mutable.ListBuffer.empty[RawSymbol]
+
+  def add(t: Tree, symbol: RawSymbol): Unit = {
+    buf += symbol
+    onSymbol(symbol, t)
+  }
 
   // One path for every template-carrying definition (class/trait/object/enum)
   def addTypeDefn(
@@ -160,7 +168,7 @@ def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: Strin
   ): Unit = {
     val (parents, tpParents) = extractParents(templ)
     val sig = buildSignature(name, keyword, parents, tparams)
-    buf += RawSymbol(name, kind, t.pos.startLine + 1, parents, tpParents, sig, extractAnnotations(mods))
+    add(t, RawSymbol(name, kind, t.pos.startLine + 1, parents, tpParents, sig, extractAnnotations(mods)))
   }
 
   def visit(t: Tree): Unit = t match {
@@ -201,44 +209,47 @@ def extractRawSymbols(tree: Tree): (symbols: List[RawSymbol], packageName: Strin
     case d: Defn.Given =>
       if (d.name.value.nonEmpty) {
         val annots = extractAnnotations(d.mods)
-        buf += RawSymbol(
-          d.name.value,
-          SymbolKind.Given,
-          d.pos.startLine + 1,
-          Nil,
-          Nil,
-          s"given ${d.name.value}",
-          annots
+        add(
+          t,
+          RawSymbol(
+            d.name.value,
+            SymbolKind.Given,
+            d.pos.startLine + 1,
+            Nil,
+            Nil,
+            s"given ${d.name.value}",
+            annots
+          )
         )
       }
     case d: Defn.GivenAlias =>
       if (d.name.value.nonEmpty) {
         val sig = s"given ${d.name.value}: ${d.decltpe.toString()}"
         val annots = extractAnnotations(d.mods)
-        buf += RawSymbol(d.name.value, SymbolKind.Given, d.pos.startLine + 1, Nil, Nil, sig, annots)
+        add(t, RawSymbol(d.name.value, SymbolKind.Given, d.pos.startLine + 1, Nil, Nil, sig, annots))
       }
     case d: Defn.Type =>
       val sig = s"type ${d.name.value} = ${d.body.toString().take(60)}"
       val annots = extractAnnotations(d.mods)
-      buf += RawSymbol(d.name.value, SymbolKind.Type, d.pos.startLine + 1, Nil, Nil, sig, annots)
+      add(t, RawSymbol(d.name.value, SymbolKind.Type, d.pos.startLine + 1, Nil, Nil, sig, annots))
     case d: Defn.Def =>
       val params = formatParamClauses(d.paramClauses)
       val ret = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
       val sig = s"def ${d.name.value}$params$ret"
       val annots = extractAnnotations(d.mods)
-      buf += RawSymbol(d.name.value, SymbolKind.Def, d.pos.startLine + 1, Nil, Nil, sig, annots)
+      add(t, RawSymbol(d.name.value, SymbolKind.Def, d.pos.startLine + 1, Nil, Nil, sig, annots))
     case d: Defn.Val =>
       val annots = extractAnnotations(d.mods)
       patVarNames(d.pats).foreach { name =>
         val tpe = d.decltpe.map(t => s": ${t.toString()}").getOrElse("")
-        buf += RawSymbol(name, SymbolKind.Val, d.pos.startLine + 1, Nil, Nil, s"val $name$tpe", annots)
+        add(t, RawSymbol(name, SymbolKind.Val, d.pos.startLine + 1, Nil, Nil, s"val $name$tpe", annots))
       }
     case d: Defn.ExtensionGroup =>
       val recv = d.paramClauses.headOption
         .flatMap(_.values.headOption)
         .map(p => s"(${p.name.value}: ${p.decltpe.map(_.toString()).getOrElse("?")})")
         .getOrElse("")
-      buf += RawSymbol("<extension>", SymbolKind.Extension, d.pos.startLine + 1, Nil, Nil, s"extension $recv")
+      add(t, RawSymbol("<extension>", SymbolKind.Extension, d.pos.startLine + 1, Nil, Nil, s"extension $recv"))
     case _ =>
   }
 

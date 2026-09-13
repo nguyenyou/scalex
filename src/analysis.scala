@@ -6,6 +6,9 @@ import scalex.extraction.*
 import scala.meta.*
 import scala.collection.mutable
 import java.nio.file.Path
+import java.nio.charset.StandardCharsets.UTF_8
+import java.security.MessageDigest
+import java.util.HexFormat
 
 // ── Hierarchy building ──────────────────────────────────────────────────────
 
@@ -182,8 +185,33 @@ def extractSymbolsFromSource(source: String, filePath: String): List[DiffSymbol]
   parseSource(source, filePath) match {
     case None       => Nil
     case Some(tree) =>
-      val (rawSymbols, pkg) = extractRawSymbols(tree)
-      rawSymbols.map(r => DiffSymbol(r.name, r.kind, filePath, r.line, pkg, r.signature))
+      val details = mutable.ListBuffer.empty[(hash: String, owner: List[String])]
+      val digest = MessageDigest.getInstance("SHA-256")
+      val (rawSymbols, pkg) = extractRawSymbols(
+        tree,
+        (_, declaration) => {
+          val owners = mutable.ListBuffer.empty[String]
+          var parent = declaration.parent
+          while (parent.nonEmpty) {
+            parent.get match {
+              case d: Defn.Class  => owners += s"class:${d.name.value}"
+              case d: Defn.Trait  => owners += s"trait:${d.name.value}"
+              case d: Defn.Object => owners += s"object:${d.name.value}"
+              case d: Defn.Enum   => owners += s"enum:${d.name.value}"
+              case d: Pkg.Object  => owners += s"package-object:${d.name.value}"
+              case _              =>
+            }
+            parent = parent.get.parent
+          }
+          details += ((
+            hash = HexFormat.of().formatHex(digest.digest(declaration.pos.text.getBytes(UTF_8))),
+            owner = owners.toList.reverse
+          ))
+        }
+      )
+      rawSymbols.lazyZip(details).map { (r, detail) =>
+        DiffSymbol(r.name, r.kind, filePath, r.line, pkg, r.signature, detail.hash, detail.owner)
+      }
   }
 
 // ── AST pattern search ──────────────────────────────────────────────────────

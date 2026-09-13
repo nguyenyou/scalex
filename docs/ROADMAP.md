@@ -2,6 +2,12 @@
 
 ## Pending
 
+### Symbol diff correctness (#366)
+
+- [x] Reproduce line-shift false positives, missed body edits, ignored path filters, and the silent file cap in regression tests; also reproduce collapsed overloads and same-named methods in different owners
+- [x] Compare declaration content independently of source position, preserve owners and overloads, apply file filters before analysis, and limit display rather than examined files
+- [x] Validate nine diff regressions, all 505 tests, native issue reproductions, and performance: unchanged 41,121,631-byte index, cold indexing +2.3% within budget, warm indexing −4.5%, definition −2.1%, references +1.2% within observed run variability
+
 ### Shared skill redesign
 
 - [x] Replace the long command tutorial with concise query selection and evidence interpretation; consolidate detailed syntax in the command reference and validate shared packaging (frontmatter, links, 496 tests, and benchmark compilation)

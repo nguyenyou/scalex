@@ -300,7 +300,7 @@ scalex overrides <method>       Find override implementations   (aka: find overr
 scalex explain <symbol>         Composite one-shot summary      (aka: explain symbol)
 scalex deps <symbol>            Show symbol dependencies        (aka: dependency graph)
 scalex context <file:line>      Show enclosing scopes at line   (aka: scope chain)
-scalex diff <git-ref>           Symbol-level diff vs git ref    (aka: symbol diff)
+scalex diff <git-ref>           Declaration/body changes vs git ref (aka: symbol diff)
 scalex ast-pattern              Structural AST search           (aka: pattern search)
 scalex tests                    List test cases structurally    (aka: find tests)
 scalex coverage <symbol>        Is this symbol tested?          (aka: test coverage)

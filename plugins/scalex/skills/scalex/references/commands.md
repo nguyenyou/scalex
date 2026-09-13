@@ -510,13 +510,20 @@ Context at src/main/scala/App.scala:42:
 
 <a id="diff"></a>
 
-### `scalex diff <git-ref>` — symbol-level diff
+### `scalex diff <git-ref> [--path PREFIX] [--exclude-path PREFIX] [--no-tests] [--limit N]` — symbol-level diff
 
-Shows added/removed/modified symbols compared to a git ref. Parses current source + `git show ref:path` for old source, compares symbol lists.
+Shows added/removed/modified Scala declarations compared to a Git ref. Parses working-tree source and `git show ref:path` directly; unstaged edits are included without relying on cached symbol data.
+
+`Modified` compares the complete declaration text (including its body) and package, independently of line numbers. Moving an unchanged declaration does not mark it modified. Formatting or comments inside a declaration count as changes; this is a source-text comparison, not a semantic diff. An edited method also changes its enclosing class/object declaration, while untouched sibling methods remain unchanged.
+
+Same-named declarations are matched within their enclosing types. Unchanged overloads are matched first, then changed overloads prefer the same signature. Ambiguous simultaneous signature changes use source order; this is not compiler-level symbol identity.
+
+`--path`, `--exclude-path`, and `--no-tests` filter files before analysis and the changed-file count. Every matching changed file is examined. `--limit` only limits displayed symbols per added/removed/modified group; use `--limit 0` for complete groups. This command describes supported declarations, so use Git diff to review changes outside that scope.
 
 ```bash
 scalex diff HEAD~1                          # changes since last commit
 scalex diff main                            # changes since main branch
+scalex diff HEAD --path src/ --limit 0       # all declaration changes under src/
 ```
 ```
 Symbol changes compared to HEAD~1 (3 files changed):
