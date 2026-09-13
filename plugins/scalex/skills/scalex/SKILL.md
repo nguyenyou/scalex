@@ -67,6 +67,8 @@ The current cache compares Git index OIDs, not working-tree content hashes. Unst
 
 After editing, verify affected code directly. `index` reports the normally loaded index; it does **not** force a clean rebuild. Do not stage changes or delete caches merely to make a query work. Use the project's compile/test workflow to validate code changes.
 
+`diff <ref>` reads current source and the Git ref directly, including unstaged edits. It reports declaration-text changes, including bodies, rather than semantic equivalence; see the [diff reference](references/commands.md#diff) for scope and display limits.
+
 ## Several independent lookups
 
 Use `batch` to share one index load when several queries are already known:

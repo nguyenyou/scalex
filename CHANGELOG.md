@@ -10,6 +10,7 @@
 - Codex CLI and desktop plugin packaging and repository marketplace, sharing the existing skill and binary bootstrap with Claude Code.
 
 ### Fixed
+- `diff` compares declaration source text, including bodies, instead of line numbers: leading line shifts no longer mark unchanged declarations modified, and same-line-count body edits are detected. Preserve overloaded methods and same-named declarations in different owners. File filters apply before analysis; display limits no longer silently cap the number of examined files.
 - Native Java parsing retains the five AST fields inspected by JavaParser's validator. Classes with fields, local variables, arrays, intersection casts, and multi-catch types now parse like the JVM build. Existing indexes rebuild once to discard previously cached parse failures.
 - Test repositories configure their own Git identity and disable commit signing, so the suite runs on clean CI machines without developer Git settings.
 - Output budgets preserve complete JSON documents, apply to symbol summaries, and count Unicode characters correctly. Oversized JSON returns truncation metadata instead of a broken prefix.
