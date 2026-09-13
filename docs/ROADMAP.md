@@ -2,6 +2,12 @@
 
 ## Pending
 
+### Release 1.41.0
+
+- [x] Prepare the dated changelog and application version for the release PR
+- [ ] Merge the release PR, then tag and publish native binaries
+- [ ] Update plugin versions and checksums from the published release assets
+
 ### Faster PR checks
 
 - [x] Cache dependency downloads and Mill build outputs with toolchain-aware keys, preserving all test and native checks
