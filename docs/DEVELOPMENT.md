@@ -124,6 +124,12 @@ Use `hyperfine` for end-to-end native latency, including process startup. `--tim
 
 For repeated queries, use `batch` to share index loading and lookup tables. For large full rebuilds, test `./scalex -Xms1g -Xmx4g index /path/to/workspace` as an opt-in heap configuration. It can reduce native Serial GC pauses at the cost of higher resident memory. Compare both latency and peak RSS against defaults on the target machine; do not apply these settings globally to short queries or memory-constrained environments. The portable default heap and worker count remain unchanged.
 
+## PR check caching
+
+The `Check` workflow caches Coursier dependencies, the Mill launcher, and the `out/` build directory. Cache keys separate operating systems and CPU architectures and include the launcher, build definition, formatter configuration, and check workflow. Build-output keys also include production sources, tests, and resources; a matching toolchain prefix allows Mill to reuse unchanged tasks across source edits.
+
+Every check still runs on cache hits. Mill revalidates task inputs before reusing compiled classes or a native image; test commands, formatting, skill validation, and the native smoke script are invoked each time. Documentation-only changes can reuse the compiled native image. Cache misses and eviction fall back to normal builds. Bump the `deps-v1` or `mill-out-v1` prefix to discard incompatible cache layouts. Release builds use their separate uncached workflow.
+
 ## Plugin structure
 
 ```

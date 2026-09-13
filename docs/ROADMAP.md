@@ -2,6 +2,11 @@
 
 ## Pending
 
+### Faster PR checks
+
+- [x] Cache dependency downloads and Mill build outputs with toolchain-aware keys, preserving all test and native checks
+- [ ] Validate cold and restored-cache runs and compare GitHub Actions timings
+
 ### Symbol diff correctness (#366)
 
 - [x] Reproduce line-shift false positives, missed body edits, ignored path filters, and the silent file cap in regression tests; also reproduce collapsed overloads and same-named methods in different owners
