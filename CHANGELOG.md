@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Documentation
+- Rebuild the shared agent skill around query selection and evidence interpretation, with detailed syntax in one command reference. Clarify cache freshness after unstaged edits, textual reference and test-mention limits, batch tokenization, and when ordinary text search is appropriate.
+
 ### Added
 - PR checks run the test suite, benchmark compilation, and shared skill validation.
 - Codex CLI and desktop plugin packaging and repository marketplace, sharing the existing skill and binary bootstrap with Claude Code.

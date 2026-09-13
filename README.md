@@ -311,7 +311,7 @@ scalex graph --render "A->B"   Render directed graph as ASCII/Unicode art
 scalex graph --parse           Parse ASCII diagram from stdin into boxes+edges
 ```
 
-All commands support `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--in-package PKG`, `--max-output N`, and `--limit N` (0 = unlimited). See the full [command reference and options](plugins/scalex/skills/scalex/SKILL.md) for detailed usage, examples, and all flags.
+Common options include `--json`, `--path PREFIX`, `--exclude-path PREFIX`, `--no-tests`, `--in-package PKG`, `--max-output N`, and `--limit N` (0 = unlimited); applicability varies by command. See the full [command reference and options](plugins/scalex/skills/scalex/references/commands.md) for detailed usage, examples, and flags, or the [agent skill](plugins/scalex/skills/scalex/SKILL.md) for query selection and interpretation.
 
 ## What Makes It Coding-Agent-Friendly
 
