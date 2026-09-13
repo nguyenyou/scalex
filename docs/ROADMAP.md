@@ -2,6 +2,10 @@
 
 ## Pending
 
+### Shared skill redesign
+
+- [x] Replace the long command tutorial with concise query selection and evidence interpretation; consolidate detailed syntax in the command reference and validate shared packaging (frontmatter, links, 496 tests, and benchmark compilation)
+
 ### Native parsing parity and measured query performance
 
 - [x] Reproduce and fix native-only Java parse failures, with a native regression check (492 JVM tests; full-workspace native/JVM parity)

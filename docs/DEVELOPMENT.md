@@ -162,10 +162,10 @@ Marketplace catalogs: Claude Code uses `.claude-plugin/marketplace.json`; Codex 
 When adding or changing commands/flags:
 - Flags: declare once in `src/flags.scala` (spellings, value shape, default, help text) and add to the `scalexFlags` registry — the parser and the help `Options:` section derive from it automatically. Wire the value into `CommandContext` via `flagsToContext` in the same file. Registry order = help display order.
 - Commands: add the handler under `src/commands/` and register it once in `src/CommandRegistry.scala`. Help, dispatch, workspace defaults, and bloom/index requirements derive from that metadata.
-- Update `plugins/scalex/skills/scalex/SKILL.md` (commands, options table, common workflows, description frontmatter) and `plugins/scalex/skills/scalex/references/commands.md` (command signature, description, examples, options table). Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
+- Keep detailed command signatures, examples, and options in `plugins/scalex/skills/scalex/references/commands.md`. Update `plugins/scalex/skills/scalex/SKILL.md` when query selection, interpretation, or invocation guidance changes; do not duplicate the command manual there. Description must be double-quoted YAML and under 1024 chars (for GitHub Copilot CLI compatibility). **Always run `./scripts/check-skill-frontmatter.sh` after editing SKILL.md** to validate
 - Update `docs/ROADMAP.md`
 - Update `CHANGELOG.md`
-- Update `README.md` (commands block, Coding-Agent-Friendly Features, "Use it" examples). README does NOT duplicate the options table — it links to SKILL.md
+- Update `README.md` (commands block, Coding-Agent-Friendly Features, "Use it" examples). README does NOT duplicate the options table — it links to the command reference
 - Update `site/index.html` (command grid, command count heading)
 
 ## Gotchas
