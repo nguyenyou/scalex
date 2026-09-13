@@ -5,8 +5,9 @@
 ### Release 1.41.0
 
 - [x] Prepare the dated changelog and application version for the release PR
-- [ ] Merge the release PR, then tag and publish native binaries
-- [ ] Update plugin versions and checksums from the published release assets
+- [x] Merge the release PR, then tag and publish native binaries
+- [x] Update plugin versions and checksums from the published release assets
+- [ ] Fix combined release checksum generation: the current path-stripping command also removes hashes; individual `.sha256` assets are valid
 
 ### Faster PR checks
 
