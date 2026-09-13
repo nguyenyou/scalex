@@ -1,3 +1,8 @@
+package scalex
+
+import scalex.index.*
+import scalex.extraction.*
+
 // Excluded from the main Mill module; run with: ./mill bench.run <bench> <workspace>
 
 import java.nio.file.{Files, Path}
@@ -5,25 +10,36 @@ import scala.jdk.CollectionConverters.*
 
 // ── Microbenchmark harness ─────────────────────────────────────────────────
 
-case class BenchResult(name: String, warmupRuns: Int, measuredRuns: Int,
-                       meanMs: Double, medianMs: Double, p99Ms: Double, stddevMs: Double, minMs: Double, maxMs: Double)
+case class BenchResult(
+    name: String,
+    warmupRuns: Int,
+    measuredRuns: Int,
+    meanMs: Double,
+    medianMs: Double,
+    p99Ms: Double,
+    stddevMs: Double,
+    minMs: Double,
+    maxMs: Double
+)
 
-def runBench(name: String, warmup: Int, iterations: Int)(body: => Unit): BenchResult =
+def runBench(name: String, warmup: Int, iterations: Int)(body: => Unit): BenchResult = {
   // Warmup
-  for _ <- 1 to warmup do body
+  for (_ <- 1 to warmup) body
 
   // Measure
   val timings = Array.ofDim[Long](iterations)
-  for i <- 0 until iterations do
+  for (i <- 0 until iterations) {
     val t0 = System.nanoTime()
     body
     timings(i) = System.nanoTime() - t0
+  }
 
   val sorted = timings.sorted
   val mean = timings.map(_.toDouble).sum / iterations / 1_000_000.0
-  val median = if iterations % 2 == 0 then
-    (sorted(iterations / 2 - 1) + sorted(iterations / 2)) / 2.0 / 1_000_000.0
-  else sorted(iterations / 2).toDouble / 1_000_000.0
+  val median =
+    if (iterations % 2 == 0)
+      (sorted(iterations / 2 - 1) + sorted(iterations / 2)) / 2.0 / 1_000_000.0
+    else sorted(iterations / 2).toDouble / 1_000_000.0
   val p99Idx = math.min(((iterations - 1) * 0.99).ceil.toInt, iterations - 1)
   val p99 = sorted(p99Idx).toDouble / 1_000_000.0
   val variance = timings.map(t => math.pow(t.toDouble / 1_000_000.0 - mean, 2)).sum / iterations
@@ -32,13 +48,16 @@ def runBench(name: String, warmup: Int, iterations: Int)(body: => Unit): BenchRe
   val maxMs = sorted.last.toDouble / 1_000_000.0
 
   BenchResult(name, warmup, iterations, mean, median, p99, stddev, minMs, maxMs)
+}
 
 def printResult(r: BenchResult): Unit =
-  println(f"  ${r.name}%-24s mean=${r.meanMs}%8.1f ms  median=${r.medianMs}%8.1f ms  p99=${r.p99Ms}%8.1f ms  stddev=${r.stddevMs}%6.1f ms  min=${r.minMs}%8.1f  max=${r.maxMs}%8.1f  (${r.warmupRuns}w/${r.measuredRuns}i)")
+  println(
+    f"  ${r.name}%-24s mean=${r.meanMs}%8.1f ms  median=${r.medianMs}%8.1f ms  p99=${r.p99Ms}%8.1f ms  stddev=${r.stddevMs}%6.1f ms  min=${r.minMs}%8.1f  max=${r.maxMs}%8.1f  (${r.warmupRuns}w/${r.measuredRuns}i)"
+  )
 
 // ── Benchmark implementations ──────────────────────────────────────────────
 
-def benchExtractSingle(workspace: Path, warmup: Int, iters: Int): BenchResult =
+def benchExtractSingle(workspace: Path, warmup: Int, iters: Int): BenchResult = {
   // Find the largest .scala file
   val gitFiles = gitLsFiles(workspace)
   val largest = gitFiles.maxBy(gf => Files.size(gf.path))
@@ -46,22 +65,25 @@ def benchExtractSingle(workspace: Path, warmup: Int, iters: Int): BenchResult =
   runBench("extract-single", warmup, iters) {
     extractSymbols(largest.path)
   }
+}
 
-def benchExtractBatch(workspace: Path, warmup: Int, iters: Int): BenchResult =
+def benchExtractBatch(workspace: Path, warmup: Int, iters: Int): BenchResult = {
   val gitFiles = gitLsFiles(workspace).take(100)
   println(s"  target: ${gitFiles.size} files (sequential)")
   runBench("extract-batch-seq", warmup, iters) {
     gitFiles.foreach(gf => extractSymbols(gf.path))
   }
+}
 
-def benchExtractBatchParallel(workspace: Path, warmup: Int, iters: Int): BenchResult =
+def benchExtractBatchParallel(workspace: Path, warmup: Int, iters: Int): BenchResult = {
   val gitFiles = gitLsFiles(workspace).take(100)
   println(s"  target: ${gitFiles.size} files (parallel)")
   runBench("extract-batch-par", warmup, iters) {
     gitFiles.asJava.parallelStream().forEach(gf => extractSymbols(gf.path))
   }
+}
 
-def benchBloomBuild(workspace: Path, warmup: Int, iters: Int): BenchResult =
+def benchBloomBuild(workspace: Path, warmup: Int, iters: Int): BenchResult = {
   val gitFiles = gitLsFiles(workspace)
   val largest = gitFiles.maxBy(gf => Files.size(gf.path))
   val source = Files.readString(largest.path)
@@ -69,65 +91,64 @@ def benchBloomBuild(workspace: Path, warmup: Int, iters: Int): BenchResult =
   runBench("bloom-build", warmup, iters) {
     buildBloomFilterFromSource(source)
   }
+}
 
-def benchPersistenceSave(workspace: Path, warmup: Int, iters: Int): BenchResult =
-  val idx = WorkspaceIndex(workspace, needBlooms = true)
-  idx.index()
+def benchPersistenceSave(workspace: Path, warmup: Int, iters: Int): BenchResult = {
+  val idx = WorkspaceIndex.load(workspace, needBlooms = true)
   println(s"  target: full index (${idx.fileCount} files, ${idx.symbols.size} symbols)")
-  // Access private indexedFiles via re-indexing trick — just time the save
-  val idxPath = IndexPersistence.indexPath(workspace)
+  val files = IndexPersistence.load(workspace).get.values.toList
   runBench("persistence-save", warmup, iters) {
-    // Re-save existing index
-    idx.index() // re-index to get indexedFiles populated
+    IndexPersistence.save(workspace, files)
   }
+}
 
-def benchPersistenceLoad(workspace: Path, warmup: Int, iters: Int): BenchResult =
+def benchPersistenceLoad(workspace: Path, warmup: Int, iters: Int): BenchResult = {
   // Ensure index exists
-  val idx = WorkspaceIndex(workspace, needBlooms = true)
-  idx.index()
+  val idx = WorkspaceIndex.load(workspace, needBlooms = true)
   println(s"  target: index.bin (${Files.size(IndexPersistence.indexPath(workspace)) / 1024} KB)")
   runBench("persistence-load", warmup, iters) {
     IndexPersistence.load(workspace, loadBlooms = true)
   }
+}
 
-def benchPersistenceLoadNoBlooms(workspace: Path, warmup: Int, iters: Int): BenchResult =
-  val idx = WorkspaceIndex(workspace, needBlooms = true)
-  idx.index()
+def benchPersistenceLoadNoBlooms(workspace: Path, warmup: Int, iters: Int): BenchResult = {
+  WorkspaceIndex.load(workspace, needBlooms = true)
   runBench("persistence-load-nobloom", warmup, iters) {
     IndexPersistence.load(workspace, loadBlooms = false)
   }
+}
 
-def benchSearch(workspace: Path, warmup: Int, iters: Int): BenchResult =
-  val idx = WorkspaceIndex(workspace, needBlooms = false)
-  idx.index()
+def benchSearch(workspace: Path, warmup: Int, iters: Int): BenchResult = {
+  val idx = WorkspaceIndex.load(workspace, needBlooms = false)
   println(s"  query: \"Compiler\"")
   runBench("search", warmup, iters) {
     idx.search("Compiler")
   }
+}
 
-def benchRefs(workspace: Path, warmup: Int, iters: Int): BenchResult =
-  val idx = WorkspaceIndex(workspace, needBlooms = true)
-  idx.index()
+def benchRefs(workspace: Path, warmup: Int, iters: Int): BenchResult = {
+  val idx = WorkspaceIndex.load(workspace, needBlooms = true)
   println(s"  query: \"Phase\"")
   runBench("refs", warmup, iters) {
     idx.findReferences("Phase")
   }
+}
 
-def benchIndexBuild(workspace: Path, warmup: Int, iters: Int): BenchResult =
+def benchIndexBuild(workspace: Path, warmup: Int, iters: Int): BenchResult = {
   // Cold index to measure just the map building phase
-  val idx = WorkspaceIndex(workspace, needBlooms = true)
   println(s"  target: full index + map build")
   runBench("index-cold", warmup, math.min(iters, 5)) {
-    java.nio.file.Files.deleteIfExists(IndexPersistence.indexPath(workspace))
-    idx.index()
+    Files.deleteIfExists(IndexPersistence.indexPath(workspace))
+    WorkspaceIndex.load(workspace, needBlooms = true).symbols
   }
+}
 
 // ── Main entry point ───────────────────────────────────────────────────────
 
-@main def bench(args: String*): Unit =
+@main def bench(args: String*): Unit = {
   val argList = args.toList
 
-  if argList.isEmpty || argList.contains("--help") then
+  if (argList.isEmpty || argList.contains("--help"))
     println("""scalex microbenchmark harness
       |
       |Usage: ./mill bench.run <benchmark> <workspace> [options]
@@ -148,63 +169,72 @@ def benchIndexBuild(workspace: Path, warmup: Int, iters: Int): BenchResult =
       |  --iterations N     Measured iterations (default: 20)
       |""".stripMargin)
   else runBenchCli(argList)
+}
 
-private def runBenchCli(argList: List[String]): Unit =
-  val warmup = argList.indexOf("--warmup") match
+private[scalex] def runBenchCli(argList: List[String]): Unit = {
+  val warmup = argList.indexOf("--warmup") match {
     case -1 => 5
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
-  val iterations = argList.indexOf("--iterations") match
+    case i  => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(5)
+  }
+  val iterations = argList.indexOf("--iterations") match {
     case -1 => 20
-    case i => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(20)
+    case i  => argList.lift(i + 1).flatMap(_.toIntOption).getOrElse(20)
+  }
 
   val flagsWithArgs = Set("--warmup", "--iterations")
-  val cleanArgs = argList.filterNot(a => a.startsWith("--") || {
-    val prev = argList.indexOf(a) - 1
-    prev >= 0 && flagsWithArgs.contains(argList(prev))
-  })
+  val cleanArgs = argList.filterNot(a =>
+    a.startsWith("--") || {
+      val prev = argList.indexOf(a) - 1
+      prev >= 0 && flagsWithArgs.contains(argList(prev))
+    }
+  )
 
   val benchName = cleanArgs.headOption.getOrElse("all")
   val workspacePath = cleanArgs.lift(1).getOrElse(".")
   val workspace = Path.of(workspacePath).toAbsolutePath.normalize
 
-  if !Files.isDirectory(workspace) then
+  if (!Files.isDirectory(workspace)) {
     System.err.println(s"Error: $workspace is not a directory")
     System.exit(1)
+  }
 
   println(s"Workspace: $workspace")
   println(s"Config: warmup=$warmup, iterations=$iterations")
   println()
 
-  def run(name: String): Unit =
+  def run(name: String): Unit = {
     println(s"[$name]")
-    val result: Option[BenchResult] = name match
+    val result: Option[BenchResult] = name match {
       case "extract-single" => Some(benchExtractSingle(workspace, warmup, iterations))
-      case "extract-batch" =>
+      case "extract-batch"  =>
         val r1 = benchExtractBatch(workspace, warmup, iterations)
         printResult(r1)
         Some(benchExtractBatchParallel(workspace, warmup, iterations))
-      case "bloom-build" => Some(benchBloomBuild(workspace, warmup, iterations))
+      case "bloom-build"      => Some(benchBloomBuild(workspace, warmup, iterations))
       case "persistence-save" => Some(benchPersistenceSave(workspace, warmup, iterations))
       case "persistence-load" =>
         val r1 = benchPersistenceLoad(workspace, warmup, iterations)
         printResult(r1)
         Some(benchPersistenceLoadNoBlooms(workspace, warmup, iterations))
-      case "search" => Some(benchSearch(workspace, warmup, iterations))
-      case "refs" => Some(benchRefs(workspace, warmup, iterations))
+      case "search"     => Some(benchSearch(workspace, warmup, iterations))
+      case "refs"       => Some(benchRefs(workspace, warmup, iterations))
       case "index-cold" => Some(benchIndexBuild(workspace, warmup, math.min(iterations, 5)))
-      case _ =>
+      case _            =>
         println(s"  Unknown benchmark: $name")
         None
+    }
     result.foreach { r =>
       printResult(r)
       println()
     }
+  }
 
-  if benchName == "all" then
-    val allBenches = List("extract-single", "extract-batch", "bloom-build",
-                          "persistence-load", "search", "refs", "index-cold")
+  if (benchName == "all") {
+    val allBenches =
+      List("extract-single", "extract-batch", "bloom-build", "persistence-load", "search", "refs", "index-cold")
     allBenches.foreach(run)
-  else
+  } else
     run(benchName)
 
   println("Done.")
+}

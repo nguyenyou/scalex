@@ -1,121 +1,180 @@
-import scala.util.boundary, boundary.break
+package scalex.commands
 
-def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = boundary {
-  requireArg(args, "Usage: scalex explain <symbol>") { symbol =>
-      var defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(kindFilter = None))
+import scalex.*
+import scalex.extraction.*
+
+import scala.util.boundary, boundary.break
+import scala.collection.mutable.ListBuffer
+
+def cmdExplain(args: List[String], ctx: CommandContext): CmdResult = {
+  val diagnostics = ListBuffer.empty[String]
+  val result: CmdResult = boundary {
+    requireArg(args, "Usage: scalex explain <symbol>") { symbol =>
+      var defs = filterSymbols(ctx.idx.findDefinition(symbol), ctx.copy(filters = ctx.filters.copy(kindFilter = None)))
       defs = rankSymbols(defs, ctx.workspace)
       // If no results and symbol contains ".", try Owner.member resolution
-      if defs.isEmpty && symbol.contains(".") then
-        resolveDottedMember(symbol, ctx) match
+      if (defs.isEmpty && symbol.contains("."))
+        resolveDottedMember(symbol, ctx) match {
           case Some(memberResults) =>
             val msym = memberResults.head
-            val doc = if ctx.noDoc then None else extractDoc(msym.file, msym.line)
+            val doc = if (ctx.members.noDoc) None else extractDoc(msym.file, msym.line)
             break(CmdResult.Explanation(msym, doc, Nil, Nil, Nil))
           case None => ()
-      if defs.isEmpty then
+        }
+      if (defs.isEmpty) {
         // Fuzzy fallback: try search and auto-show best match if unambiguous
-        var fuzzyResults = filterSymbols(ctx.idx.search(symbol).filter(s => typeKinds.contains(s.kind)), ctx.copy(kindFilter = None))
+        var fuzzyResults = filterSymbols(
+          ctx.idx.search(symbol).filter(s => typeKinds.contains(s.kind)),
+          ctx.copy(filters = ctx.filters.copy(kindFilter = None))
+        )
         // Auto-use if exactly one strong match by name (exact case-insensitive, prefix, or suffix)
         val lower = symbol.toLowerCase
         val strongMatches = fuzzyResults.filter { s =>
           val nl = s.name.toLowerCase
           nl == lower || nl.startsWith(lower) || lower.startsWith(nl) ||
-            (lower.endsWith(nl) && nl.length >= 3 && nl.length > lower.length / 2)
+          (lower.endsWith(nl) && nl.length >= 3 && nl.length > lower.length / 2)
         }
         val distinctNames = strongMatches.map(_.name.toLowerCase).distinct
-        if distinctNames.size == 1 then
+        if (distinctNames.size == 1) {
           val bestMatch = strongMatches.head
-          Console.err.println(s"""(no exact match for "$symbol" — showing ${bestMatch.name} instead)""")
+          diagnostics += s"""(no exact match for "$symbol" — showing ${bestMatch.name} instead)"""
           defs = strongMatches.toList
-        end if
-      if defs.isEmpty then
+        } // end if
+      }
+      if (defs.isEmpty) {
         // Package fallback: if symbol matches a package name, delegate to summary
         val lower = symbol.toLowerCase
-        val pkgMatch = ctx.idx.packages.find(_.equalsIgnoreCase(symbol))
+        val pkgMatch = ctx.idx.packages
+          .find(_.equalsIgnoreCase(symbol))
           .orElse(ctx.idx.packages.find(_.toLowerCase.endsWith("." + lower)))
-        pkgMatch match
+        pkgMatch match {
           case Some(pkg) =>
-            Console.err.println(s"""(no type "$symbol" found — showing package summary instead)""")
+            diagnostics += s"""(no type "$symbol" found — showing package summary instead)"""
             cmdSummary(List(symbol), ctx)
           case None =>
             CmdResult.NotFound(
               s"""No definition of "$symbol" found""",
-              mkNotFoundWithSuggestions(symbol, ctx, "explain"))
-      else
+              mkNotFoundWithSuggestions(symbol, ctx, "explain")
+            )
+        }
+      } else {
         val sym = defs.head
         // Deduplicate by (name, package): trait+companion = 1 match, cross-package = distinct (see #8bd6b57)
         val chosenKey = (name = sym.name.toLowerCase, pkg = sym.packageName)
         val otherMatches = defs
-          .map(s => (name = s.name.toLowerCase, pkg = s.packageName)).distinct
+          .map(s => (name = s.name.toLowerCase, pkg = s.packageName))
+          .distinct
           .filterNot(_ == chosenKey)
           .map { t =>
             val otherSym = defs.find(s => s.name.toLowerCase == t.name && s.packageName == t.pkg).get
-            if t.pkg.nonEmpty then s"${t.pkg}.${otherSym.name}"
-            else
+            if (t.pkg.nonEmpty) s"${t.pkg}.${otherSym.name}"
+            else {
               // No package — use --path with the file's parent dir for disambiguation
               val rel = ctx.workspace.relativize(otherSym.file).getParent
               s"${otherSym.name} --path ${rel}/"
+            }
           }
         // For qualified lookups, use the simple name for member/impl queries
         val simpleName = simpleNameOf(symbol)
         // Scaladoc
-        val doc = if ctx.noDoc then None else extractDoc(sym.file, sym.line)
+        val doc = if (ctx.members.noDoc) None else extractDoc(sym.file, sym.line)
         // Extract raw members once — reused for members, related, and brief
-        val rawMembers = if typeKinds.contains(sym.kind) then
-          extractMembers(sym.file, simpleName, Some(sym.kind))
-        else Nil
+        val rawMembers =
+          if (typeKinds.contains(sym.kind))
+            extractMembers(sym.file, simpleName, Some(sym.kind))
+          else Nil
         // Members (for types)
-        val inheritResult = if typeKinds.contains(sym.kind) then collectInheritedMembers(sym, ctx)
+        val inheritResult =
+          if (typeKinds.contains(sym.kind)) collectInheritedMembers(sym, ctx)
           else (inherited = Nil: List[InheritedGroup], parentMemberKeys = Set.empty[(name: String, kind: SymbolKind)])
         val inherited = inheritResult.inherited
         val parentKeys = inheritResult.parentMemberKeys
         val members = decorateMembers(rawMembers, parentKeys, sym.file, simpleName, ctx)
-          .sortBy(memberKindRank).take(ctx.membersLimit)
+          .sortBy(memberKindRank)
+          .take(ctx.members.membersLimit)
         // Companion lookup
         val companion = findCompanion(sym, simpleName, defs)
-          .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.membersLimit)))
+          .map((s, ms) => (sym = s, members = ms.sortBy(memberKindRank).take(ctx.members.membersLimit)))
         // Related types (use raw members for full coverage)
-        val relatedTypes = if ctx.related && typeKinds.contains(sym.kind) then
-          extractRelatedTypes(rawMembers, sym, ctx.idx)
-        else Nil
+        val relatedTypes =
+          if (ctx.members.related && typeKinds.contains(sym.kind))
+            extractRelatedTypes(rawMembers, sym, ctx.idx)
+          else Nil
 
-        if ctx.brief then
+        if (ctx.members.brief) {
           // Brief mode: definition + top 3 members only
           val briefMembers = rawMembers.sortBy(memberKindRank).take(3)
-          CmdResult.Explanation(sym, None, briefMembers, Nil, Nil, otherMatches = otherMatches,
-            relatedTypes = relatedTypes)
-        else if ctx.shallow then
+          CmdResult.Explanation(
+            sym,
+            None,
+            briefMembers,
+            Nil,
+            Nil,
+            otherMatches = otherMatches,
+            relatedTypes = relatedTypes
+          )
+        } else if (ctx.members.shallow)
           // Shallow mode: definition + members + companion only
-          CmdResult.Explanation(sym, doc, members, Nil, Nil, companion, Nil, otherMatches = otherMatches,
-            relatedTypes = relatedTypes)
-        else
+          CmdResult.Explanation(
+            sym,
+            doc,
+            members,
+            Nil,
+            Nil,
+            companion,
+            Nil,
+            otherMatches = otherMatches,
+            relatedTypes = relatedTypes
+          )
+        else {
           // Implementations
           val allImpls = filterSymbols(ctx.idx.findImplementations(simpleName), ctx)
           val totalImpls = allImpls.size
-          val impls = allImpls.take(ctx.implLimit)
+          val impls = allImpls.take(ctx.members.implLimit)
           // Expanded implementations
           val expandedImpls =
-            if ctx.expandDepth > 0 then expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
+            if (ctx.members.expandDepth > 0)
+              expandImpls(impls, ctx, 1, Set(s"${sym.packageName}.${sym.name}".toLowerCase))
             else Nil
           // Import refs (apply path/exclude/noTests filters)
           val importRefs = filterRefs(ctx.idx.findImports(simpleName, timeoutMs = 3000).results, ctx)
-          CmdResult.Explanation(sym, doc, members, impls, importRefs, companion, expandedImpls,
-            otherMatches = otherMatches, totalImpls = totalImpls, inherited = inherited,
-            relatedTypes = relatedTypes)
+          CmdResult.Explanation(
+            sym,
+            doc,
+            members,
+            impls,
+            importRefs,
+            companion,
+            expandedImpls,
+            otherMatches = otherMatches,
+            totalImpls = totalImpls,
+            inherited = inherited,
+            relatedTypes = relatedTypes
+          )
+        }
+      }
+    }
   }
+
+  CmdResult.WithDiagnostics(result, diagnostics.toList)
 }
 
-private def expandImpls(impls: List[SymbolInfo], ctx: CommandContext,
-                        depth: Int, visited: Set[String]): List[ExplainedImpl] =
-  if depth > ctx.expandDepth then Nil
+private[scalex] def expandImpls(
+    impls: List[SymbolInfo],
+    ctx: CommandContext,
+    depth: Int,
+    visited: Set[String]
+): List[ExplainedImpl] =
+  if (depth > ctx.members.expandDepth) Nil
   else
-    impls.filter(s => typeKinds.contains(s.kind)).take(ctx.implLimit).map { impl =>
+    impls.filter(s => typeKinds.contains(s.kind)).take(ctx.members.implLimit).map { impl =>
       val key = s"${impl.packageName}.${impl.name}".toLowerCase
-      if visited.contains(key) then ExplainedImpl(impl, Nil, Nil)
-      else
-        val members = extractMembers(impl.file, impl.name, Some(impl.kind)).sortBy(memberKindRank).take(ctx.membersLimit)
-        val subImpls = filterSymbols(ctx.idx.findImplementations(impl.name), ctx).take(ctx.implLimit)
+      if (visited.contains(key)) ExplainedImpl(impl, Nil, Nil)
+      else {
+        val members =
+          extractMembers(impl.file, impl.name, Some(impl.kind)).sortBy(memberKindRank).take(ctx.members.membersLimit)
+        val subImpls = filterSymbols(ctx.idx.findImplementations(impl.name), ctx).take(ctx.members.implLimit)
         val expanded = expandImpls(subImpls, ctx, depth + 1, visited + key)
         ExplainedImpl(impl, members, expanded)
+      }
     }
-

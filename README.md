@@ -201,7 +201,7 @@ Set the `BINARY` variable in `scripts/scalex-cli` to point to your local build �
 
 #### Build From Source
 
-Requires JDK 21. Native builds require [GraalVM](https://www.graalvm.org/). Mill is pinned by the checked-in `mill` wrapper:
+The checked-in Mill launcher downloads the pinned JDK 24 [GraalVM](https://www.graalvm.org/) and dependencies automatically.
 
 ```bash
 git clone https://github.com/nguyenyou/scalex.git
@@ -220,7 +220,7 @@ cd scalex
 ./mill run search /path/to/project MyClass
 ```
 
-Mill downloads dependencies on first run, then reuses its local cache. Useful for development or quick testing.
+Mill downloads dependencies on first run, then reuses its local cache. See the [development guide](docs/DEVELOPMENT.md) for architecture, tests, formatting, and release instructions.
 
 ## Usage Examples
 
@@ -325,7 +325,8 @@ The biggest cost for a coding agent isn't latency — it's the number of tool ca
 - `batch` amortizes the ~400ms index load across multiple queries — 5 queries in ~600ms instead of ~2.5s
 - `refs --count` gives category counts in one line — fast impact triage before committing to a full read
 - `refs --top N` ranks files by reference count — surfaces the heaviest users first
-- `--max-output N` hard-caps output at N characters on any command — prevents context window blowup on large codebases
+- `--max-output N` limits result output on every command. Oversized JSON becomes a complete `{"truncated":true,...}` object; text stops at a line boundary. Truncation metadata is exempt from the budget.
+- Usage errors exit 2 and operational failures exit 1; `--json` keeps error responses machine-readable.
 - `overview --concise` constrains architectural output to ~60 lines — fixed-size summary even on 10k+ file codebases
 
 **Semantic, not textual.** Scalex parses Scala ASTs, so it understands things grep fundamentally cannot:

@@ -5,19 +5,22 @@ import mill.javalib.NativeImageModule
 import mill.scalalib.*
 
 trait BaseScalaModule extends ScalaModule {
-  def scalaVersion: T[String] = "3.8.3"
+  def scalaVersion: T[String] = "3.9.0"
 
-  def scalacOptions: T[Seq[String]] = Seq("-deprecation")
+  // Latest Community release with macOS Intel support.
+  override def jvmVersion: T[String] = "graalvm-community:24.0.2"
+
+  def scalacOptions: T[Seq[String]] = Seq("-deprecation", "-Werror", "-no-indent", "-Wunused:imports")
 }
 
 trait ScalexModule extends BaseScalaModule {
   def mvnDeps: T[Seq[Dep]] = Seq(
-    mvn"org.scalameta::scalameta:4.17.0",
-    mvn"com.google.guava:guava:33.6.0-jre",
+    mvn"org.scalameta::scalameta:4.17.4",
+    mvn"com.google.guava:guava:33.7.1-jre",
     mvn"com.github.javaparser:javaparser-core:3.28.2"
   )
 
-  def mainClass: T[Option[String]] = Some("main")
+  def mainClass: T[Option[String]] = Some("scalex.main")
 
   def scalexJavaOpts: T[Seq[String]] = Task.Input {
     Task.env.get("SCALEX_JAVA_OPTS").toSeq
@@ -30,8 +33,6 @@ trait ScalexModule extends BaseScalaModule {
 
 object `package` extends ScalexModule, NativeImageModule {
   private def workspaceRoot: os.Path = moduleDir
-
-  override def jvmVersion: T[String] = "graalvm-community:21.0.2"
 
   override def moduleDeps: Seq[JavaModule] = Seq(clibase, graph)
 
@@ -46,8 +47,8 @@ object `package` extends ScalexModule, NativeImageModule {
   }
 
   def nativeMarchFlag: T[Seq[String]] = Task.Input {
-    if Task.env.contains("CI") then Seq.empty
-    else Seq("-march=native")
+    if (Task.env.contains("CI")) { Seq.empty }
+    else { Seq("-march=native") }
   }
 
   override def nativeImageOptions: T[Seq[String]] = Task {
@@ -71,7 +72,8 @@ object `package` extends ScalexModule, NativeImageModule {
     def sources: T[Seq[PathRef]] = Task.Sources("tests")
 
     def mvnDeps: T[Seq[Dep]] = Seq(
-      mvn"org.scalameta::munit:1.3.1"
+      mvn"org.scalameta::munit:1.3.6",
+      mvn"com.lihaoyi::ujson:4.4.3"
     )
 
     def testFramework: T[String] = "munit.Framework"
@@ -84,6 +86,6 @@ object `package` extends ScalexModule, NativeImageModule {
 
     override def sources: T[Seq[PathRef]] = Task.Sources("src")
 
-    override def mainClass: T[Option[String]] = Some("bench")
+    override def mainClass: T[Option[String]] = Some("scalex.bench")
   }
 }

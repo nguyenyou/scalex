@@ -1,31 +1,41 @@
-def cmdTests(args: List[String], ctx: CommandContext): CmdResult =
+package scalex.commands
+
+import scalex.*
+import scalex.index.*
+import scalex.extraction.*
+
+def cmdTests(args: List[String], ctx: CommandContext): CmdResult = {
   val nameFilter = args.headOption
-  val keep = pathPredicate(noTests = false, ctx.pathFilter, ctx.excludePath, ctx.workspace)
+  val keep = pathPredicate(noTests = false, ctx.filters.pathFilter, ctx.filters.excludePath, ctx.workspace)
   val filesToScan = ctx.idx.gitFiles.map(_.path).filter(f => isTestFile(f, ctx.workspace) && keep(f))
   val extractedSuites = filesToScan.flatMap(extractTests).map { suite =>
-    nameFilter match
+    nameFilter match {
       case Some(pattern) =>
         val lower = pattern.toLowerCase
         val filtered = suite.tests.filter(_.name.toLowerCase.contains(lower))
         suite.copy(tests = filtered)
       case None => suite
+    }
   }
-  if ctx.countOnly then
+  if (ctx.output.countOnly) {
     val suitesWithContent = extractedSuites.filter(s => s.tests.nonEmpty || s.dynamicSites > 0)
     val totalTests = suitesWithContent.map(_.tests.size).sum
     val totalDynamic = suitesWithContent.map(_.dynamicSites).sum
     CmdResult.TestCount(suitesWithContent.size, totalTests, totalDynamic)
-  else
+  } else {
     val allSuites = extractedSuites.filter(_.tests.nonEmpty)
     val showBody = nameFilter.isDefined
     val suiteResults = allSuites.map { suite =>
       val tests = suite.tests.map { tc =>
-        val body = if showBody || ctx.verbose then
-          extractBody(suite.file, tc.name, Some(suite.name)).headOption
-        else None
+        val body =
+          if (showBody || ctx.output.verbose)
+            extractBody(suite.file, tc.name, Some(suite.name)).headOption
+          else None
         TestCaseResult(tc.name, tc.line, body)
       }
       TestSuiteResult(suite.name, suite.file, suite.line, tests)
     }
-    val emptyMsg = if nameFilter.isDefined then s"""No tests matching "${nameFilter.get}"""" else "No test suites found"
+    val emptyMsg = if (nameFilter.isDefined) s"""No tests matching "${nameFilter.get}"""" else "No test suites found"
     CmdResult.TestSuites(suiteResults, showBody, emptyMsg)
+  }
+}

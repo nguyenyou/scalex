@@ -1,14 +1,19 @@
+package scalex
+
+import scalex.index.*
+import scalex.extraction.*
+
 import java.nio.file.Path
 import java.util.regex.{Pattern, PatternSyntaxException}
 import scala.collection.mutable
 
 // ── Command helpers ─────────────────────────────────────────────────────────
 
-/** Standard command preamble: the first positional arg is required; without it
-  * the command answers with its usage line. */
+/** Standard command preamble: the first positional arg is required; without it the command answers with its usage line.
+  */
 def requireArg(args: List[String], usage: String)(f: String => CmdResult): CmdResult =
   args.headOption match {
-    case None => CmdResult.UsageError(usage)
+    case None      => CmdResult.UsageError(usage)
     case Some(arg) => f(arg)
   }
 
@@ -19,20 +24,20 @@ def hasRegexHint(pattern: String): Boolean =
 
 /** "Outer.Inner.member" → "member"; names without a dot pass through unchanged. */
 def simpleNameOf(s: String): String =
-  if s.contains(".") then s.substring(s.lastIndexOf('.') + 1) else s
+  if (s.contains(".")) s.substring(s.lastIndexOf('.') + 1) else s
 
-/** Split "Owner.member" at the last dot. None when there is no usable split
-  * (no dot, or a leading dot like ".foo"). */
+/** Split "Owner.member" at the last dot. None when there is no usable split (no dot, or a leading dot like ".foo").
+  */
 def splitOwnerMember(s: String): Option[(owner: String, member: String)] = {
   val lastDot = s.lastIndexOf('.')
-  if lastDot <= 0 then None
+  if (lastDot <= 0) None
   else Some((owner = s.substring(0, lastDot), member = s.substring(lastDot + 1)))
 }
 
-def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
+def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) = {
   // Only \| needs unconditional conversion: POSIX alternation vs Java literal pipe.
   // \( and \) mean "literal paren" in both POSIX and Java — leave them alone.
-  val candidate = if hasRegexHint(pattern) then pattern.replace("\\|", "|") else pattern
+  val candidate = if (hasRegexHint(pattern)) pattern.replace("\\|", "|") else pattern
   try {
     Pattern.compile(candidate)
     (pattern = candidate, wasFixed = candidate != pattern)
@@ -40,21 +45,30 @@ def fixPosixRegex(pattern: String): (pattern: String, wasFixed: Boolean) =
     case _: PatternSyntaxException =>
       (pattern = Pattern.quote(candidate), wasFixed = true)
   }
+}
 
 // ── Suggestions for not-found ────────────────────────────────────────────────
 
-def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint =
+def mkNotFoundWithSuggestions(symbol: String, ctx: CommandContext, cmd: String): NotFoundHint = {
   var results = ctx.idx.search(symbol)
-  if ctx.noTests then results = results.filter(s => !isTestFile(s.file, ctx.workspace))
+  if (ctx.filters.noTests) results = results.filter(s => !isTestFile(s.file, ctx.workspace))
   val suggestions = results.take(5).map { s =>
     s"${s.kind.label} ${s.name} (${s.packageName})"
   }
-  NotFoundHint(symbol, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode,
-    symbol.contains("/") || symbol.startsWith("."), suggestions)
+  NotFoundHint(
+    symbol,
+    ctx.idx.fileCount,
+    ctx.idx.parseFailures,
+    cmd,
+    ctx.output.batchMode,
+    symbol.contains("/") || symbol.startsWith("."),
+    suggestions
+  )
+}
 
 /** Build owner-scoped suggestions ranked by similarity to `symbol`. */
-def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext): List[String] =
-  val ownerDefs = filterSymbols(findTypeDefs(owner, ctx), ctx.copy(kindFilter = None))
+def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext): List[String] = {
+  val ownerDefs = filterSymbols(findTypeDefs(owner, ctx), ctx.copy(filters = ctx.filters.copy(kindFilter = None)))
   val members = ownerDefs.headOption.toList.flatMap(s => extractMembers(s.file, s.name, Some(s.kind)))
   // Rank by similarity: exact > prefix > contains > rest (sortBy is stable)
   val lower = symbol.toLowerCase
@@ -65,72 +79,83 @@ def mkOwnerScopedSuggestions(symbol: String, owner: String, ctx: CommandContext)
     case _                        => 3
   }
   members.sortBy(tier).take(5).map(m => s"${m.kind.label} ${m.name} in $owner")
+}
 
 // ── Package resolution (shared by package, api, summary) ────────────────────
 
-def resolvePackage(pkg: String, ctx: CommandContext): Option[String] =
+def resolvePackage(pkg: String, ctx: CommandContext): Option[String] = {
   val lower = pkg.toLowerCase
   def bestMatch(candidates: Iterable[String]): Option[String] =
-    if candidates.isEmpty then None
+    if (candidates.isEmpty) None
     else Some(candidates.maxBy(p => ctx.idx.packageToSymbols.getOrElse(p, Nil).size))
-  ctx.idx.packages.find(_.equalsIgnoreCase(pkg))
+  ctx.idx.packages
+    .find(_.equalsIgnoreCase(pkg))
     .orElse(bestMatch(ctx.idx.packages.filter(_.toLowerCase.endsWith("." + lower))))
     .orElse(bestMatch(ctx.idx.packages.filter(_.toLowerCase.contains(lower))))
+}
 
-def mkPackageNotFound(pkg: String, ctx: CommandContext, cmd: String): NotFoundHint =
+def mkPackageNotFound(pkg: String, ctx: CommandContext, cmd: String): NotFoundHint = {
   val lower = pkg.toLowerCase
   val segments = lower.split("[.]").filter(_.nonEmpty)
-  val pkgSuggestions = if segments.nonEmpty then
-    ctx.idx.packages.filter { p =>
-      val pl = p.toLowerCase
-      segments.exists(seg => pl.contains(seg))
-    }.toList.sortBy(p => -ctx.idx.packageToSymbols.getOrElse(p, Nil).size).take(5)
-  else Nil
-  NotFoundHint(pkg, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.batchMode, false, pkgSuggestions)
+  val pkgSuggestions =
+    if (segments.nonEmpty)
+      ctx.idx.packages
+        .filter { p =>
+          val pl = p.toLowerCase
+          segments.exists(seg => pl.contains(seg))
+        }
+        .toList
+        .sortBy(p => -ctx.idx.packageToSymbols.getOrElse(p, Nil).size)
+        .take(5)
+    else Nil
+  NotFoundHint(pkg, ctx.idx.fileCount, ctx.idx.parseFailures, cmd, ctx.output.batchMode, false, pkgSuggestions)
+}
 
 /** Resolve a package name and run `f` on it, or produce the standard not-found result. */
 def withResolvedPackage(pkg: String, ctx: CommandContext, cmd: String)(f: String => CmdResult): CmdResult = {
   resolvePackage(pkg, ctx) match {
     case None =>
-      CmdResult.NotFound(
-        s"""Package "$pkg" not found""",
-        mkPackageNotFound(pkg, ctx, cmd))
+      CmdResult.NotFound(s"""Package "$pkg" not found""", mkPackageNotFound(pkg, ctx, cmd))
     case Some(resolvedPkg) => f(resolvedPkg)
   }
 }
 
 // ── Shared filters ──────────────────────────────────────────────────────────
 
-/** The --no-tests / --path / --exclude-path predicate for `ctx`, or None when
-  * no file-level filters are active (callers skip the pass entirely). */
-private def ctxPathPredicate(ctx: CommandContext): Option[Path => Boolean] =
-  if ctx.noTests || ctx.pathFilter.isDefined || ctx.excludePath.isDefined then
-    Some(pathPredicate(ctx.noTests, ctx.pathFilter, ctx.excludePath, ctx.workspace))
+/** The --no-tests / --path / --exclude-path predicate for `ctx`, or None when no file-level filters are active (callers
+  * skip the pass entirely).
+  */
+private[scalex] def ctxPathPredicate(ctx: CommandContext): Option[Path => Boolean] =
+  if (ctx.filters.noTests || ctx.filters.pathFilter.isDefined || ctx.filters.excludePath.isDefined)
+    Some(pathPredicate(ctx.filters.noTests, ctx.filters.pathFilter, ctx.filters.excludePath, ctx.workspace))
   else None
 
-def filterSymbols(symbols: List[SymbolInfo], ctx: CommandContext): List[SymbolInfo] =
+def filterSymbols(symbols: List[SymbolInfo], ctx: CommandContext): List[SymbolInfo] = {
   var r = symbols
-  ctx.kindFilter.foreach { k =>
+  ctx.filters.kindFilter.foreach { k =>
     val kk = k.toLowerCase
     r = r.filter(_.kind.label == kk)
   }
   ctxPathPredicate(ctx).foreach { keep => r = r.filter(s => keep(s.file)) }
-  ctx.inPackageFilter.foreach { pkg => r = symbolsInPackage(pkg, r) }
+  ctx.filters.inPackageFilter.foreach { pkg => r = symbolsInPackage(pkg, r) }
   r
+}
 
-def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] =
+def filterRefs(refs: List[Reference], ctx: CommandContext): List[Reference] = {
   var r = refs
   ctxPathPredicate(ctx).foreach { keep => r = r.filter(ref => keep(ref.file)) }
-  ctx.inPackageFilter.foreach { pkg =>
+  ctx.filters.inPackageFilter.foreach { pkg =>
     val prefix = pkg + "."
     r = r.filter { ref =>
       val relPath = ctx.workspace.relativize(ref.file).toString
-      ctx.idx.filePackageByPath(relPath) match
+      ctx.idx.filePackageByPath(relPath) match {
         case Some(filePkg) => filePkg == pkg || filePkg.startsWith(prefix)
-        case None => true // keep refs from files with unknown package (e.g. parse failures)
+        case None          => true // keep refs from files with unknown package (e.g. parse failures)
+      }
     }
   }
   r
+}
 
 // ── Shared constants ─────────────────────────────────────────────────────────
 
@@ -147,17 +172,17 @@ def isStdlibPackage(pkg: String): Boolean =
   pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg.startsWith("scala.") ||
     pkg == "java" || pkg == "javax" || pkg == "scala"
 
-/** Ranking weight that deprioritizes stdlib packages: java/javax (2), scala (1),
-  * project code (0). Expects lowercase. */
+/** Ranking weight that deprioritizes stdlib packages: java/javax (2), scala (1), project code (0). Expects lowercase.
+  */
 def stdlibPkgRank(pkg: String): Int =
-  if pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg == "java" || pkg == "javax" then 2
-  else if pkg.startsWith("scala.") || pkg == "scala" then 1
+  if (pkg.startsWith("java.") || pkg.startsWith("javax.") || pkg == "java" || pkg == "javax") 2
+  else if (pkg.startsWith("scala.") || pkg == "scala") 1
   else 0
 
 // ── Shared output fragments ──────────────────────────────────────────────────
 
 def timedOutSuffix(timedOut: Boolean): String =
-  if timedOut then " (timed out — partial results)" else ""
+  if (timedOut) " (timed out — partial results)" else ""
 
 // ── Kind grouping ────────────────────────────────────────────────────────────
 
@@ -167,10 +192,10 @@ def countByKind(symbols: List[SymbolInfo]): List[(kind: SymbolKind, count: Int)]
 // ── Inherited member collection (shared by members + explain) ──────────────
 
 def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
-  inherited: List[InheritedGroup],
-  parentMemberKeys: Set[(name: String, kind: SymbolKind)]
+    inherited: List[InheritedGroup],
+    parentMemberKeys: Set[(name: String, kind: SymbolKind)]
 ) = {
-  if !ctx.inherited then (inherited = Nil, parentMemberKeys = Set.empty)
+  if (!ctx.members.inherited) (inherited = Nil, parentMemberKeys = Set.empty)
   else {
     val visited = mutable.HashSet.empty[String]
     visited += sym.name.toLowerCase
@@ -180,14 +205,20 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
 
     def walk(parentNames: List[String]): Unit = {
       parentNames.foreach { pName =>
-        if !visited.contains(pName.toLowerCase) then {
+        if (!visited.contains(pName.toLowerCase)) {
           visited += pName.toLowerCase
           val parentDefs = findTypeDefs(pName, ctx)
           parentDefs.headOption.foreach { pd =>
             val parentMembers = extractMembers(pd.file, pd.name, Some(pd.kind))
             parentMembers.foreach(m => allParentKeys += ((name = m.name, kind = m.kind)))
             val filtered = parentMembers.filterNot(m => ownMembers.contains((name = m.name, kind = m.kind)))
-            if filtered.nonEmpty then result += ((parentName = pd.name, parentFile = Some(pd.file), parentPackage = pd.packageName, members = filtered))
+            if (filtered.nonEmpty)
+              result += ((
+                parentName = pd.name,
+                parentFile = Some(pd.file),
+                parentPackage = pd.packageName,
+                members = filtered
+              ))
             walk(pd.parents)
           }
         }
@@ -201,8 +232,9 @@ def collectInheritedMembers(sym: SymbolInfo, ctx: CommandContext): (
 
 // ── Body enrichment (shared by members, overrides, explain) ─────────────────
 
-/** Extract the body of `name` (optionally scoped to `owner`), kept only when it
-  * fits within `maxBodyLines` (<= 0 means no limit). */
+/** Extract the body of `name` (optionally scoped to `owner`), kept only when it fits within `maxBodyLines` (<= 0 means
+  * no limit).
+  */
 def bodyWithinLimit(file: Path, name: String, owner: Option[String], maxBodyLines: Int): Option[BodyInfo] =
   extractBody(file, name, owner).headOption
     .filter(b => maxBodyLines <= 0 || (b.endLine - b.startLine + 1) <= maxBodyLines)
@@ -210,51 +242,66 @@ def bodyWithinLimit(file: Path, name: String, owner: Option[String], maxBodyLine
 def enrichMemberWithBody(m: MemberInfo, file: Path, ownerName: String, maxBodyLines: Int): MemberInfo =
   bodyWithinLimit(file, m.name, Some(ownerName), maxBodyLines) match {
     case Some(b) => m.copy(body = Some(b))
-    case None => m
+    case None    => m
   }
 
 /** Decorate raw members: mark inherited overrides (--inherited) and attach bodies (--with-body). */
-def decorateMembers(raw: List[MemberInfo], parentKeys: Set[(name: String, kind: SymbolKind)],
-                    file: Path, ownerName: String, ctx: CommandContext): List[MemberInfo] =
+def decorateMembers(
+    raw: List[MemberInfo],
+    parentKeys: Set[(name: String, kind: SymbolKind)],
+    file: Path,
+    ownerName: String,
+    ctx: CommandContext
+): List[MemberInfo] =
   raw.map { m =>
-    val m2 = if ctx.inherited && parentKeys.contains((name = m.name, kind = m.kind)) then m.copy(isOverride = true) else m
-    if ctx.withBody then enrichMemberWithBody(m2, file, ownerName, ctx.maxBodyLines) else m2
+    val m2 =
+      if (ctx.members.inherited && parentKeys.contains((name = m.name, kind = m.kind))) m.copy(isOverride = true) else m
+    if (ctx.members.withBody) enrichMemberWithBody(m2, file, ownerName, ctx.members.maxBodyLines) else m2
   }
 
 // ── Ranking / sorting ────────────────────────────────────────────────────────
 
 def rankSymbols(symbols: List[SymbolInfo], workspace: Path): List[SymbolInfo] =
   symbols.sortBy { s =>
-    val kindRank = s.kind match
+    val kindRank = s.kind match {
       case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
-      case SymbolKind.Type | SymbolKind.Given => 1
-      case _ => 2
-    val testRank = if isTestFile(s.file, workspace) then 1 else 0
+      case SymbolKind.Type | SymbolKind.Given                                        => 1
+      case _                                                                         => 2
+    }
+    val testRank = if (isTestFile(s.file, workspace)) 1 else 0
     val pathLen = workspace.relativize(s.file).toString.length
     (kindRank = kindRank, testRank = testRank, stdlibRank = stdlibPkgRank(s.packageName.toLowerCase), pathLen = pathLen)
   }
 
-def memberKindRank(m: MemberInfo): Int = m.kind match
+def memberKindRank(m: MemberInfo): Int = m.kind match {
   case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Object | SymbolKind.Enum => 0
-  case SymbolKind.Def => 1
-  case SymbolKind.Val | SymbolKind.Var => 2
-  case SymbolKind.Type => 3
-  case _ => 4
+  case SymbolKind.Def                                                            => 1
+  case SymbolKind.Val | SymbolKind.Var                                           => 2
+  case SymbolKind.Type                                                           => 3
+  case _                                                                         => 4
+}
 
 // ── Companion lookup ─────────────────────────────────────────────────────────
 
-def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Option[(sym: SymbolInfo, members: List[MemberInfo])] =
-  val companionKinds: Set[SymbolKind] = sym.kind match
+def findCompanion(
+    sym: SymbolInfo,
+    symbol: String,
+    defs: List[SymbolInfo]
+): Option[(sym: SymbolInfo, members: List[MemberInfo])] = {
+  val companionKinds: Set[SymbolKind] = sym.kind match {
     case SymbolKind.Class | SymbolKind.Trait | SymbolKind.Enum => Set(SymbolKind.Object)
     case SymbolKind.Object => Set(SymbolKind.Class, SymbolKind.Trait, SymbolKind.Enum)
-    case _ => Set.empty
-  if companionKinds.isEmpty then None
+    case _                 => Set.empty
+  }
+  if (companionKinds.isEmpty) None
   else
-    defs.find(d => companionKinds.contains(d.kind) && d.packageName == sym.packageName && d.file == sym.file)
+    defs
+      .find(d => companionKinds.contains(d.kind) && d.packageName == sym.packageName && d.file == sym.file)
       .map { compSym =>
         val compMembers = extractMembers(compSym.file, symbol, Some(compSym.kind))
         (sym = compSym, members = compMembers)
       }
+}
 
 // ── Related types extraction ─────────────────────────────────────────
 
@@ -263,26 +310,51 @@ def findCompanion(sym: SymbolInfo, symbol: String, defs: List[SymbolInfo]): Opti
 // the reference is virtually always to the stdlib version even if a project happens
 // to define a namesake (e.g. com.ui.Option). Library types like Task, Stream, IO
 // are intentionally excluded: projects commonly define their own.
-private val predefTypeNames: Set[String] = Set(
-  "option", "list", "map", "set", "seq", "vector", "array", "either",
-  "some", "none", "nil", "iterable", "iterator", "tuple",
-  "boolean", "string", "int", "long", "double", "float", "byte", "short",
-  "char", "unit", "nothing", "any", "anyref", "anyval",
+private[scalex] val predefTypeNames: Set[String] = Set(
+  "option",
+  "list",
+  "map",
+  "set",
+  "seq",
+  "vector",
+  "array",
+  "either",
+  "some",
+  "none",
+  "nil",
+  "iterable",
+  "iterator",
+  "tuple",
+  "boolean",
+  "string",
+  "int",
+  "long",
+  "double",
+  "float",
+  "byte",
+  "short",
+  "char",
+  "unit",
+  "nothing",
+  "any",
+  "anyref",
+  "anyval"
 )
 
-private val typeNamePattern = """\b[A-Z][A-Za-z0-9]+\b""".r
+private[scalex] val typeNamePattern = """\b[A-Z][A-Za-z0-9]+\b""".r
 
-/** True if `lowerName` is unlikely to refer to a project-defined type:
-  * either it's a Scala predef auto-import, not in the index at all (unindexed
-  * stdlib type), or all definitions live in stdlib packages. */
-private def isStdlibType(lowerName: String, symbolsByName: Map[String, List[SymbolInfo]]): Boolean =
+/** True if `lowerName` is unlikely to refer to a project-defined type: either it's a Scala predef auto-import, not in
+  * the index at all (unindexed stdlib type), or all definitions live in stdlib packages.
+  */
+private[scalex] def isStdlibType(lowerName: String, symbolsByName: Map[String, List[SymbolInfo]]): Boolean =
   predefTypeNames.contains(lowerName) || {
-    symbolsByName.get(lowerName) match
-      case None => true // not in index → unindexed stdlib type
+    symbolsByName.get(lowerName) match {
+      case None       => true // not in index → unindexed stdlib type
       case Some(syms) => syms.forall(s => isStdlibPackage(s.packageName.toLowerCase))
+    }
   }
 
-def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: WorkspaceIndex): List[SymbolInfo] =
+def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: WorkspaceIndex): List[SymbolInfo] = {
   val selfLower = sym.name.toLowerCase
   val seen = mutable.HashSet.empty[String]
   seen += selfLower
@@ -297,13 +369,15 @@ def extractRelatedTypes(members: List[MemberInfo], sym: SymbolInfo, idx: Workspa
   // Cross-reference with index — skip names that are only defined in stdlib packages
   typeNames.foreach { name =>
     val lower = name.toLowerCase
-    if seen.add(lower) && !isStdlibType(lower, idx.symbolsByName) then
+    if (seen.add(lower) && !isStdlibType(lower, idx.symbolsByName))
       idx.symbolsByName.getOrElse(lower, Nil).find(s => typeKinds.contains(s.kind)).foreach(result += _)
   }
   result.toList.sortBy(_.name).take(10)
+}
 
 // ── Package helpers ──────────────────────────────────────────────────────────
 
-def symbolsInPackage(pkg: String, symbols: List[SymbolInfo]): List[SymbolInfo] =
+def symbolsInPackage(pkg: String, symbols: List[SymbolInfo]): List[SymbolInfo] = {
   val prefix = pkg + "."
   symbols.filter(s => s.packageName == pkg || s.packageName.startsWith(prefix))
+}

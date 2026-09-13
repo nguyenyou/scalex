@@ -3,18 +3,24 @@
 ## [Unreleased]
 
 ### Added
+- PR checks run the test suite, benchmark compilation, and shared skill validation.
 - Codex CLI and desktop plugin packaging and repository marketplace, sharing the existing skill and binary bootstrap with Claude Code.
 
 ### Fixed
+- Output budgets preserve complete JSON documents, apply to symbol summaries, and count Unicode characters correctly. Oversized JSON returns truncation metadata instead of a broken prefix.
+- CLI usage errors exit 2 and Git failures exit 1, with structured JSON errors when requested. Invalid Git refs no longer look like successful empty diffs.
+- Workspace indexes are fully initialized snapshots, preventing stale lookup tables after refresh.
 - `graph --parse` no longer drops sibling nested boxes: a box containing two or more boxes side by side wrongly promoted all but one of them to top level (and leaked their border characters into the parent's text). Box containment is now resolved by linking each box to its smallest container
 - `grep --in <owner>`: an unreadable file no longer discards matches already found in other files defining the same owner; the file is skipped instead
 
 ### Changed
+- Upgrade Scala to 3.9.0, Mill to 1.1.9, Scalameta to 4.17.4, Guava to 33.7.1-jre, MUnit to 1.3.6, and Scalafmt to 3.11.5. JavaParser 3.28.2 and test-only ujson 4.4.3 are current. GraalVM moves to 24.0.2 on all platforms, the newest release that supports macOS Intel. CI actions use updated, verified commit pins.
+- Application code now uses explicit `scalex` packages for indexing, extraction, output, and commands. Command metadata has one registry, options are grouped by purpose, and contributor instructions share one development guide.
 - `ast-pattern --json` now emits the same symbol object as `search`/`def` (gains `parents`, `typeParamParents`, and `annotations` fields) — one JSON shape for all symbol-returning commands
 - When both `-w` and `--workspace` are passed, the last occurrence now wins (previously `--workspace` always took precedence regardless of position)
 - `refs --top` now uses the same timed-out suffix as every other command (`(timed out — partial results)` instead of `(timed out — results may be incomplete)`)
 - `overview --architecture/--concise/--focus-package` reads imports recorded in the index instead of re-parsing every source file — on the scala3 corpus (17.7k files) this drops `overview --concise` from ~3.7s to ~0.75s (4.9×)
-- Native-image note: bloom-loading commands (`refs`/`imports`/`coverage`) run 7–15% slower in this build (~50–90ms on the scala3 corpus) while most other commands got 10–18% faster. The slowdown is entirely in the untouched index-deserialization phase and does not reproduce on the JVM (parity there) — it traces to GraalVM GC pacing/codegen shifts from the binary growing, not to any changed code path. Pinning the heap (`-Xms1g`) recovers most of it on both old and new binaries
+- Historical native-image comparison before the toolchain upgrade: bloom-loading commands (`refs`/`imports`/`coverage`) run 7–15% slower in this build (~50–90ms on the scala3 corpus) while most other commands got 10–18% faster. The slowdown is entirely in the untouched index-deserialization phase and does not reproduce on the JVM (parity there) — it traces to GraalVM GC pacing/codegen shifts from the binary growing, not to any changed code path. Pinning the heap (`-Xms1g`) recovers most of it on both old and new binaries
 - Line-number gutters are now uniformly left-aligned: `refs -C` previously right-aligned line numbers while `body` left-aligned them
 - `refs`/`imports` now report `timedOut: true` when the deadline expires mid-file on the last scanned file (previously the partial result could be reported as complete)
 

@@ -52,7 +52,7 @@ rm -rf benchmark/scala3/.scalex
 ./scalex refs benchmark/scala3 Compiler --timings
 
 # JVM mode
-scala-cli run src/ -- index benchmark/scala3 --timings
+./mill run index benchmark/scala3 --timings
 ```
 
 ### Phases reported
@@ -96,34 +96,34 @@ Reproducible, statistical benchmarks using [hyperfine](https://github.com/sharkd
 
 ```bash
 # Full suite (cold + warm + query + diverse + timings)
-.Codex/skills/benchmark/scripts/bench.sh
+.agents/skills/benchmark/scripts/bench.sh
 
 # Individual modes
-.Codex/skills/benchmark/scripts/bench.sh cold
-.Codex/skills/benchmark/scripts/bench.sh warm
-.Codex/skills/benchmark/scripts/bench.sh query
-.Codex/skills/benchmark/scripts/bench.sh diverse    # miss, heavy refs, fuzzy, grep, hierarchy
-.Codex/skills/benchmark/scripts/bench.sh timings    # --timings output for cold/warm/refs
-.Codex/skills/benchmark/scripts/bench.sh memory     # heap usage, GC pressure (JVM only)
+.agents/skills/benchmark/scripts/bench.sh cold
+.agents/skills/benchmark/scripts/bench.sh warm
+.agents/skills/benchmark/scripts/bench.sh query
+.agents/skills/benchmark/scripts/bench.sh diverse    # miss, heavy refs, fuzzy, grep, hierarchy
+.agents/skills/benchmark/scripts/bench.sh timings    # --timings output for cold/warm/refs
+.agents/skills/benchmark/scripts/bench.sh memory     # heap usage, GC pressure (JVM only)
 
 # Custom runs/binary
-BENCH_RUNS=10 SCALEX_BIN=./target/scalex .Codex/skills/benchmark/scripts/bench.sh
+BENCH_RUNS=10 SCALEX_BIN=./target/scalex .agents/skills/benchmark/scripts/bench.sh
 ```
 
 ### Before/after comparison
 
 ```bash
 # 1. Benchmark current state
-BENCH_EXPORT=benchmark/results/before.json .Codex/skills/benchmark/scripts/bench.sh
+BENCH_EXPORT=benchmark/results/before.json .agents/skills/benchmark/scripts/bench.sh
 
 # 2. Make changes, rebuild
 ./build-native.sh
 
 # 3. Benchmark new state
-BENCH_EXPORT=benchmark/results/after.json .Codex/skills/benchmark/scripts/bench.sh
+BENCH_EXPORT=benchmark/results/after.json .agents/skills/benchmark/scripts/bench.sh
 
 # 4. Compare (flags >5% regressions)
-.Codex/skills/benchmark/scripts/bench-compare.sh benchmark/results/before.json benchmark/results/after.json
+.agents/skills/benchmark/scripts/bench-compare.sh benchmark/results/before.json benchmark/results/after.json
 ```
 
 `bench-compare.sh` exits non-zero if any benchmark regressed >5%.
@@ -179,15 +179,14 @@ Output: `profiling/profile-<event>.html` — open in browser for interactive fla
 
 ## Layer 4: JFR (Java Flight Recorder)
 
-Built into JDK 21. Near-zero overhead. Best for GC, file I/O, and thread analysis.
+Built into the pinned JDK. Near-zero overhead. Best for GC, file I/O, and thread analysis.
 
 ### Running
 
 ```bash
 # Record with custom config
-scala-cli run src/ \
-  --java-opt "-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
-  -- index benchmark/scala3
+SCALEX_JAVA_OPTS="-XX:StartFlightRecording=filename=profiling/scalex.jfr,settings=profiling/scalex.jfc,duration=60s" \
+  ./mill run index benchmark/scala3
 
 # Quick summary
 jfr summary profiling/scalex.jfr
@@ -216,17 +215,17 @@ Isolate per-function costs with warmup and statistical measurement.
 
 ```bash
 # Specific benchmark
-scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- bloom-build benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- persistence-load benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- search benchmark/scala3
-scala-cli run src/bench.scala src/*.scala -- refs benchmark/scala3
+./mill bench.run extract-single benchmark/scala3
+./mill bench.run bloom-build benchmark/scala3
+./mill bench.run persistence-load benchmark/scala3
+./mill bench.run search benchmark/scala3
+./mill bench.run refs benchmark/scala3
 
 # All benchmarks
-scala-cli run src/bench.scala src/*.scala -- all benchmark/scala3
+./mill bench.run all benchmark/scala3
 
 # Custom warmup/iterations
-scala-cli run src/bench.scala src/*.scala -- extract-single benchmark/scala3 --warmup 3 --iterations 10
+./mill bench.run extract-single benchmark/scala3 --warmup 3 --iterations 10
 ```
 
 ### Available benchmarks
@@ -247,16 +246,16 @@ Reports: mean, median, p99, stddev, min, max per benchmark.
 
 ## Layer 6: Memory profiling (`bench.sh memory`)
 
-Measures heap usage, GC pressure, and peak memory across three scenarios: cold index (full parse), warm index (cache load), and refs query. Uses JVM GC logging via `-Xlog:gc*` — requires scala-cli (JVM mode), not native binary.
+Measures heap usage, GC pressure, and peak memory across three scenarios: cold index (full parse), warm index (cache load), and refs query. Uses JVM GC logging via `-Xlog:gc*` — requires Mill (JVM mode), not native binary.
 
 ### Running
 
 ```bash
 # Full memory profile (cold + warm + refs)
-.Codex/skills/benchmark/scripts/bench.sh memory
+.agents/skills/benchmark/scripts/bench.sh memory
 ```
 
-No prerequisites beyond scala-cli. Does not require hyperfine or native binary.
+Uses the checked-in Mill launcher. Does not require hyperfine or native binary.
 
 ### Output
 
@@ -317,9 +316,8 @@ For one-off measurements without the script:
 
 ```bash
 # Run any scalex command with GC logging to a temp file
-scala-cli run src/ \
-  --java-opt "-Xlog:gc*=info:file=/tmp/scalex-gc.log" \
-  -- overview benchmark/scala3
+SCALEX_JAVA_OPTS="-Xlog:gc*=info:file=/tmp/scalex-gc.log" \
+  ./mill run overview benchmark/scala3
 
 # Check peak heap
 grep -o '[0-9]*M->' /tmp/scalex-gc.log | sed 's/M->//' | sort -n | tail -1

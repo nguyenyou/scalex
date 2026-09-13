@@ -1,0 +1,30 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1
+        with:
+          java-version: '24.0.2'
+          distribution: graalvm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compile and test
+        run: ./mill --no-daemon test + bench.compile
+      - name: Check Scala formatting
+        run: ./mill --no-daemon mill.scalalib.scalafmt/checkFormatAll '__.sources'
+      - name: Validate shared skill
+        run: ./scripts/check-skill-frontmatter.sh
