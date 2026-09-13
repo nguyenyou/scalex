@@ -128,6 +128,7 @@ object IndexPersistence {
     var fi = 0
     while (fi < fileCount) {
       val relPath = strings(in.readInt())
+      val filePath = workspace.resolve(relPath)
       val oid = strings(in.readInt())
 
       val symCount = in.readShort()
@@ -145,7 +146,7 @@ object IndexPersistence {
         val tpParents = (0 until tpParentCount).map(_ => strings(in.readInt())).toList
         val annotCount = in.readShort()
         val annots = (0 until annotCount).map(_ => strings(in.readInt())).toList
-        syms += SymbolInfo(name, kind, workspace.resolve(relPath), line, pkg, parents, tpParents, sig, annots)
+        syms += SymbolInfo(name, kind, filePath, line, pkg, parents, tpParents, sig, annots)
         si += 1
       }
 

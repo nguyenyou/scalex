@@ -17,10 +17,10 @@ import clibase.Timings
 
 object WorkspaceIndex {
   def empty(workspace: Path): WorkspaceIndex = {
-    WorkspaceIndex(workspace, false, Nil, Nil, 0, 0, 0, false)
+    WorkspaceIndex(workspace, false, Nil, Nil, 0, 0, 0, false, true)
   }
 
-  def load(workspace: Path, needBlooms: Boolean = true): WorkspaceIndex = {
+  def load(workspace: Path, needBlooms: Boolean = true, reuseNameIndex: Boolean = true): WorkspaceIndex = {
     val t0 = System.nanoTime()
     val gitFiles = Timings.phase("git-ls-files") { gitLsFiles(workspace) }
     val cached = Timings.phase("cache-load") { IndexPersistence.load(workspace, needBlooms) }
@@ -71,7 +71,8 @@ object WorkspaceIndex {
       indexTimeMs,
       toParse.size,
       skippedCount,
-      cached.isDefined
+      cached.isDefined,
+      reuseNameIndex
     )
   }
 }
@@ -84,7 +85,8 @@ final class WorkspaceIndex private (
     val indexTimeMs: Long,
     val parsedCount: Int,
     val skippedCount: Int,
-    val cachedLoad: Boolean
+    val cachedLoad: Boolean,
+    private val reuseNameIndex: Boolean
 ) {
   val fileCount: Int = gitFiles.size
   val parseFailedFiles: List[String] = indexedFiles.collect { case f if f.parseFailed => f.relativePath }
@@ -183,6 +185,7 @@ final class WorkspaceIndex private (
 
   def findDefinition(name: String): List[SymbolInfo] = {
     if (name.contains(".")) {
+      // Qualified resolution can recurse through owners; keep its reusable indexes.
       val qResult = symbolsByQName.getOrElse(name.toLowerCase, Nil)
       if (qResult.nonEmpty) qResult
       else {
@@ -210,7 +213,14 @@ final class WorkspaceIndex private (
           }
         }
       }
-    } else symbolsByName.getOrElse(name.toLowerCase, Nil)
+    } else symbolsNamed(name)
+  }
+
+  /** Isolated lookups avoid building a complete map; batches and composite commands reuse it. */
+  private[scalex] def symbolsNamed(name: String): List[SymbolInfo] = {
+    val lower = name.toLowerCase
+    if (reuseNameIndex) { symbolsByName.getOrElse(lower, Nil) }
+    else { allSymbols.filter(_.name.toLowerCase == lower) }
   }
 
   def findImplementations(name: String): List[SymbolInfo] = {
@@ -341,22 +351,28 @@ final class WorkspaceIndex private (
       strict: Boolean = false
   ): (grouped: Map[RefCategory, List[Reference]], timedOut: Boolean) = {
     val (refs, timedOut) = findReferences(name, strict = strict)
+    lazy val definition = Pattern.compile("""^\s*(trait|class|object|enum|given|type|def|val|var)\s+.*""")
+    lazy val givenName = Pattern.compile(s""".*given\\s+\\w*$name.*""")
+    lazy val inheritance = Pattern.compile(""".*\b(extends|with)\b.*""")
+    lazy val comment = Pattern.compile("""^\s*(//|/\*|\*).*""")
+    lazy val typed = Pattern.compile(s""".*:\\s*$name.*""")
+    lazy val applied = Pattern.compile(s""".*\\[$name.*""")
     val grouped = refs.groupBy { r =>
       val line = r.contextLine
       if (
-        line.matches("""^\s*(trait|class|object|enum|given|type|def|val|var)\s+.*""") && containsWord(line, name) &&
+        definition.matcher(line).matches() && containsWord(line, name) &&
         (line.contains(s"trait $name") || line.contains(s"class $name") || line.contains(s"object $name") ||
           line.contains(s"enum $name") || line.contains(s"type $name") ||
-          line.matches(s""".*given\\s+\\w*$name.*"""))
+          givenName.matcher(line).matches())
       )
         RefCategory.Definition
-      else if (line.matches(""".*\b(extends|with)\b.*""") && containsWord(line, name))
+      else if (inheritance.matcher(line).matches() && containsWord(line, name))
         RefCategory.ExtendedBy
       else if (line.trim.startsWith("import "))
         RefCategory.ImportedBy
-      else if (line.matches("""^\s*(//|/\*|\*).*"""))
+      else if (comment.matcher(line).matches())
         RefCategory.Comment
-      else if (line.matches(s""".*:\\s*$name.*""") || line.matches(s""".*\\[$name.*"""))
+      else if (typed.matcher(line).matches() || applied.matcher(line).matches())
         RefCategory.UsedAsType
       else
         RefCategory.Usage
@@ -383,7 +399,7 @@ final class WorkspaceIndex private (
     }
 
     // Also find wildcard imports that resolve to a package containing the target symbol
-    val targetPkgs = symbolsByName.getOrElse(name.toLowerCase, Nil).map(_.packageName).toSet
+    val targetPkgs = symbolsNamed(name).map(_.packageName).toSet
     if (targetPkgs.nonEmpty)
       for (idxFile <- indexedFiles if scan.inTime)
         for (imp <- idxFile.imports)

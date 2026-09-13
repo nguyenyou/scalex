@@ -3,18 +3,20 @@ package scalex
 import scalex.index.*
 import scalex.output.*
 
-import clibase.OutputBudget
+import clibase.{OutputBudget, Timings}
 
 // ── Command dispatch ────────────────────────────────────────────────────────
 
 def runCommand(cmd: String, args: List[String], ctx: CommandContext): Int = {
-  val result = try {
-    commandHandlers.get(cmd) match {
-      case Some(handler) => handler(args, ctx)
-      case None          => CmdResult.UsageError(s"Unknown command: $cmd")
-    }
-  } catch { case e: GitFailure => CmdResult.Failure(e.getMessage) }
-  renderWithBudget(result, ctx)
+  val result = Timings.phase("command") {
+    try {
+      commandHandlers.get(cmd) match {
+        case Some(handler) => handler(args, ctx)
+        case None          => CmdResult.UsageError(s"Unknown command: $cmd")
+      }
+    } catch { case e: GitFailure => CmdResult.Failure(e.getMessage) }
+  }
+  Timings.phase("render") { renderWithBudget(result, ctx) }
   commandStatus(result)
 }
 

@@ -22,8 +22,10 @@ def resolveWorkspace(path: String): Path = {
 
 /** Return the process status; only main terminates the JVM. */
 def runCli(args: List[String]): Int = {
+  val started = System.nanoTime()
   val f = parseFlags(args)
   Timings.enabled = f(TimingsFlag)
+  Timings.reset(started)
   try {
     if (f(VersionFlag)) { println(ScalexVersion); 0 }
     else {
@@ -45,22 +47,22 @@ def runCli(args: List[String]): Int = {
             case Some(spec) =>
               val (workspace, commandArgs) = resolveCommandArgs(spec, f, rest)
               val idx = if (spec.needsIndex) {
-                WorkspaceIndex.load(workspace, spec.needsBlooms)
+                // Dotted lookups can recurse through owners and issue several name queries.
+                val reuseNames = spec.reuseNameIndex || commandArgs.headOption.exists(_.contains("."))
+                WorkspaceIndex.load(workspace, spec.needsBlooms, reuseNameIndex = reuseNames)
               } else { WorkspaceIndex.empty(workspace) }
               val noTests = (spec.defaultNoTests && !f(IncludeTestsFlag)) || f(NoTestsFlag)
               val ctx = flagsToContext(f, idx, workspace, effectiveNoTests = Some(noTests))
               val actualArgs = if (name == "graph") { graphArgs(args.dropWhile(_ != "graph").drop(1)) }
               else { commandArgs }
-              val status = runCommand(name, actualArgs, ctx)
-              Timings.report()
-              status
+              runCommand(name, actualArgs, ctx)
           }
       }
     }
   } catch {
     case e: GitFailure  => renderError(e.getMessage, f(JsonFlag)); 1
     case e: IOException => renderError(e.getMessage, f(JsonFlag)); 1
-  }
+  } finally Timings.report()
 }
 
 private[scalex] def resolveCommandArgs(

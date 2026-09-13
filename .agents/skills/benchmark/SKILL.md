@@ -57,9 +57,11 @@ rm -rf benchmark/scala3/.scalex
 
 ### Phases reported
 
-**Index phases:** `git-ls-files`, `cache-load`, `oid-compare`, `parse`, `index-build`, `cache-save`
+**Index phases:** `git-ls-files`, `cache-load`, `oid-compare`, `parse`, `cache-save`, and lazy `build-*` lookup phases
 
 **Query phases** (refs/imports/coverage): `bloom-screen`, `text-search`
+
+Durations are exclusive per thread: nested phases are subtracted from their parent. `command` and `render` expose query and output work. `request-total` measures elapsed application request time, including otherwise uninstrumented work, but not runtime startup before the entry point. Use hyperfine for complete process latency. Concurrent phases can overlap, so summing phases is not a wall-clock measurement. Batch mode reports the shared index load, then a separate request total for each query.
 
 ### Reading the output
 
@@ -71,7 +73,7 @@ Timings:
   parse                782.0 ms  (80%)
   index-build           89.4 ms  ( 9%)
   cache-save            42.1 ms  ( 4%)
-  total                974.1 ms
+  request-total        974.1 ms
 ```
 
 - **parse > 70%**: Scalameta parsing dominates — look at parallelism, parser options, or reducing parsed file count

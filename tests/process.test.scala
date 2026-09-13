@@ -53,4 +53,13 @@ class ProcessSuite extends ScalexTestBase {
     assert(ujson.read(result.stdout)("rendered").str.contains("A"))
     assert(!Files.exists(directory.resolve(".scalex")))
   }
+
+  test("timings cover command execution, rendering, and the complete request") {
+    val result = cli("def", "UserService", "--json", "--timings", "-w", workspace.toString)
+    assertEquals(result.status, 0)
+    assert(ujson.read(result.stdout).arr.nonEmpty)
+    assert(result.stderr.contains("command"))
+    assert(result.stderr.contains("render"))
+    assert(result.stderr.contains("request-total"))
+  }
 }
