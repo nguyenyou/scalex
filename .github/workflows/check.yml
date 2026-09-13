@@ -17,11 +17,29 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Cache dependency downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/mill/download
+          key: deps-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mill', 'build.mill', '.scalafmt.conf', '.github/workflows/check.yml') }}
+          restore-keys: |
+            deps-v1-${{ runner.os }}-${{ runner.arch }}-
       - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1
         with:
           java-version: '24.0.2'
           distribution: graalvm
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cache Mill build outputs
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: out
+          key: mill-out-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mill', 'build.mill', '.scalafmt.conf', '.github/workflows/check.yml') }}-${{ hashFiles('src/**', 'clibase/src/**', 'graph/src/**', 'tests/**', 'resources/**') }}
+          restore-keys: |
+            mill-out-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mill', 'build.mill', '.scalafmt.conf', '.github/workflows/check.yml') }}-
+      # Always invoke every check. Mill validates task inputs before reusing build outputs;
+      # test commands and native smoke tests still execute on an exact cache hit.
       - name: Compile and test
         run: ./mill --no-daemon test + bench.compile
       - name: Check Scala formatting
