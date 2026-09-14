@@ -53,14 +53,14 @@ Use a Codex CLI that supports `codex plugin` commands. Scalex is distributed thr
 
 ### Claude Code
 
-Run inside Claude Code:
+Run in your terminal:
 
-```text
-/plugin marketplace add nguyenyou/scalex
-/plugin install scalex@scalex-marketplace
+```bash
+claude plugin marketplace add nguyenyou/scalex
+claude plugin install scalex@scalex-marketplace
 ```
 
-Restart Claude Code, then ask it to use Scalex.
+Start a new Claude Code session, or run `/reload-plugins` in an open one, then ask Claude to use Scalex.
 
 ### Other coding agents
 
@@ -99,7 +99,7 @@ claude plugin marketplace update scalex-marketplace
 claude plugin update scalex@scalex-marketplace
 ```
 
-Restart Claude Code to apply the update. If you installed at project or local scope, add `--scope project` or `--scope local` to the second command to match that installation.
+Start a new Claude Code session, or run `/reload-plugins` in an open one, to apply the update. If you installed at project or local scope, add `--scope project` or `--scope local` to the second command to match that installation.
 
 ### Copied skills
 
