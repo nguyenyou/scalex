@@ -5,7 +5,9 @@
     <img src="site/readme-banner-dark.png" alt="Scalex — Scala code intelligence for coding agents" width="839" height="440">
   </picture>
   <br>
-  <em>Find your way around Scala and Java code.</em>
+  <em>Grep knows text. Scalex knows Scala.</em>
+  <br>
+  <sub>Think grep, but it understands Scala's AST — so it finds symbols, not just strings.</sub>
 </p>
 
 Scalex helps coding agents find definitions, explore types, and locate reference candidates in Git-tracked Scala 2, Scala 3, and Java source. It parses code directly, so you can explore a repository without compiling it or starting a build server.
